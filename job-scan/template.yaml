@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  job-scan
+
+  Scans SSM for TA jobs to be run and passes it on to the next lambda function
+
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  JobScan:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 1_job_scan/
+      Handler: job_scan.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+  GetSymbolData:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 2_get_symbol_data/
+      Handler: get_symbol_data.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+      Layers:
+        - arn:aws:lambda:ap-southeast-2:036372598227:layer:yfinance:2
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-pandas:1
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-numpy:1
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-lxml:1
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-requests:1
+  RunTA:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 3_run_ta/
+      Handler: run_ta.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+  CalculateConfidence:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 4_calculate_confidence/
+      Handler: calculate_confidence.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+  GenerateGraph:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 5_generate_graph/
+      Handler: generate_graph.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+  Notify:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 6_notify/
+      Handler: notify.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64

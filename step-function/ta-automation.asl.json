@@ -1,0 +1,67 @@
+{
+    "Comment": "Step function to run TA",
+    "StartAt": "Job scan",
+    "States": {
+        "Job scan": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-JobScan-WnGKSejpJnmV",
+            "Parameters": {
+                "Payload.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "Get symbol data"
+        },
+        "Get symbol data": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-GetSymbolData-yn5MNxrJSR5K",
+            "Parameters": {
+                "Payload.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "Map"
+        },
+        "Map": {
+            "Type": "Map",
+            "ItemsPath": "$.names",
+            "ResultPath": "$.array",
+            "MaxConcurrency": 2,
+            "Next": "Final State",
+            "Iterator": {
+                "StartAt": "Pass",
+                "States": {
+                    "Pass": {
+                        "Type": "Pass",
+                        "Result": "Done!",
+                        "End": true
+                    }
+                }
+            }
+        },
+        "Final State": {
+            "Type": "Pass",
+            "End": true
+        }
+    }
+}
