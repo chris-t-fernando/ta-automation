@@ -28,13 +28,25 @@ def lambda_handler(event, context):
     # this is because otherwise i need to move target_ta_confidence in to ta_algos and then find some way
     # to use it later in the flow
     # i may still do this in future but not yet
+
+    # "strategy": "saucer | twin peaks | crossover",
+    # "direction": "bullish | bearish",
     jobs = {
         "jobs": [
             {
                 "symbols": ["bhp", "tls", "nea"],
                 "date_from": "2022-01-01T04:16:13+10:00",
-                "date_to": "2022-01-14T04:16:13+10:00",
-                "ta_algos": ["awesome-oscillator", "stoch", "accelerator-oscillator"],
+                "date_to": "2022-03-30T04:16:13+10:00",
+                "ta_algos": [
+                    {
+                        "awesome-oscillator": {
+                            "strategy": "saucer",
+                            "direction": "bullish",
+                        }
+                    },
+                    "stoch",
+                    "accumulation-distribution",
+                ],
                 "resolution": "1d",
                 "notify_method": "pushover",
                 "notify_recipient": "some-pushover-app-1",
@@ -49,4 +61,4 @@ def lambda_handler(event, context):
 
 
 if __name__ == "__main__":
-    lambda_handler("", "")
+    lambda_handler({"Payload": ""}, "")

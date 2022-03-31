@@ -1,4 +1,8 @@
-import json
+# import json
+import plotly.figure_factory
+
+# fig = plotly.figure_factory.create_candlestick(df["Open"], df["High"], df["Low"], df["Close"], dates=df.axes[0])
+# fig.show()
 
 
 def lambda_handler(event, context):
