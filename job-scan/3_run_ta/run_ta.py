@@ -4,8 +4,47 @@ from ta.momentum import AwesomeOscillatorIndicator
 from ta.momentum import StochasticOscillator
 from ta.volume import AccDistIndexIndicator
 
+# shamelessly stolen from https://medium.com/codex/bitcoin-trade-automation-with-awesome-oscillator-in-python-51f2c52c5b25
+def implement_ao_crossover(price, ao):
+    import numpy as np
+
+    buy_price = []
+    sell_price = []
+    ao_signal = []
+    signal = 0
+
+    for i in range(len(ao)):
+        if ao[i] > 0 and ao[i - 1] < 0:
+            if signal != 1:
+                buy_price.append(price[i])
+                sell_price.append(np.nan)
+                signal = 1
+                ao_signal.append(signal)
+            else:
+                buy_price.append(np.nan)
+                sell_price.append(np.nan)
+                ao_signal.append(0)
+        elif ao[i] < 0 and ao[i - 1] > 0:
+            if signal != -1:
+                buy_price.append(np.nan)
+                sell_price.append(price[i])
+                signal = -1
+                ao_signal.append(signal)
+            else:
+                buy_price.append(np.nan)
+                sell_price.append(np.nan)
+                ao_signal.append(0)
+        else:
+            buy_price.append(np.nan)
+            sell_price.append(np.nan)
+            ao_signal.append(0)
+    return buy_price, sell_price, ao_signal
+
 
 def lambda_handler(event, context):
+    # default confidence level
+    confidence = 0
+
     # don't ask me why i need to stringify the json for read_json to be able to read it. whatever trevor.
     df_json = json.dumps(event["Payload"]["symbol_data"])
     df = pd.read_json(df_json)
@@ -15,11 +54,27 @@ def lambda_handler(event, context):
 
     if selected_algo == "awesome-oscillator":
         # i wish the documentation for this library was even semi existent. it would make life better.
-        df["awesome_oscillator"] = AwesomeOscillatorIndicator(
+        df["awesome-oscillator"] = AwesomeOscillatorIndicator(
             high=df["High"], low=df["Low"], window1=5, window2=34, fillna=True
         ).awesome_oscillator()
 
-        print("banana")
+        # data series for buy/sell price when we'd want to do those things, and ao-signal marking those positions with a 1 or 0
+        (
+            df["awesome-oscillator-buy-price"],
+            df["awesome-oscillator-sell-price"],
+            df["awesome-oscillator-ao-signal"],
+        ) = implement_ao_crossover(df["Close"], df["awesome-oscillator"])
+
+        # look at the requested search period to see if we found a signal
+        found = False
+        for signal in df["awesome-oscillator-ao-signal"][
+            -event["Payload"]["search_period"] :
+        ]:
+            if signal == 1:
+                found = True
+
+        if found:
+            confidence = 10
 
     elif selected_algo == "stoch":
         df["stoch"] = StochasticOscillator(
@@ -51,7 +106,9 @@ def lambda_handler(event, context):
     # not implemented in this library. i'll calculate it later maybe
     # elif selected_algo == "accelerator-oscillator":
 
-    return {"ta_confidence": 6.0}
+    json.loads(df.to_json())
+
+    return {"ta_confidence": confidence}
 
 
 payload = {
@@ -59,6 +116,7 @@ payload = {
         "date_from": "2022-01-01T04:16:13+10:00",
         "date_to": "2022-03-30T04:16:13+10:00",
         "resolution": "1d",
+        "search_period": 5,
         "notify_method": "pushover",
         "notify_recipient": "some-pushover-app-1",
         "target_ta_confidence": 7.5,
