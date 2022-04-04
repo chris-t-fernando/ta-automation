@@ -44,10 +44,11 @@ def lambda_handler(event, context):
                             "direction": "bullish",
                         }
                     },
-                    "stoch",
-                    "accumulation-distribution",
+                    # {"stoch": None},
+                    # {"accumulation-distribution": None},
                 ],
                 "resolution": "1d",
+                "search_period": 7,
                 "notify_method": "pushover",
                 "notify_recipient": "some-pushover-app-1",
                 "target_ta_confidence": 7.5,

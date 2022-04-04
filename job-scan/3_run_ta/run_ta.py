@@ -17,26 +17,26 @@ def implement_ao_crossover(price, ao):
         if ao[i] > 0 and ao[i - 1] < 0:
             if signal != 1:
                 buy_price.append(price[i])
-                sell_price.append(np.nan)
+                sell_price.append(None)
                 signal = 1
                 ao_signal.append(signal)
             else:
-                buy_price.append(np.nan)
-                sell_price.append(np.nan)
+                buy_price.append(None)
+                sell_price.append(None)
                 ao_signal.append(0)
         elif ao[i] < 0 and ao[i - 1] > 0:
             if signal != -1:
-                buy_price.append(np.nan)
+                buy_price.append(None)
                 sell_price.append(price[i])
                 signal = -1
                 ao_signal.append(signal)
             else:
-                buy_price.append(np.nan)
-                sell_price.append(np.nan)
+                buy_price.append(None)
+                sell_price.append(None)
                 ao_signal.append(0)
         else:
-            buy_price.append(np.nan)
-            sell_price.append(np.nan)
+            buy_price.append(None)
+            sell_price.append(None)
             ao_signal.append(0)
     return buy_price, sell_price, ao_signal
 
@@ -49,8 +49,8 @@ def lambda_handler(event, context):
     df_json = json.dumps(event["Payload"]["symbol_data"])
     df = pd.read_json(df_json)
 
-    # just for legibility
-    selected_algo = list(event["Payload"]["ta_algo"].items())[0][0]
+    # easy reference to the name of the algo key in the payload
+    selected_algo = list(event["Payload"]["ta_algo"].keys())[0]
 
     if selected_algo == "awesome-oscillator":
         # i wish the documentation for this library was even semi existent. it would make life better.
@@ -58,16 +58,21 @@ def lambda_handler(event, context):
             high=df["High"], low=df["Low"], window1=5, window2=34, fillna=True
         ).awesome_oscillator()
 
-        # data series for buy/sell price when we'd want to do those things, and ao-signal marking those positions with a 1 or 0
-        (
-            df["awesome-oscillator-buy-price"],
-            df["awesome-oscillator-sell-price"],
-            df["awesome-oscillator-ao-signal"],
-        ) = implement_ao_crossover(df["Close"], df["awesome-oscillator"])
+        # data series for buy/sell price when we'd want to do those things, and signal marking those positions with a 1 or 0
+        buy, sell, signal = implement_ao_crossover(
+            df["Close"], df["awesome-oscillator"]
+        )
+        # put it into a dict
+        data = {
+            "awesome-oscillator-buy-price": buy,
+            "awesome-oscillator-sell-price": sell,
+            "awesome-oscillator-signal": signal,
+            "awesome-oscillator": df["awesome-oscillator"].values.tolist(),
+        }
 
         # look at the requested search period to see if we found a signal
         found = False
-        for signal in df["awesome-oscillator-ao-signal"][
+        for signal in data["awesome-oscillator-signal"][
             -event["Payload"]["search_period"] :
         ]:
             if signal == 1:
@@ -75,6 +80,14 @@ def lambda_handler(event, context):
 
         if found:
             confidence = 10
+
+        return_data = {}
+        return_data["confidence"] = confidence
+        return_data["ta_data"] = data
+
+        return return_data
+        # return json.dumps(return_data)
+        # return {"ta_confidence": confidence, "ta_data": data}
 
     elif selected_algo == "stoch":
         df["stoch"] = StochasticOscillator(

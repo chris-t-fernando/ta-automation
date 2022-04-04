@@ -62,6 +62,10 @@ Resources:
       Runtime: python3.8
       Architectures:
         - x86_64
+      Layers:
+        - arn:aws:lambda:ap-southeast-2:036372598227:layer:yfinance:3
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-pandas:1
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-matplotlib:3
   Notify:
     Type: AWS::Serverless::Function
     Properties:
