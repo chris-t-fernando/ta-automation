@@ -44,6 +44,7 @@ def implement_ao_crossover(price, ao):
 def lambda_handler(event, context):
     # default confidence level
     confidence = 0
+    return_data = {}
 
     # don't ask me why i need to stringify the json for read_json to be able to read it. whatever trevor.
     df_json = json.dumps(event["Payload"]["symbol_data"])
@@ -81,11 +82,9 @@ def lambda_handler(event, context):
         if found:
             confidence = 10
 
-        return_data = {}
         return_data["confidence"] = confidence
         return_data["ta_data"] = data
 
-        return return_data
         # return json.dumps(return_data)
         # return {"ta_confidence": confidence, "ta_data": data}
 
@@ -103,6 +102,11 @@ def lambda_handler(event, context):
             fillna=True,
         ).stoch_signal()
 
+        # not implemented yet
+        confidence = 10
+        return_data["confidence"] = confidence
+        return_data["ta_data"] = None
+
     elif selected_algo == "accumulation-distribution":
         df["accumulation-distribution"] = AccDistIndexIndicator(
             close=df["Close"],
@@ -111,6 +115,11 @@ def lambda_handler(event, context):
             volume=df["Volume"],
             fillna=True,
         ).acc_dist_index()
+        # not implemented yet
+        confidence = 10
+        return_data["confidence"] = confidence
+        return_data["ta_data"] = None
+
     else:
         raise ValueError(
             f"Requested algorithm '{selected_algo}' is invalid/not implemented"
@@ -119,9 +128,7 @@ def lambda_handler(event, context):
     # not implemented in this library. i'll calculate it later maybe
     # elif selected_algo == "accelerator-oscillator":
 
-    json.loads(df.to_json())
-
-    return {"ta_confidence": confidence}
+    return return_data
 
 
 payload = {

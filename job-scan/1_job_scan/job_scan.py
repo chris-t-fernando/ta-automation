@@ -5,18 +5,18 @@ def job_enumerator(job_object):
     jobs = []
     # enumerate jobs
     for job in job_object["jobs"]:
-        # enumerate the symbols in this job
-        for symbol in job["symbols"]:
-            # enumerate the algos in this job
-            for algo in job["ta_algos"]:
-                # take a copy of the parent job, remove the lists and add the specific list item we want in this job
-                # i've done this so that the job data structure can change without me needing to update the rest of the pipeline
-                this_job = job.copy()
-                del this_job["ta_algos"]
-                del this_job["symbols"]
-                this_job["symbol"] = symbol
-                this_job["ta_algo"] = algo
-                jobs.append(this_job)
+        # enumerate the algos in this job
+        for algo in job["ta_algos"]:
+            # take a copy of the parent job, remove the lists and add the specific list item we want in this job
+            # i've done this so that the job data structure can change without me needing to update the rest of the pipeline
+            this_job = job.copy()
+            del this_job["ta_algos"]
+            this_job["ta_algo"] = algo
+            jobs.append(this_job)
+
+        # even though ive set this up to take multiple jobs, the rest of the flow is not ready for that yet
+        # so stop it after one job
+        break
 
     return jobs
 
@@ -34,7 +34,7 @@ def lambda_handler(event, context):
     jobs = {
         "jobs": [
             {
-                "symbols": ["bhp", "tls", "nea"],
+                "symbol": "bhp",
                 "date_from": "2022-01-01T04:16:13+10:00",
                 "date_to": "2022-03-30T04:16:13+10:00",
                 "ta_algos": [
@@ -44,14 +44,14 @@ def lambda_handler(event, context):
                             "direction": "bullish",
                         }
                     },
-                    # {"stoch": None},
-                    # {"accumulation-distribution": None},
+                    {"stoch": None},
+                    {"accumulation-distribution": None},
                 ],
                 "resolution": "1d",
-                "search_period": 7,
+                "search_period": 20,
                 "notify_method": "pushover",
                 "notify_recipient": "some-pushover-app-1",
-                "target_ta_confidence": 7.5,
+                "target_ta_confidence": 3,
             }
         ]
     }

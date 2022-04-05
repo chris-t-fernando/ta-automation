@@ -46,18 +46,10 @@ Resources:
         - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-numpy:1
         - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-lxml:1
         - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-requests:1
-  CalculateConfidence:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: 4_calculate_confidence/
-      Handler: calculate_confidence.lambda_handler
-      Runtime: python3.8
-      Architectures:
-        - x86_64
   GenerateGraph:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: 5_generate_graph/
+      CodeUri: 4_generate_graph/
       Handler: generate_graph.lambda_handler
       Runtime: python3.8
       Architectures:
@@ -66,6 +58,14 @@ Resources:
         - arn:aws:lambda:ap-southeast-2:036372598227:layer:yfinance:3
         - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-pandas:1
         - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-p38-matplotlib:3
+  CalculateConfidence:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: 5_calculate_confidence/
+      Handler: calculate_confidence.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
   Notify:
     Type: AWS::Serverless::Function
     Properties:
@@ -74,3 +74,5 @@ Resources:
       Runtime: python3.8
       Architectures:
         - x86_64
+      Layers:
+        - arn:aws:lambda:ap-southeast-2:036372598227:layer:pushover:1

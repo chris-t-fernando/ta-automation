@@ -4,7 +4,7 @@
     "States": {
         "Job scan": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-JobScan-WnGKSejpJnmV",
+            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-JobScan-FbLPSHT2ZjzH",
             "Parameters": {
                 "Payload.$": "$"
             },
@@ -20,48 +20,139 @@
                     "BackoffRate": 2
                 }
             ],
-            "Next": "Get symbol data"
+            "Next": "Per job",
+            "ResultPath": "$.jobs_scan_result"
         },
-        "Get symbol data": {
-            "Type": "Task",
-            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-GetSymbolData-yn5MNxrJSR5K",
-            "Parameters": {
-                "Payload.$": "$"
-            },
-            "Retry": [
-                {
-                    "ErrorEquals": [
-                        "Lambda.ServiceException",
-                        "Lambda.AWSLambdaException",
-                        "Lambda.SdkClientException"
-                    ],
-                    "IntervalSeconds": 2,
-                    "MaxAttempts": 6,
-                    "BackoffRate": 2
-                }
-            ],
-            "Next": "Map"
-        },
-        "Map": {
+        "Per job": {
             "Type": "Map",
-            "ItemsPath": "$.names",
-            "ResultPath": "$.array",
-            "MaxConcurrency": 2,
-            "Next": "Final State",
+            "Next": "Calculate confidence",
             "Iterator": {
-                "StartAt": "Pass",
+                "StartAt": "Get symbol data",
                 "States": {
-                    "Pass": {
-                        "Type": "Pass",
-                        "Result": "Done!",
+                    "Get symbol data": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-GetSymbolData-fBTpkWwPgiLa",
+                        "Parameters": {
+                            "Payload.$": "$"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                            }
+                        ],
+                        "ResultPath": "$.symbol_data",
+                        "Next": "Run TA"
+                    },
+                    "Run TA": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-RunTA-4TVQx73JgGKI",
+                        "Parameters": {
+                            "Payload.$": "$"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                            }
+                        ],
+                        "ResultPath": "$.ta_analysis",
+                        "Next": "Generate graph"
+                    },
+                    "Generate graph": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-GenerateGraph-X1EHj4R3heiC",
+                        "Parameters": {
+                            "Payload.$": "$"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                            }
+                        ],
+                        "ResultPath": "$.graph_url",
                         "End": true
                     }
                 }
-            }
+            },
+            "ItemsPath": "$.jobs_scan_result"
         },
-        "Final State": {
-            "Type": "Pass",
+        "Calculate confidence": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-CalculateConfidence-RIjVMlMZLNmK",
+            "Parameters": {
+                "Payload.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "Is TA confidence high enough?",
+            "ResultPath": "$"
+        },
+        "Is TA confidence high enough?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.ta_summary.overall_ta_confidence",
+                    "NumericGreaterThanEqualsPath": "$.ta_summary.target_ta_confidence",
+                    "Next": "Notify"
+                }
+            ],
+            "Default": "TA confidence is too low"
+        },
+        "Notify": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-Notify-FuZgeHJ4mZXV",
+            "Parameters": {
+                "Payload.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                }
+            ],
+            "ResultPath": "$.graph_urls",
             "End": true
+        },
+        "TA confidence is too low": {
+            "Type": "Fail",
+            "Error": "ErrTAConfidenceLow",
+            "Cause": "Overall TA confidence did not meet specified threshold"
         }
     }
 }
