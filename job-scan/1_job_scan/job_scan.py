@@ -34,7 +34,7 @@ def lambda_handler(event, context):
     jobs = {
         "jobs": [
             {
-                "symbol": "bhp",
+                "symbol": "btc-aud",
                 "date_from": "2022-01-01T04:16:13+10:00",
                 "date_to": "2022-03-30T04:16:13+10:00",
                 "ta_algos": [
@@ -55,6 +55,8 @@ def lambda_handler(event, context):
             }
         ]
     }
+
+    jobs = event["Payload"]
 
     flat_jobs = job_enumerator(jobs)
 
