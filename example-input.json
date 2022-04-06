@@ -1,0 +1,28 @@
+{
+    "jobs": [
+        {
+            "symbol": "btc-aud",
+            "date_from": "2022-01-01T04:16:13+10:00",
+            "date_to": "2022-03-30T04:16:13+10:00",
+            "ta_algos": [
+                {
+                    "awesome-oscillator": {
+                        "strategy": "saucer",
+                        "direction": "bullish"
+                    }
+                },
+                {
+                    "stoch": null
+                },
+                {
+                    "accumulation-distribution": null
+                }
+            ],
+            "resolution": "1d",
+            "search_period": 20,
+            "notify_method": "pushover",
+            "notify_recipient": "some-pushover-app-1",
+            "target_ta_confidence": 3
+        }
+    ]
+}

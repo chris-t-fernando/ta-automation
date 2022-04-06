@@ -4,7 +4,7 @@
     "States": {
         "Job scan": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-JobScan-FbLPSHT2ZjzH",
+            "Resource": "${JobScanArn}",
             "Parameters": {
                 "Payload.$": "$"
             },
@@ -31,7 +31,7 @@
                 "States": {
                     "Get symbol data": {
                         "Type": "Task",
-                        "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-GetSymbolData-fBTpkWwPgiLa",
+                        "Resource": "${GetSymbolDataArn}",
                         "Parameters": {
                             "Payload.$": "$"
                         },
@@ -52,7 +52,7 @@
                     },
                     "Run TA": {
                         "Type": "Task",
-                        "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-RunTA-4TVQx73JgGKI",
+                        "Resource": "${RunTAArn}",
                         "Parameters": {
                             "Payload.$": "$"
                         },
@@ -73,7 +73,7 @@
                     },
                     "Generate graph": {
                         "Type": "Task",
-                        "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-GenerateGraph-X1EHj4R3heiC",
+                        "Resource": "${GenerateGraphArn}",
                         "Parameters": {
                             "Payload.$": "$"
                         },
@@ -98,7 +98,7 @@
         },
         "Calculate confidence": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-CalculateConfidence-RIjVMlMZLNmK",
+            "Resource": "${CalculateConfidenceArn}",
             "Parameters": {
                 "Payload.$": "$"
             },
@@ -130,7 +130,7 @@
         },
         "Notify": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-Notify-FuZgeHJ4mZXV",
+            "Resource": "${NotifyArn}",
             "Parameters": {
                 "Payload.$": "$"
             },

@@ -1,0 +1,5 @@
+{
+    "yaml.schemas": {
+        "cloudformation://schema/cloudformation": "file:///c%3A/Users/chris.fernando/projects/ta-automation/job-scan/template.yaml"
+    }
+}
