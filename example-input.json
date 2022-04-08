@@ -1,28 +1,52 @@
-{
-    "jobs": [
-        {
-            "symbol": "btc-aud",
-            "date_from": "2022-01-01T04:16:13+10:00",
-            "date_to": "2022-03-30T04:16:13+10:00",
-            "ta_algos": [
-                {
-                    "awesome-oscillator": {
-                        "strategy": "saucer",
-                        "direction": "bullish"
-                    }
-                },
-                {
-                    "stoch": null
-                },
-                {
-                    "accumulation-distribution": null
+"jobs": [
+    {
+        "symbol": "btc-aud",
+        "date_from": "2022-01-01T04:16:13+10:00",
+        "date_to": "2022-03-30T04:16:13+10:00",
+        "ta_algos": [
+            {
+                "awesome-oscillator": {
+                    "strategy": "saucer",
+                    "direction": "bullish"
                 }
-            ],
-            "resolution": "1d",
-            "search_period": 20,
-            "notify_method": "pushover",
-            "notify_recipient": "some-pushover-app-1",
-            "target_ta_confidence": 3
-        }
-    ]
+            },
+            {
+                "stoch": null
+            },
+            {
+                "accumulation-distribution": null
+            }
+        ],
+        "resolution": "1d",
+        "search_period": 20,
+        "notify_method": "pushover",
+        "notify_recipient": "some-pushover-app-1",
+        "target_ta_confidence": 3
+    }
+]
 }
+
+
+
+"{\"jobs\": [{\"symbol\": \"btc-aud\", \"date_from\": \"2022-01-01T04:16:13+10:00\", \"date_to\": \"2022-03-30T04:16:13+10:00\", \"ta_algos\": [{\"awesome-oscillator\": {\"strategy\": \"saucer\", \"direction\": \"bullish\"}}, {\"stoch\": null}, {\"accumulation-distribution\": null}], \"resolution\": \"1d\", \"search_period\": 20, \"notify_method\": \"pushover\", \"notify_recipient\": \"some-pushover-app-1\", \"target_ta_confidence\": 3}]}"
+
+
+{
+"input": "{\"jobs\": [{\"symbol\": \"btc-aud\", \"date_from\": \"2022-01-01T04:16:13+10:00\", \"date_to\": \"2022-03-30T04:16:13+10:00\", \"ta_algos\": [{\"awesome-oscillator\": {\"strategy\": \"saucer\", \"direction\": \"bullish\"}}, {\"stoch\": null}, {\"accumulation-distribution\": null}], \"resolution\": \"1d\", \"search_period\": 20, \"notify_method\": \"pushover\", \"notify_recipient\": \"some-pushover-app-1\", \"target_ta_confidence\": 3}]}",
+"name": "MyExecution15",
+"stateMachineArn": "arn:aws:states:ap-southeast-2:036372598227:stateMachine:TABotStateMachine-ATzfoF9868Da"
+}
+
+no notify
+{
+"input": "{\"jobs\": [{\"symbol\": \"btc-aud\", \"date_from\": \"2022-01-01T04:16:13+10:00\", \"date_to\": \"2022-03-30T04:16:13+10:00\", \"ta_algos\": [{\"awesome-oscillator\": {\"strategy\": \"saucer\", \"direction\": \"bullish\"}}, {\"stoch\": null}, {\"accumulation-distribution\": null}], \"resolution\": \"1d\", \"search_period\": 20, \"target_ta_confidence\": 3}]}",
+"name": "MyExecution15",
+"stateMachineArn": "arn:aws:states:ap-southeast-2:036372598227:stateMachine:TABotStateMachine-ATzfoF9868Da"
+}
+
+
+[TAbot error
+] 
+"^\[TAbot error\].*"
+
+C:\Users\chris.fernando\projects\ta-automation\ta-automation>aws stepfunctions describe-execution --region ap-southeast-2 --execution-arn arn:aws:states:ap-southeast-2: 036372598227:execution:TABotStateMachine-ATzfoF9868Da:MyExecution27

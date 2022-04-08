@@ -4,9 +4,6 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   State machine connected an API gateway that runs TA on a provided job and returns the data and a graph
 
-# https://gist.github.com/cam8001/1304705aa013a48719ecc3ff253aa981
-# https://medium.com/mindorks/building-webhook-is-easy-using-aws-lambda-and-api-gateway-56f5e5c3a596
-
 Globals:
   Function:
     Timeout: 30
@@ -143,44 +140,3 @@ Resources:
             FunctionName: !Ref CalculateConfidence
         - LambdaInvokePolicy:
             FunctionName: !Ref Notify
-
-  SlackBotFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: slackbot/
-      Handler: slackbot.lambda_handler
-      Runtime: python3.8
-      Architectures:
-        - x86_64
-      Events:
-        Get:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#ap
-          Properties:
-            RestApiId:
-              Ref: SlackbotWebhookApiGateway
-            Path: /submit-job
-            Method: GET
-
-  SlackbotWebhookApiGateway:
-    Type: AWS::Serverless::Api
-    DependsOn: SlackBotFunction
-    Properties:
-      Name: SlackbotWebhook
-      StageName: dev
-      DefinitionBody:
-        openapi: "3.0.1"
-        info:
-          version: "1.0"
-          title: "SlackBot Webhook"
-        paths:
-          /submit-job:
-            get:
-              responses: {}
-              x-amazon-apigateway-integration:
-                uri:
-                  # You need to build up the ARN with this pattern - you can't just use a !Ref or !GetAtt AFAIK.
-                  Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SlackBotFunction.Arn}/invocations
-                passthroughBehavior: "when_no_match"
-                httpMethod: "POST"
-                contentHandling: "CONVERT_TO_TEXT"
-                type: "aws_proxy"
