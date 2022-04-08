@@ -152,14 +152,16 @@ Resources:
       Runtime: python3.8
       Architectures:
         - x86_64
+      Layers:
+        - arn:aws:lambda:ap-southeast-2:036372598227:layer:slack_bolt:2
       Events:
-        Get:
+        Post:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#ap
           Properties:
             RestApiId:
               Ref: SlackbotWebhookApiGateway
             Path: /submit-job
-            Method: GET
+            Method: POST
 
   SlackbotWebhookApiGateway:
     Type: AWS::Serverless::Api
@@ -174,7 +176,7 @@ Resources:
           title: "SlackBot Webhook"
         paths:
           /submit-job:
-            get:
+            post:
               responses: {}
               x-amazon-apigateway-integration:
                 uri:
@@ -184,3 +186,13 @@ Resources:
                 httpMethod: "POST"
                 contentHandling: "CONVERT_TO_TEXT"
                 type: "aws_proxy"
+
+Outputs:
+  HttpApiUrl:
+    Description: URL of your API endpoint
+    Value:
+      Fn::Sub: 'https://${SlackbotWebhookApiGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/dev/'
+  HttpApiId:
+    Description: Api id of HttpApi
+    Value:
+      Ref: SlackbotWebhookApiGateway
