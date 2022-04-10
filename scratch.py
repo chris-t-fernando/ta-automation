@@ -1,41 +1,10 @@
-import logging
-import time
-import json
 import boto3
-
-from slack_bolt import App
-from slack_bolt.adapter.aws_lambda import SlackRequestHandler
-from slack_bolt.oauth.oauth_settings import OAuthSettings
-
-bot_token = "xoxb-3352336312436-3359152407141-mz2WXM7JCCE0zC5zEHjenw9p"
-signing_token = "28831ea678df078862585c2312cdccb5"
+import json
+import random
 
 
 class StepFunctionNotFoundException(Exception):
     ...
-
-
-# process_before_response must be True when running on FaaS
-app = App(
-    process_before_response=True,
-    token=bot_token,
-    signing_secret=signing_token,
-)
-
-
-@app.middleware  # or app.use(log_request)
-def log_request(logger, body, next):
-    logger.debug(body)
-    return next()
-
-
-def respond_to_slack_within_3_seconds(body, ack):
-    #    if body.get("text") is None:
-    #        ack(f":x: Usage: {command} (description here)")
-    #        return False
-    #    else:
-    #        title = body["text"]
-    ack(f"Invoking TA analysis.  Response will take >30 seconds")
 
 
 def get_step_function(client):
@@ -100,35 +69,28 @@ def process_request(respond, body):
 
     finished = False
     while not finished:
-        time.sleep(5)
         job_execution = client.describe_execution(
             executionArn=state_machine_invocation["executionArn"]
         )
 
         if job_execution["status"] == "SUCCEEDED":
+            # respond(f"TA job finished!")
             finished = True
             break
 
     state_machine_output = json.loads(job_execution["output"])
 
-    response_message = (
-        f'Finished analysis for {state_machine_output["job"]["symbol"]}:\n'
-    )
-
+    response_message = ""
     for analysis in state_machine_output["ta_analyses"]:
-        response_message += f' - {str(list(analysis["ta_algo"].keys())[0])} {analysis["ta_analysis"]["confidence"]} confidence {analysis["graph_url"]}\n'
+        response_message += f'{analysis["graph_url"]}\n'
 
-    respond(response_message)
-
-
-#
-command = "/submit-job"
-app.command(command)(ack=respond_to_slack_within_3_seconds, lazy=[process_request])
-
-SlackRequestHandler.clear_all_log_handlers()
-logging.basicConfig(format="%(asctime)s %(message)s", level=logging.WARNING)
+    print(response_message)
 
 
-def lambda_handler(event, context):
-    slack_handler = SlackRequestHandler(app=app)
-    return slack_handler.handle(event, context)
+def respond(string):
+    print(string)
+
+
+body = {"trigger_id": str(random.randint(1, 100000))}
+
+process_request(None, body)

@@ -1,11 +1,8 @@
-import json
-
-
 def lambda_handler(event, context):
 
     # https://stackoverflow.com/questions/58774789/merging-json-outputs-of-parallel-states-in-step-function
     #
-    # really annoyingly, there is no way using Step Functions to append stuff to a json arrays
+    # really annoyingly, there is no way using Step Functions to append stuff to a json array
     # so we need to get into the data flow here instead of using Step Functions to do it
     # this is really disappointing, since as soon as you run a map function, you get an array back - so
     # every time you map, you also need a lambda function to pull the bits you care about out of an array

@@ -19,18 +19,29 @@ def upload_file(file_name, bucket, object_name=None):
     if object_name is None:
         object_name = os.path.basename(file_name)
 
-    # Upload the file
-    s3_client = boto3.client(
-        "s3",
-    )
-
     try:
-        response = s3_client.upload_file(
-            file_name,
-            bucket,
-            object_name,
+        # Upload the file
+        # s3_client = boto3.client(
+        #   "s3",
+        # )
+        # response = s3_client.upload_file(
+        #    file_name,
+        #    bucket,
+        #    object_name,
+        #    StorageClass="STANDARD_IA",
+        #    ExtraArgs={"StorageClass": "STANDARD_IA"},
+        #    ContentType="image/png",
+        # )
+
+        # response = s3.meta.client.Bucket('<bucket-name>').put_object(Key='folder/{}'.format(filename), Body=file)
+
+        file = open(file_name, "rb")
+        s3 = boto3.resource("s3")
+        response = s3.meta.client.Bucket(bucket).put_object(
+            Key=object_name,
+            Body=file,
+            ContentType="image/png",
             StorageClass="STANDARD_IA",
-            ExtraArgs={"StorageClass": "STANDARD_IA"},
         )
     except ClientError as e:
         return False

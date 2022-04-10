@@ -76,7 +76,7 @@ Resources:
                 - s3:PutObjectAcl
               Effect: Allow
               Resource:
-                - arn:aws:s3:::mfers-graphs/*,
+                - arn:aws:s3:::mfers-graphs/*
                 - arn:aws:s3:::mfers-graphs
   CalculateConfidence:
     Type: AWS::Serverless::Function
@@ -162,6 +162,32 @@ Resources:
               Ref: SlackbotWebhookApiGateway
             Path: /submit-job
             Method: POST
+      Policies:
+        - Statement:
+            - Sid: SlackbotSelfInvoke
+              Action:
+                - lambda:InvokeFunction
+                - lambda:GetFunction
+              Effect: Allow
+              Resource:
+                # needs permission to call itself so it can ack in <3 seconds and then actually do the thing
+                # https://github.com/slackapi/bolt-python/issues/556
+                - arn:aws:lambda:ap-southeast-2:036372598227:function:ta-automation-SlackBotFunction*
+        - Statement:
+            - Sid: TABotStateMachineList
+              Action:
+                - states:ListStateMachines
+                - states:ListTagsForResource
+                - states:DescribeExecution
+              Effect: Allow
+              Resource: arn:aws:states:ap-southeast-2:036372598227:*:*
+        - Statement:
+            - Sid: TABotStateMachineInvoke
+              Action:
+                - states:StartExecution
+              Effect: Allow
+              Resource: !GetAtt TABotStateMachine.Arn
+              #Resource: arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:*:
 
   SlackbotWebhookApiGateway:
     Type: AWS::Serverless::Api
@@ -191,7 +217,7 @@ Outputs:
   HttpApiUrl:
     Description: URL of your API endpoint
     Value:
-      Fn::Sub: 'https://${SlackbotWebhookApiGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/dev/'
+      Fn::Sub: "https://${SlackbotWebhookApiGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/dev/"
   HttpApiId:
     Description: Api id of HttpApi
     Value:
