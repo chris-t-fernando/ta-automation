@@ -2,14 +2,10 @@ import logging
 import time
 import json
 import boto3
-
 from slack_bolt import App
 from slack_bolt.adapter.aws_lambda import SlackRequestHandler
-from slack_bolt.oauth.oauth_settings import OAuthSettings
 
-bot_token = "xoxb-3352336312436-3359152407141-oayQOtIkggt1d6ydvobUrxdP"
-signing_token = "28831ea678df078862585c2312cdccb5"
-
+# set up input keys
 mandatory_keys = {"symbol", "date_from", "algos"}
 optional_keys = {
     "date_to",
@@ -21,6 +17,7 @@ optional_keys = {
 }
 
 
+# used to raise an exception when we can't find the ta-automation step function
 class StepFunctionNotFoundException(Exception):
     ...
 
@@ -28,8 +25,8 @@ class StepFunctionNotFoundException(Exception):
 # process_before_response must be True when running on FaaS
 app = App(
     process_before_response=True,
-    token=bot_token,
-    signing_secret=signing_token,
+    #    token=bot_token,
+    #    signing_secret=signing_token,
 )
 
 
@@ -208,9 +205,10 @@ command = "/ta"
 app.command(command)(ack=respond_to_slack_within_3_seconds, lazy=[do_ta])
 
 SlackRequestHandler.clear_all_log_handlers()
-logging.basicConfig(format="%(asctime)s %(message)s", level=logging.DEBUG)
+logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 
 def lambda_handler(event, context):
+    print("got here1")
     slack_handler = SlackRequestHandler(app=app)
     return slack_handler.handle(event, context)
