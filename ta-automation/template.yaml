@@ -26,7 +26,7 @@ Resources:
         HelloWorld:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
-            Path: /submit-job
+            Path: /ta
             Method: post
   GetSymbolData:
     Type: AWS::Serverless::Function
@@ -127,7 +127,7 @@ Resources:
           Type: Api
           Properties:
             Method: post
-            Path: /submit-job
+            Path: /ta
             RestApiId:
               Ref: TABotApi
       Policies:
@@ -160,7 +160,7 @@ Resources:
           Properties:
             RestApiId:
               Ref: SlackbotWebhookApiGateway
-            Path: /submit-job
+            Path: /ta
             Method: POST
       Policies:
         - Statement:
@@ -201,7 +201,7 @@ Resources:
           version: "1.0"
           title: "SlackBot Webhook"
         paths:
-          /submit-job:
+          /ta:
             post:
               responses: {}
               x-amazon-apigateway-integration:

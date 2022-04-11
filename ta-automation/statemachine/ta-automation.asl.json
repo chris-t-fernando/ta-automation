@@ -114,19 +114,23 @@
                     "BackoffRate": 2
                 }
             ],
-            "Next": "Is TA confidence high enough?",
+            "Next": "Is Notify set?",
             "ResultPath": "$"
         },
-        "Is TA confidence high enough?": {
+        "Is Notify set?": {
             "Type": "Choice",
             "Choices": [
                 {
-                    "Variable": "$.ta_summary.overall_ta_confidence",
-                    "NumericGreaterThanEqualsPath": "$.ta_summary.target_ta_confidence",
+                    "Variable": "$.job.notify_method",
+                    "IsNull": false,
                     "Next": "Notify"
                 }
             ],
-            "Default": "TA confidence is too low"
+            "Default": "Pass"
+        },
+        "Pass": {
+            "Type": "Pass",
+            "End": true
         },
         "Notify": {
             "Type": "Task",
@@ -148,11 +152,6 @@
             ],
             "ResultPath": "$.graph_urls",
             "End": true
-        },
-        "TA confidence is too low": {
-            "Type": "Fail",
-            "Error": "ErrTAConfidenceLow",
-            "Cause": "Overall TA confidence did not meet specified threshold"
         }
     }
 }

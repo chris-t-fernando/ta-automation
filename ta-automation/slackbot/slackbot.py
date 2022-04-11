@@ -7,8 +7,18 @@ from slack_bolt import App
 from slack_bolt.adapter.aws_lambda import SlackRequestHandler
 from slack_bolt.oauth.oauth_settings import OAuthSettings
 
-bot_token = "xoxb-3352336312436-3359152407141-mz2WXM7JCCE0zC5zEHjenw9p"
+bot_token = "xoxb-3352336312436-3359152407141-oayQOtIkggt1d6ydvobUrxdP"
 signing_token = "28831ea678df078862585c2312cdccb5"
+
+mandatory_keys = {"symbol", "date_from", "algos"}
+optional_keys = {
+    "date_to",
+    "resolution",
+    "search_period",
+    "notify_method",
+    "notify_recipient",
+    "target_ta_confidence",
+}
 
 
 class StepFunctionNotFoundException(Exception):
@@ -30,103 +40,175 @@ def log_request(logger, body, next):
 
 
 def respond_to_slack_within_3_seconds(body, ack):
+    # i don't understand this block of boilerplate at all, given that the execution proceeds regardless of usage
     #    if body.get("text") is None:
     #        ack(f":x: Usage: {command} (description here)")
-    #        return False
     #    else:
     #        title = body["text"]
-    ack(f"Invoking TA analysis.  Response will take >30 seconds")
+
+    # for whatever reason I can't find a way of killing the call here, so I'll have to let it through to the state machine and let it fail
+    ack(f"Just a sec while I check your inputs")
 
 
 def get_step_function(client):
     # find the TA-analysis step function via tagging
-    ta_automation_machine = None
+    # client is an instance of boto3 stepfunctions client
     machines = client.list_state_machines()
 
+    # machines is a list of all of the state machines, so need to iterate through looking for the right one
     for machine in machines["stateMachines"]:
+        # grab the tags for this state machine
         tags = client.list_tags_for_resource(resourceArn=machine["stateMachineArn"])
 
+        # iterate through all tags to the find the one we want. i could use if "tag" in tags.keys() but whatever
         for tag in tags["tags"]:
             if tag["key"] == "aws:cloudformation:stack-name":
                 if tag["value"] == "ta-automation":
-                    ta_automation_machine = machine
-                    print(
-                        f'Found ta-automation step function: {machine["stateMachineArn"]}'
-                    )
+                    return machine
+
+    # if we got here, we failed
+    raise StepFunctionNotFoundException(
+        "Unable to find step function with tag aws:cloudformation:stack-name=ta-automation"
+    )
+
+
+def do_ta_usage():
+    usage = "Mandatory parameters: symbol date_from and algos\n"
+    usage += "Optional parameters: date_to resolution search_period notify_method and notify_recipient\n"
+    usage += "Examples:\n"
+    usage += "/ta symbol=abc date_from=2022-01-01T04:16:13+10:00 algos=awesome-oscillator,stoch target_ta_confidence=7\n"
+    usage += "/ta symbol=abc date_from=2022-01-01T04:16:13+10:00 date_to=2022-01-05T12:12:12+10:00 algos=accumulation-distribution target_ta_confidence=7 resolution=5d search_period=15\n"
+    return usage
+
+
+def da_ta_validate(text):
+    parameters = text.split()
+
+    valid_parameters = {}
+    found_keys = set()
+    errors = ""
+    error_found = False
+
+    valid_keys = mandatory_keys.union(optional_keys)
+
+    for parameter in parameters:
+        split_parameter = parameter.split("=")
+        if len(split_parameter) != 2:
+            errors += f"Input parameter set without value assignment: {split_parameter[0]}=what?\n"
+            error_found = True
+        else:
+            valid_parameters[split_parameter[0]] = split_parameter[1]
+            found_keys.add(split_parameter[0])
+
+    # see if there's an invalid parameter specified
+    if len(found_keys.difference(valid_keys)) > 0:
+        errors += f"Invalid key specified: {str(found_keys.difference(valid_keys))}\n"
+        error_found = True
+
+    # if a mandatory key was omitted
+    if len(mandatory_keys.difference(found_keys)) > 0:
+        errors += (
+            f"Mandatory key missing: {str(mandatory_keys.difference(found_keys))}\n"
+        )
+        error_found = True
+
+    return error_found, errors, valid_parameters
+
+
+# execute the slash command
+def do_ta(respond, body):
+    # validate the inputs
+    if body.get("text") is None:
+        # no parameters were given
+        respond(do_ta_usage())
+    else:
+        # validate the input
+        errors_found, error_messages, valid_parameters = da_ta_validate(body["text"])
+
+        if errors_found:
+            # input is bad - missing or unknown parameters
+            respond(error_messages)
+            respond(do_ta_usage())
+
+        else:
+            # execute the step function and return the output
+
+            # first we need to format the step machine request
+            # expand algos
+            algo_list = []
+            # first check if more than one was specified
+            if "," in valid_parameters["algos"]:
+                input_algos = valid_parameters["algos"].split(",")
+                for this_algo in input_algos:
+                    algo_list.append({this_algo: None})
+            else:
+                algo_list.append(valid_parameters["algos"])
+
+            # job structure
+            # mandatories first
+            ta_job = {
+                "jobs": [
+                    {
+                        "symbol": valid_parameters["symbol"],
+                        "date_from": valid_parameters["date_from"],
+                        "ta_algos": algo_list,
+                    }
+                ]
+            }
+
+            for optional in optional_keys:
+                if valid_parameters.get(optional) != None:
+                    ta_job["jobs"][0][str(optional)] = valid_parameters[str(optional)]
+
+            respond(
+                f"Okay your inputs are all good, now sending it for processing. This might take 15 seconds or more so be patient please"
+            )
+            # find the step machine so we can get its arn
+            ta_automation_machine = get_step_function(client)
+
+            # call the state machine
+            state_machine_invocation = client.start_execution(
+                stateMachineArn=ta_automation_machine["stateMachineArn"],
+                name=body["trigger_id"],
+                input=json.dumps(ta_job),
+            )
+
+            # loop til we get the state machine response back
+            while True:
+                time.sleep(5)
+
+                # check if the state machine is still running
+                job_execution = client.describe_execution(
+                    executionArn=state_machine_invocation["executionArn"]
+                )
+
+                # if its done, then we can bust out
+                if job_execution["status"] == "SUCCEEDED":
                     break
 
-    if ta_automation_machine == None:
-        raise StepFunctionNotFoundException(
-            "Unable to find step function with tag aws:cloudformation:stack-name=ta-automation"
-        )
+            # grab the output and load it as json
+            state_machine_output = json.loads(job_execution["output"])
 
-    return ta_automation_machine
+            # start responding
+            response_message = (
+                f'Finished analysis for {state_machine_output["job"]["symbol"]}:\n'
+            )
 
+            for analysis in state_machine_output["ta_analyses"]:
+                response_message += f' - {str(list(analysis["ta_algo"].keys())[0])} {analysis["ta_analysis"]["confidence"]}/10 confidence <{analysis["graph_url"]}|Graph link>\n'
 
-def process_request(respond, body):
-    client = boto3.client("stepfunctions")
-    ta_automation_machine = get_step_function(client)
-
-    job = {
-        "jobs": [
-            {
-                "symbol": "btc-aud",
-                "date_from": "2022-01-01T04:16:13+10:00",
-                "date_to": "2022-03-30T04:16:13+10:00",
-                "ta_algos": [
-                    {
-                        "awesome-oscillator": {
-                            "strategy": "saucer",
-                            "direction": "bullish",
-                        }
-                    },
-                    {"stoch": None},
-                    {"accumulation-distribution": None},
-                ],
-                "resolution": "1d",
-                "search_period": 20,
-                "notify_method": "pushover",
-                "notify_recipient": "ucYyQ2tLc9CqDUqGXVpZvKiyuCDx9x",
-                "target_ta_confidence": 3,
-            }
-        ]
-    }
-
-    state_machine_invocation = client.start_execution(
-        stateMachineArn=ta_automation_machine["stateMachineArn"],
-        name=body["trigger_id"],
-        input=json.dumps(job),
-    )
-
-    finished = False
-    while not finished:
-        time.sleep(5)
-        job_execution = client.describe_execution(
-            executionArn=state_machine_invocation["executionArn"]
-        )
-
-        if job_execution["status"] == "SUCCEEDED":
-            finished = True
-            break
-
-    state_machine_output = json.loads(job_execution["output"])
-
-    response_message = (
-        f'Finished analysis for {state_machine_output["job"]["symbol"]}:\n'
-    )
-
-    for analysis in state_machine_output["ta_analyses"]:
-        response_message += f' - {str(list(analysis["ta_algo"].keys())[0])} {analysis["ta_analysis"]["confidence"]} confidence {analysis["graph_url"]}\n'
-
-    respond(response_message)
+            respond(response_message)
 
 
-#
-command = "/submit-job"
-app.command(command)(ack=respond_to_slack_within_3_seconds, lazy=[process_request])
+# used by all functions so its a global
+client = boto3.client("stepfunctions")
+
+# register commands and handlers
+command = "/ta"
+app.command(command)(ack=respond_to_slack_within_3_seconds, lazy=[do_ta])
 
 SlackRequestHandler.clear_all_log_handlers()
-logging.basicConfig(format="%(asctime)s %(message)s", level=logging.WARNING)
+logging.basicConfig(format="%(asctime)s %(message)s", level=logging.DEBUG)
 
 
 def lambda_handler(event, context):

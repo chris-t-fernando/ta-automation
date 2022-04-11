@@ -8,17 +8,22 @@ from datetime import datetime
 required_keys = {
     "symbol",
     "date_from",
-    "date_to",
     "ta_algos",
-    "resolution",
-    "search_period",
-    "target_ta_confidence",
 }
 
 optional_keys = {
+    "date_to",
+    "resolution",
+    "search_period",
+    "target_ta_confidence",
     "notify_method",
     "notify_recipient",
 }
+
+DEFAULT_DATE_TO = str(datetime.now())
+DEFAULT_RESOLUTION = "1d"
+DEFAULT_SEARCH_PERIOD = 20
+DEFAULT_TARGET_TA_CONFIDENCE = 7
 
 valid_notify_methods = [None, "pushover", "slack"]
 
@@ -180,7 +185,23 @@ def add_optional_keys(job):
     present_keys = set(job.keys())
     keys_to_add = optional_keys - present_keys
     for key in keys_to_add:
-        job[key] = None
+        if key == "date_to":
+            this_value = DEFAULT_DATE_TO
+
+        elif key == "resolution":
+            this_value = DEFAULT_RESOLUTION
+
+        elif key == "search_period":
+            this_value = DEFAULT_SEARCH_PERIOD
+
+        elif key == "target_ta_confidence":
+            this_value = DEFAULT_TARGET_TA_CONFIDENCE
+
+        else:
+            this_value = None
+
+        job[key] = this_value
+
     return job
 
 
