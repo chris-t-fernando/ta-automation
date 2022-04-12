@@ -139,7 +139,8 @@ def do_ta(respond, body):
                 for this_algo in input_algos:
                     algo_list.append({this_algo: None})
             else:
-                algo_list.append(valid_parameters["algos"])
+                # only one was specified
+                algo_list.append({valid_parameters["algos"]: None})
 
             # job structure
             # mandatories first
