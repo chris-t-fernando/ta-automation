@@ -1,6 +1,7 @@
-import yfinance as yf
 from datetime import datetime
 import math
+import alpaca_trade_api as tradeapi
+import boto3
 
 
 class RuleValidationException(Exception):
@@ -116,40 +117,6 @@ def validate_ruleset(ruleset):
     check_rule_actions(ruleset=ruleset)
 
 
-ruleset = [
-    {
-        "rule_name": "hodl",
-        "trigger_pct": 20,
-        "action": "pass",
-        "action_amount_pct": 0,
-        "ignore_interval": 0,
-    },
-    {
-        "rule_name": "hold out hope",
-        "trigger_pct": 50,
-        "action": "sell",
-        "action_amount_pct": 20,
-        "ignore_interval": 5,
-    },
-    {
-        "rule_name": "yolo",
-        "trigger_pct": 70,
-        "action": "sell",
-        "action_amount_pct": 70,
-        "ignore_interval": 5,
-    },
-    {
-        "rule_name": "bail out",
-        "trigger_pct": 100,
-        "action": "sell",
-        "action_amount_pct": 100,
-        "ignore_interval": 5,
-    },
-]
-
-# check that our rules are valid
-validate_ruleset(ruleset)
-
 prices = [
     33.3,
     34.5,
@@ -176,9 +143,75 @@ prices = [
     33.0,
 ]
 
-buy_unit_price = 33.3
-buy_unit_quantity = 100
-buy_total_value = buy_unit_price * buy_unit_quantity
+
+def get_play(play_id):
+    # mock
+    return {
+        "buy_unit_price": 33.3,
+        "buy_unit_quantity": 100,
+        "buy_total_value": 33.3 * 100,
+        "sell_orders": [],
+        "rule_set": [
+            {
+                "rule_name": "hodl",
+                "trigger_pct": 20,
+                "action": "pass",
+                "action_amount_pct": 0,
+                "ignore_interval": 0,
+            },
+            {
+                "rule_name": "hold out hope",
+                "trigger_pct": 50,
+                "action": "sell",
+                "action_amount_pct": 20,
+                "ignore_interval": 5,
+            },
+            {
+                "rule_name": "yolo",
+                "trigger_pct": 70,
+                "action": "sell",
+                "action_amount_pct": 70,
+                "ignore_interval": 5,
+            },
+            {
+                "rule_name": "bail out",
+                "trigger_pct": 100,
+                "action": "sell",
+                "action_amount_pct": 100,
+                "ignore_interval": 5,
+            },
+        ],
+    }
+
+
+# set up alpaca
+ssm = boto3.client("ssm")
+alpaca_key_id = (
+    ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=False)
+    .get("Parameter")
+    .get("Value")
+)
+alpaca_secret_key = (
+    ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=False)
+    .get("Parameter")
+    .get("Value")
+)
+
+api = tradeapi.REST(alpaca_key_id, alpaca_secret_key)
+
+btc_aud_daily = api.polygon.historic_agg("day", "AAPL", limit=1000).df
+
+# get the play and start replaying it
+play = get_play(play_id=1)
+
+ruleset = play["rule_set"]
+# check that our rules are valid
+validate_ruleset(ruleset)
+sell_orders = play["sell_orders"]
+buy_unit_price = play["buy_unit_price"]
+buy_unit_quantity = play["buy_unit_quantity"]
+buy_total_value = play["buy_total_value"]
+
 cur_unit_price = buy_unit_price
 cur_unit_quantity = buy_unit_quantity
 cur_total_value = buy_total_value
@@ -187,8 +220,6 @@ ath_unit_price = 0
 # don't need ath unit quantity since its not relevant
 ath_total_value = 0
 ath_profit = 0
-
-sell_orders = []
 
 
 def evaluate_ruleset(ruleset, cur_drop_against_ath_pct, interval):
