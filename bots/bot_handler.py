@@ -88,7 +88,7 @@ while True:
             if this_bot.do_sell():
                 end_position = this_bot.get_position()
                 print(
-                    f"{this_bot.symbol}: successfully sold {qty_per_trade} (previous position: {start_position}, new position {end_position})"
+                    f"{this_bot.symbol}: successfully sold {qty_per_trade} ({round(this_bot.last_sma_pct*100,2)}% SMA, previous position: {start_position}, new position {end_position})"
                 )
             else:
                 print(f"{this_bot.symbol}: failed to sell {qty_per_trade}")
@@ -98,11 +98,11 @@ while True:
     max_buys = max_buys if max_buys < len(buy_signal) else len(buy_signal)
     missed_buys = []
 
-    # do the trades we have the funds for
+    # do the buys we have the funds for
     for bot_index in range(0, max_buys):
         if buy_ordered[bot_index].do_buy():
             print(
-                f"{buy_ordered[bot_index].symbol}: successfully bought {qty_per_trade}"
+                f"{buy_ordered[bot_index].symbol}: successfully bought {qty_per_trade} ({round(buy_ordered[bot_index].last_sma_pct*100,2)}% SMA)"
             )
         else:
             print(f"{buy_ordered[bot_index].symbol}: failed to buy {qty_per_trade}")
