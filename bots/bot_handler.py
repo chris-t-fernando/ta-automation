@@ -37,7 +37,7 @@ api = REST(
 # variables ot be passed to each of the bots
 sma_fast = 12
 sma_slow = 24
-qty_per_trade = 100
+qty_per_trade = 1000
 symbols = {"SOLUSD", "SUSHIUSD", "DAIUSD", "SHIBUSD", "DOGEUSD", "MKRUSD", "MATICUSD"}
 
 # i'd prefer to use a set here but then i can't sort them by signal pct
@@ -67,23 +67,52 @@ while True:
 
     # now look for the buy signals
     bots.sort(key=lambda x: x.last_sma_pct, reverse=True)
-    for this_bot in bots:
+    buy_ordered = bots[:]
+    for this_bot in buy_ordered:
         # fastest breakout from SMA is the highest %
         if this_bot.last_sma_pct > 1:
             buy_signal.append(this_bot)
 
     # and then get the sell signals
-    bots.sort(key=lambda x: x.last_sma_pct, reverse=False)
-    for this_bot in bots:
+    sell_ordered = reversed(buy_ordered)
+    for this_bot in sell_ordered:
         # fastest breakout from SMA is the highest %
         if this_bot.last_sma_pct < 1:
             sell_signal.append(this_bot)
 
+    # do the sells
     for this_bot in sell_signal:
-        this_bot.do_sell()
+        start_position = this_bot.get_position()
+        if start_position > 0:
+            if this_bot.do_sell():
+                end_position = this_bot.get_position()
+                print(
+                    f"{this_bot.symbol}: successfully sold {qty_per_trade} (previous position: {start_position}, new position {end_position})"
+                )
+            else:
+                print(f"{this_bot.symbol}: failed to sell {qty_per_trade}")
 
-    for this_bot in buy_signal:
-        this_bot.do_buy()
+    account = api.get_account()
+    max_buys = math.floor(float(account.cash) / qty_per_trade)
+    max_buys = max_buys if max_buys < len(buy_signal) else len(buy_signal)
+    missed_buys = []
 
+    # do the trades we have the funds for
+    for bot_index in range(0, max_buys):
+        if buy_ordered[bot_index].do_buy():
+            print(
+                f"{buy_ordered[bot_index].symbol}: successfully bought {qty_per_trade}"
+            )
+        else:
+            print(f"{buy_ordered[bot_index].symbol}: failed to buy {qty_per_trade}")
+
+    # tell me about the buys i can't afford
+    for bot_index in range(max_buys, len(buy_signal)):
+        missed_buys.append(buy_ordered[bot_index].symbol)
+
+    if len(missed_buys) > 0:
+        print(f"Multiple: Insufficient funds to purchase {str(missed_buys)}")
+
+    # and now sleep til next run
     time.sleep(get_pause())
     print("*" * 20)

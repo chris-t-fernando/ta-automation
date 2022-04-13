@@ -113,25 +113,52 @@ class Bot:
     def do_buy(self):
         try:
             self.api.submit_order(self.symbol, notional=self.qty_per_trade, side="buy")
-            print(f"{self.symbol}: BUY / Quantity: {self.qty_per_trade}")
+
             # self.buys.append(self.bars.close.iloc[-1] * self.qty_per_trade)
             # for notionals we're specifying a dollar value instead of a unit volume
             self.buys.append(self.qty_per_trade)
+            return True
         except APIError as e:
-            if str(e) != "insufficient non-marginable buying power":
-                print(f"{self.symbol}: BUY FAILED due to exception: {str(e)}")
+            print(f"{self.symbol}: BUY FAILED due to exception: {str(e)}")
+            return False
         except Exception as e:
             print(f"{self.symbol}: BUY FAILED due to exception: {str(e)}")
+            return False
 
-    def do_sell(self):
-        if self.get_position() > self.qty_per_trade:
-            try:
+    def do_sell(self, partial_fill=True):
+        position = self.get_position()
+        try:
+            if position == 0:
+                print(f"{self.symbol}: SELL FAILED as no position held...")
+                return False
+
+            elif position < self.qty_per_trade:
+                if partial_fill:
+                    close_call = self.api.close_position(self.symbol)
+                    self.sells.append(close_call._raw["qty"])
+                    return True
+
+                else:
+                    print(
+                        f"{self.symbol}: SELL FAILED as position {position} is less than trade amount of {self.qty_per_trade}"
+                    )
+                    return False
+
+            else:
                 self.api.submit_order(
                     self.symbol, notional=self.qty_per_trade, side="sell"
                 )
-                print(f"Symbol: {self.symbol} SELL / Quantity: {self.qty_per_trade}")
+
                 # self.sells.append(self.bars.close.iloc[-1] * self.qty_per_trade)
                 # for notionals we're specifying a dollar value instead of a unit volume
                 self.sells.append(self.qty_per_trade)
-            except Exception as e:
-                print(f"{self.symbol}: SELL FAILED due to exception: {str(e)}")
+                return True
+
+        except Exception as e:
+            print(f"{self.symbol}: SELL FAILED due to exception: {str(e)}")
+            return False
+
+
+if __name__ == "__main__":
+    b = Bot("SOLUSD", 12, 24, 100)
+    print("apple")
