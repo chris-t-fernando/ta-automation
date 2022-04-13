@@ -51,6 +51,7 @@ for symbol in symbols:
             sma_fast=sma_fast,
             sma_slow=sma_slow,
             qty_per_trade=qty_per_trade,
+            api=api,
         )
     )
 

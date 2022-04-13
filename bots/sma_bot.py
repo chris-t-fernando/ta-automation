@@ -1,8 +1,4 @@
-from datetime import datetime, timedelta
-import math
-import time
-import boto3
-from alpaca_trade_api.rest import REST, TimeFrame, APIError
+from alpaca_trade_api.rest import TimeFrame, APIError
 from numpy import isnan, nan
 
 
@@ -11,33 +7,15 @@ class Bot:
     last_sma_slow = 1
     last_sma_pct = 1
 
-    def __init__(self, symbol, sma_fast, sma_slow, qty_per_trade):
+    def __init__(self, symbol, sma_fast, sma_slow, qty_per_trade, api):
         self.symbol = symbol
         self.window_sma_fast = sma_fast
         self.window_sma_slow = sma_slow
         self.qty_per_trade = qty_per_trade
+        self.api = api
 
         self.sells = []
         self.buys = []
-
-        # set up alpaca
-        ssm = boto3.client("ssm")
-        alpaca_key_id = (
-            ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=False)
-            .get("Parameter")
-            .get("Value")
-        )
-        alpaca_secret_key = (
-            ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=False)
-            .get("Parameter")
-            .get("Value")
-        )
-
-        self.api = REST(
-            key_id=alpaca_key_id,
-            secret_key=alpaca_secret_key,
-            base_url="https://paper-api.alpaca.markets",
-        )
 
     def get_position(self):
         positions = self.api.list_positions()
@@ -127,35 +105,37 @@ class Bot:
 
     def do_sell(self, partial_fill=True):
         position = self.get_position()
+        # if we don't have a position, fail
+        if position == 0:
+            print(f"{self.symbol}: SELL FAILED as no position held...")
+            return False
+
+        # we hold a position, so try selling the requested amount
         try:
-            if position == 0:
-                print(f"{self.symbol}: SELL FAILED as no position held...")
+            self.api.submit_order(self.symbol, notional=self.qty_per_trade, side="sell")
+            self.sells.append(self.qty_per_trade)
+            return True
+        except Exception as e:
+            # 40310000 means  insufficient to fulfill order - handle these later in this function
+            if e.code != 40310000:
+                print(f"{self.symbol}: SELL FAILED due to {str(e)}")
                 return False
 
-            elif position < self.qty_per_trade:
-                if partial_fill:
-                    close_call = self.api.close_position(self.symbol)
-                    self.sells.append(close_call._raw["qty"])
-                    return True
+        # we hold a position but its less than the requested amount
+        # but the call specified partial_fill=False
+        if not partial_fill:
+            print(
+                f"{self.symbol}: SELL FAILED as position {position} is less than trade amount of {self.qty_per_trade} and partial_fill=False"
+            )
+            return False
 
-                else:
-                    print(
-                        f"{self.symbol}: SELL FAILED as position {position} is less than trade amount of {self.qty_per_trade}"
-                    )
-                    return False
-
-            else:
-                self.api.submit_order(
-                    self.symbol, notional=self.qty_per_trade, side="sell"
-                )
-
-                # self.sells.append(self.bars.close.iloc[-1] * self.qty_per_trade)
-                # for notionals we're specifying a dollar value instead of a unit volume
-                self.sells.append(self.qty_per_trade)
-                return True
-
+        # the call specified partial_fill=True
+        try:
+            close_request = self.api.close_position(self.symbol)
+            self.sells.append(close_request._raw["qty"])
+            return True
         except Exception as e:
-            print(f"{self.symbol}: SELL FAILED due to exception: {str(e)}")
+            print(f"{self.symbol}: SELL FAILED due to {str(e)}")
             return False
 
 
