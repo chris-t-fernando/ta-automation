@@ -28,16 +28,17 @@ STOP_LIMIT_SELL = 6
 
 ORDER_STATUS_SUMMARY_TO_ID = {
     "cancelled": {2, 7, 8, 9, 10},
-    "open": {1, 3, 4, 5},
-    "pending": {6},
+    "open": {1, 3, 5},
+    "filled": {4},
+    "pending": {5},
 }
 ORDER_STATUS_ID_TO_SUMMARY = {
     1: "open",
     2: "cancelled",
     3: "open",
-    4: "open",
-    5: "open",
-    6: "pending",
+    4: "filled",
+    5: "pending",
+    6: "cancelled",
     7: "cancelled",
     8: "cancelled",
     9: "cancelled",
@@ -136,7 +137,10 @@ class OrderResult(IOrderResult):
         self.status = order_object["status"]
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
-        self.success = order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
+        self.success = (
+            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
+            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+        )
 
         created_time = order_object["created_time"]
         updated_time = order_object["updated_time"]
@@ -287,11 +291,15 @@ class Swyftx(ITradeAPI):
 
         # no need for an else, units was already specified in the call
 
-        self._submit_order(symbol=symbol, units=units, type=MARKET_SELL, trigger=None)
+        return self._submit_order(
+            symbol=symbol, units=units, type=MARKET_SELL, trigger=None
+        )
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float):
         trigger = 1 / unit_price
-        self._submit_order(symbol=symbol, units=units, type=LIMIT_SELL, trigger=trigger)
+        return self._submit_order(
+            symbol=symbol, units=units, type=LIMIT_SELL, trigger=trigger
+        )
 
     def _submit_order(
         self, symbol: str, units: int, type: int, trigger: bool = None
@@ -373,9 +381,48 @@ class Swyftx(ITradeAPI):
         request = self.api.request(orders.OrdersCancel(orderID=order_id))
         return request
 
-    def list_orders(self) -> dict:
-        request = self.api.request(orders.OrdersListAll())
-        return request["orders"]
+    def list_orders(
+        self,
+        filled: bool = False,
+        cancelled: bool = False,
+        still_open: bool = False,
+    ) -> list:
+        order_list = []
+        # handle pagination
+        page = 0
+        page_size = 50
+        while True:
+            request = self.api.request(orders.OrdersListAll(limit=page_size, page=page))
+
+            for order in request["orders"]:
+                result = OrderResult(
+                    order_object=order,
+                    asset_list_by_id=self.asset_list_by_id,
+                )
+                # if no filters are applied
+                if not filled and not cancelled and not still_open:
+                    order_list.append(result)
+                else:
+                    # at least one filter has been applied
+                    if result.status in ORDER_STATUS_SUMMARY_TO_ID["filled"] and filled:
+                        order_list.append(result)
+                    elif (
+                        result.status in ORDER_STATUS_SUMMARY_TO_ID["cancelled"]
+                        and cancelled
+                    ):
+                        order_list.append(result)
+                    elif (
+                        result.status in ORDER_STATUS_SUMMARY_TO_ID["open"]
+                        and still_open
+                    ):
+                        order_list.append(result)
+            page += 1
+
+            # we've finished processing the last page
+            if len(request["orders"]) < page_size:
+                break
+
+        return order_list
 
     def close_position(self, symbol: str) -> OrderResult:
         """Function to sell all units of a given symbol
@@ -403,7 +450,6 @@ if __name__ == "__main__":
 
     api = Swyftx(api_key=api_key)
     api.get_account()
-    # api.order_create_by_value("XRP", 500, MARKET_BUY)
     api.get_position(symbol="XRP")
     buy_market_value = api.buy_order_market(symbol="XRP", order_value=100)
     buy_market_units = api.buy_order_market(symbol="XRP", units=75)
@@ -413,6 +459,11 @@ if __name__ == "__main__":
     sell_limit = api.sell_order_limit(symbol="XRP", units=52, unit_price=0.95)
     api.list_positions()
     api.list_orders()
+    api.list_orders(filled=True)
+    api.list_orders(cancelled=True)
+    api.list_orders(still_open=True)
+    api.list_orders()
+
     api.close_position("XRP")
 
     print("a")
