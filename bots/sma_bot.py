@@ -36,7 +36,7 @@ class Bot:
         return fast[-1] > slow[-1]
 
     def get_bars(self, symbol):
-        bars = self.api.get_crypto_bars(symbol, TimeFrame.Minute).df
+        bars = self.api.get_bars(symbol=symbol, timeframe=TimeFrame.Minute).df
         # for some reason sometimes there is no exchange header on these? no idea why
         if "exchange" in bars.columns:
             bars = bars[bars.exchange == bars.exchange.iloc[0]]
@@ -74,7 +74,7 @@ class Bot:
 
             else:
                 print(
-                    f"{self.symbol}: API bugged o and returned zero rows.  Skipping this interval"
+                    f"{self.symbol}: API bugged out and returned zero rows.  Skipping this interval"
                 )
                 self.last_sma_fast = nan
                 self.last_sma_slow = nan

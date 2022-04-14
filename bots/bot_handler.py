@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
 import math
 import time
-import boto3
 from alpaca_trade_api.rest import REST, TimeFrame
 import sma_bot
 from numpy import isnan, nan
-
+from api_objects import Ssm, AlpacaAPI, SwiftyxAPI
 
 def get_pause():
     now = datetime.now()
@@ -13,26 +12,6 @@ def get_pause():
     pause = math.ceil((next_min - now).seconds)
     print(f"Sleep for {pause}")
     return pause
-
-
-# set up alpaca
-ssm = boto3.client("ssm")
-alpaca_key_id = (
-    ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=False)
-    .get("Parameter")
-    .get("Value")
-)
-alpaca_secret_key = (
-    ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=False)
-    .get("Parameter")
-    .get("Value")
-)
-
-api = REST(
-    key_id=alpaca_key_id,
-    secret_key=alpaca_secret_key,
-    base_url="https://paper-api.alpaca.markets",
-)
 
 # variables ot be passed to each of the bots
 sma_fast = 12
@@ -42,6 +21,8 @@ symbols = {"SOLUSD", "SUSHIUSD", "DAIUSD", "SHIBUSD", "DOGEUSD", "MKRUSD", "MATI
 
 # i'd prefer to use a set here but then i can't sort them by signal pct
 bots = []
+
+api = AlpacaAPI(parameter_store=Ssm())
 
 # instantiate my guys
 for symbol in symbols:
