@@ -10,10 +10,8 @@ from itradeapi import (
 )
 from math import floor
 import yfinance as yf
+from datetime import datetime, timedelta
 
-thisTicker = yf.Ticker(row["stock_code"] + ".AX").history(
-                    start=periodStart, end=periodEnd, interval="1wk", actions=False
-                )
 # from pandas import DataFrame as df
 
 
@@ -242,9 +240,36 @@ class Swyftx(ITradeAPI):
 
         return return_positions
 
-    def get_bars(self):
-        raise NotImplementedException
-        # the owner of the pyswyftx library has not implemented Charts?????
+    def get_bars(self, symbol: str, start: str, end: str = None, interval: str = "1d"):
+        intervals = [
+            "1m",
+            "2m",
+            "5m",
+            "15m",
+            "30m",
+            "60m",
+            "90m",
+            "1h",
+            "1d",
+            "5d",
+            "1wk",
+            "1mo",
+            "3mo",
+        ]
+        if interval in intervals:
+            raise ValueError(f"Interval must be one of {str(intervals)}")
+
+        if end == None:
+            end = datetime.now()
+
+        start = datetime.fromisoformat(start)
+
+        thisTicker = yf.Ticker(symbol).history(
+            start=start, end=end, interval=interval, actions=False
+        )
+        print("bananS")
+
+        # the owner of the pyswyftx library has not implemented Charts????? or swyftx don't offer it??
         # raw_bars = self.api.request(charts.)
 
     def buy_order_market(
@@ -452,6 +477,8 @@ if __name__ == "__main__":
     )
 
     api = Swyftx(api_key=api_key)
+    api.get_bars("SOL-USD", start="2022-04-01T00:00:00+10:00")
+
     api.get_account()
     buy_market_value = api.buy_order_market(symbol="XRP", order_value=100)
     buy_market_units = api.buy_order_market(symbol="XRP", units=75)
@@ -465,7 +492,6 @@ if __name__ == "__main__":
     api.list_orders(filled=True)
     api.list_orders(cancelled=True)
     api.list_orders(still_open=True)
-
     api.close_position("XRP")
 
     print("a")
