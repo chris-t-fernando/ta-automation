@@ -9,8 +9,11 @@ from itradeapi import (
     NotImplementedException,
 )
 from math import floor
-from time import sleep
+import yfinance as yf
 
+thisTicker = yf.Ticker(row["stock_code"] + ".AX").history(
+                    start=periodStart, end=periodEnd, interval="1wk", actions=False
+                )
 # from pandas import DataFrame as df
 
 
@@ -450,7 +453,6 @@ if __name__ == "__main__":
 
     api = Swyftx(api_key=api_key)
     api.get_account()
-    api.get_position(symbol="XRP")
     buy_market_value = api.buy_order_market(symbol="XRP", order_value=100)
     buy_market_units = api.buy_order_market(symbol="XRP", units=75)
     buy_limit = api.buy_order_limit(symbol="XRP", units=52, unit_price=1)
@@ -458,11 +460,11 @@ if __name__ == "__main__":
     sell_market_units = api.sell_order_market(symbol="XRP", units=10)
     sell_limit = api.sell_order_limit(symbol="XRP", units=52, unit_price=0.95)
     api.list_positions()
+    api.get_position(symbol="XRP")
     api.list_orders()
     api.list_orders(filled=True)
     api.list_orders(cancelled=True)
     api.list_orders(still_open=True)
-    api.list_orders()
 
     api.close_position("XRP")
 

@@ -3,6 +3,7 @@ import math
 import alpaca_trade_api as tradeapi
 from alpaca_trade_api.rest import REST, TimeFrame
 import boto3
+import yfinance as yf
 
 
 class RuleValidationException(Exception):
