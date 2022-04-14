@@ -5,11 +5,19 @@ class NotImplementedException(Exception):
     ...
 
 
+class IAsset(ABC):
+    symbol: str
+    balance: float
+
+    def __init__(self, symbol, balance):
+        ...
+
+
 class IAccount(ABC):
-    positions: list
+    assets: list
 
     @abstractmethod
-    def __init__(self, positions):
+    def __init__(self, assets: list):
         ...
 
 
@@ -63,19 +71,27 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def order_create_by_value(self):
+    def buy_order_market(self):
         ...
 
     @abstractmethod
-    def order_create_by_units(self):
+    def buy_order_limit(self):
         ...
 
     @abstractmethod
-    def order_delete(self):
+    def sell_order_market(self):
         ...
 
     @abstractmethod
-    def order_list(self):
+    def sell_order_limit(self):
+        ...
+
+    @abstractmethod
+    def delete_order(self):
+        ...
+
+    @abstractmethod
+    def list_orders(self):
         ...
 
     @abstractmethod

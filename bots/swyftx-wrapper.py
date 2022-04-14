@@ -2,13 +2,20 @@ import pyswyft
 from pyswyft.endpoints import accounts, history, markets, orders
 from itradeapi import (
     ITradeAPI,
+    IAsset,
     IOrderResult,
     IAccount,
     IPosition,
     NotImplementedException,
 )
+from math import floor
+from time import sleep
 
 # from pandas import DataFrame as df
+
+
+class OrderRequiresPriceOrUnitsException(Exception):
+    ...
 
 
 # CONSTANTS
@@ -57,15 +64,25 @@ ORDER_MAP = {
     "STOP_LIMIT_BUY": STOP_LIMIT_BUY,
     "STOP_LIMIT_SELL": STOP_LIMIT_SELL,
 }
+
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
 
 
 # return objects
-class Account(IAccount):
-    positions: list
+class Asset(IAsset):
+    symbol: str
+    balance: float
 
-    def __init__(self, positions):
-        self.positions = positions
+    def __init__(self, symbol, balance):
+        self.symbol = symbol
+        self.balance = balance
+
+
+class Account(IAccount):
+    assets: list
+
+    def __init__(self, assets: list):
+        self.assets = assets
 
 
 class Position(IPosition):
@@ -92,36 +109,37 @@ class OrderResult(IOrderResult):
     order_type_text: str
     created_time: int
     updated_time: int
+    success: bool
     _raw_response: dict
     _raw_request: orders.OrdersCreate
 
-    def __init__(self, response: dict, orders_create_object: orders.OrdersCreate):
-        self._raw_response = response
-        self._raw_request = orders_create_object
+    def __init__(self, order_object: orders.OrdersGetOrder, asset_list_by_id: dict):
+        self._raw_response = order_object
 
-        order_type = response["order"]["order_type"]
+        order_type = order_object["order_type"]
         order_type_text = ORDER_MAP_INVERTED[order_type]
 
-        self.order_id = response["orderUuid"]
+        self.order_id = order_object["orderUuid"]
         if "BUY" in order_type_text:
-            self.bought_symbol = orders_create_object.data["secondary"]
-            self.bought_id = response["order"]["secondary_asset"]
+            self.bought_id = order_object["secondary_asset"]
+            self.bought_symbol = asset_list_by_id[self.bought_id]["symbol"]
         else:
             # sells
-            self.sold_symbol = orders_create_object.data["primary"]
-            self.sold_id = response["order"]["primary_asset"]
+            self.sold_id = order_object["primary_asset"]
+            self.sold_symbol = asset_list_by_id[self.sold_id]["symbol"]
 
-        self.quantity = response["order"]["quantity"]
-        self.quantity_symbol = orders_create_object.data["assetQuantity"]
-        self.quantity_id = response["order"]["quantity_asset"]
+        self.quantity = order_object["quantity"]
+        self.quantity_id = order_object["quantity_asset"]
+        self.quantity_symbol = asset_list_by_id[self.quantity_id]["symbol"]
 
-        self.trigger = response["order"]["trigger"]
-        self.status = response["order"]["status"]
+        self.trigger = order_object["trigger"]
+        self.status = order_object["status"]
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
+        self.success = order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
 
-        created_time = response["order"]["created_time"]
-        updated_time = response["order"]["updated_time"]
+        created_time = order_object["created_time"]
+        updated_time = order_object["updated_time"]
 
 
 # concrete class
@@ -137,6 +155,7 @@ class Swyftx(ITradeAPI):
             self.api.request(markets.MarketsAssets())
         )
 
+        # now use the environment that was actually requested. i hate this.
         self.api = pyswyft.API(access_token=api_key, environment=environment)
 
         # set up data structures
@@ -145,12 +164,14 @@ class Swyftx(ITradeAPI):
     def _structure_asset_dict_by_id(self, asset_dict):
         return_dict = {}
         for asset in asset_dict:
+            asset["symbol"] = asset["code"]
             return_dict[asset["id"]] = asset
         return return_dict
 
     def _structure_asset_dict_by_symbol(self, asset_dict):
         return_dict = {}
         for asset in asset_dict:
+            asset["symbol"] = asset["code"]
             return_dict[asset["code"]] = asset
         return return_dict
 
@@ -166,14 +187,22 @@ class Swyftx(ITradeAPI):
     def symbol_text_to_id(self, symbol):
         return self.asset_list_by_symbol[symbol]["id"]
 
-    # todo: there is more stuff in an account objects. i don't think i'll ever use it but maybe one day ill add it in
     def get_account(self) -> Account:
         """Retrieves data about the trading account
 
         Returns:
             Account: User's trading account information
         """
-        return Account(positions=self.list_positions())
+        # AccountBalance
+        assets = []
+        request = self.api.request(accounts.AccountBalance())
+
+        for asset in request:
+            symbol = self.symbol_id_to_text(asset["assetId"])
+
+            assets = Asset(symbol=symbol, balance=asset["availableBalance"])
+
+        return Account(assets=assets)
 
     def get_position(self, symbol: str) -> Position:
         """Returns position of a requested symbol
@@ -210,33 +239,90 @@ class Swyftx(ITradeAPI):
         raise NotImplementedException
         # the owner of the pyswyftx library has not implemented Charts?????
         # raw_bars = self.api.request(charts.)
-        return "swiftyx get bars"
 
-    def order_create_by_value(
-        self, symbol: str, notional: float, type: int, trigger: bool = None
+    def buy_order_market(
+        self, symbol: str, order_value: float = None, units: float = None
+    ):
+        if order_value == None and units == None:
+            raise OrderRequiresPriceOrUnitsException
+
+        if order_value != None:
+            # buying by total order value
+            # first get a quote for the symbol
+            exchange_rate = self.api.request(
+                orders.OrdersExchangeRate(buy=symbol, sell=self.default_currency)
+            )
+            units = floor(order_value / float(exchange_rate["price"]))
+
+        # no need for an else, units was already specified in the call
+
+        return self._submit_order(
+            symbol=symbol, units=units, type=MARKET_BUY, trigger=None
+        )
+
+    def buy_order_limit(self, symbol: str, units: float, unit_price: float):
+        # buying by total order value
+        # first get a quote for the symbol
+
+        return self._submit_order(
+            symbol=symbol,
+            units=units,
+            type=LIMIT_BUY,
+            trigger=unit_price,
+        )
+
+    def sell_order_market(
+        self, symbol: str, order_value: float = None, units: float = None
+    ):
+        if order_value == None and units == None:
+            raise OrderRequiresPriceOrUnitsException
+
+        if order_value != None:
+            # selling by total order value
+            # first get a quote for the symbol
+            exchange_rate = self.api.request(
+                orders.OrdersExchangeRate(buy=self.default_currency, sell=symbol)
+            )
+            units = floor(order_value / float(exchange_rate["price"]))
+
+        # no need for an else, units was already specified in the call
+
+        self._submit_order(symbol=symbol, units=units, type=MARKET_SELL, trigger=None)
+
+    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
+        trigger = 1 / unit_price
+        self._submit_order(symbol=symbol, units=units, type=LIMIT_SELL, trigger=trigger)
+
+    def _submit_order(
+        self, symbol: str, units: int, type: int, trigger: bool = None
     ) -> OrderResult:
-        """Submits an order (either buy or sell) based on value
+        """Submits an order (either buy or sell) based on value.  Note that this should not be called directly
 
         Args:
             symbol (str): the symbol to be bought/sold
-            notional (float): the total value to be bought/sold
+            units (int): the total number of units to be bought/sold
             type (int): see the ORDER_MAP constant for mapping of ints to strings
-            trigger (bool, optional): Trigger amount for the order. Defaults to None.
+            trigger (bool, optional): Trigger amount for the order. Defaults to None.  Trigger is the price per one
 
         Returns:
             OrderResult: output from the API endpoint
         """
+        if type > 4:
+            raise NotImplementedException(
+                f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
+            )
         order_type = type
-        quantity = notional
-        asset_quantity = self.default_currency
+        quantity = units
 
         if "BUY" in ORDER_MAP_INVERTED[type]:
             primary = self.default_currency
             secondary = symbol
+            asset_quantity = symbol
         else:
             # sells
-            primary = symbol
-            secondary = self.default_currency
+            primary = self.default_currency
+            secondary = symbol
+            asset_quantity = symbol
 
         orders_create_object = orders.OrdersCreate(
             primary=primary,
@@ -246,53 +332,48 @@ class Swyftx(ITradeAPI):
             orderType=order_type,
             trigger=trigger,
         )
-        request = self.api.request(orders_create_object)
 
-        return OrderResult(response=request, orders_create_object=orders_create_object)
+        response = self.api.request(orders_create_object)
+        # this annoys me, but LIMIT_BUY and LIMIT_SELL don't return any detail about the order on lodgement
+        # whereas MARKET does
+        # sleep(1)
+        return self.get_order(order_id=response["orderUuid"])
 
-    def order_create_by_units(
-        self, symbol: str, units: int, type: int, trigger: bool = None
-    ) -> OrderResult:
-        """Submits an order (either buy or sell) based on units
+        if not response.get("order"):
+            # i dunno why, by LIMIT_BUY and LIMIT_SELL don't return any detail about the order when you lodge it
+            # whereas
+            if order_type == LIMIT_BUY:
+                # i've only see this when submitting a buy order with insufficient cash
+                # so we're going to be dodgey and fudge a response
+                response["order"] = {
+                    "order_type": order_type,
+                    "secondary_asset": secondary,
+                    "primary_asset": primary,
+                    "quantity": quantity,
+                    "quantity_asset": asset_quantity,
+                    "trigger": trigger,
+                    "status": 2,  # order cancelled
+                    "created_time": None,  # never got created
+                    "updated_time": None,  # never got modified
+                }
+            else:
+                # but maybe it could happen in other cases too?
+                raise Exception("API did not return any data!")
 
-        Args:
-            symbol (str): the symbol to be bought/sold
-            units (int): number of units to be bought/sold
-            type (int): see the ORDER_MAP constant for mapping of ints to strings
-            trigger (bool, optional): Trigger amount for the order. Defaults to None.
+        return OrderResult(response=response, orders_create_object=orders_create_object)
 
-        Returns:
-            OrderResult: output from the API endpoint
-        """
-        orderType = type
-        quantity = units
-        assetQuantity = symbol
-
-        if "BUY" in ORDER_MAP_INVERTED[type]:
-            primary = self.default_currency
-            secondary = symbol
-        else:
-            # sells
-            primary = symbol
-            secondary = self.default_currency
-
-        orders_create_object = orders.OrdersCreate(
-            primary=primary,
-            secondary=secondary,
-            quantity=quantity,
-            assetQuantity=assetQuantity,
-            orderType=orderType,
-            trigger=trigger,
+    def get_order(self, order_id: str):
+        response = self.api.request(orders.OrdersGetOrder(orderID=order_id))
+        # orders_create_object: orders.OrdersCreate):
+        return OrderResult(
+            order_object=response, asset_list_by_id=self.asset_list_by_id
         )
-        request = self.api.request(orders_create_object)
 
-        return OrderResult(response=request, orders_create_object=orders_create_object)
-
-    def order_delete(self, order_id: int) -> dict:
+    def delete_order(self, order_id: str) -> dict:
         request = self.api.request(orders.OrdersCancel(orderID=order_id))
         return request
 
-    def order_list(self) -> dict:
+    def list_orders(self) -> dict:
         request = self.api.request(orders.OrdersListAll())
         return request["orders"]
 
@@ -306,9 +387,7 @@ class Swyftx(ITradeAPI):
             OrderResult: output from the API endpoint
         """
         position = self.get_position(symbol)
-        request = self.order_create_by_units(
-            symbol=symbol, units=position.quantity, type=MARKET_SELL
-        )
+        request = self.sell_order_market(symbol=symbol, units=position.quantity)
         return request
 
 
@@ -323,10 +402,17 @@ if __name__ == "__main__":
     )
 
     api = Swyftx(api_key=api_key)
-    account = api.get_account()
+    api.get_account()
+    # api.order_create_by_value("XRP", 500, MARKET_BUY)
+    api.get_position(symbol="XRP")
+    buy_market_value = api.buy_order_market(symbol="XRP", order_value=100)
+    buy_market_units = api.buy_order_market(symbol="XRP", units=75)
+    buy_limit = api.buy_order_limit(symbol="XRP", units=52, unit_price=1)
+    sell_market_value = api.sell_order_market(symbol="XRP", order_value=100)
+    sell_market_units = api.sell_order_market(symbol="XRP", units=10)
+    sell_limit = api.sell_order_limit(symbol="XRP", units=52, unit_price=0.95)
     api.list_positions()
-    api.order_create_by_value("XRP", 500, MARKET_BUY)
-    api.order_create_by_units("XRP", 200, MARKET_BUY)
-    api.order_list()
+    api.list_orders()
     api.close_position("XRP")
+
     print("a")

@@ -210,6 +210,5 @@ logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 
 def lambda_handler(event, context):
-    print("got here1")
     slack_handler = SlackRequestHandler(app=app)
     return slack_handler.handle(event, context)
