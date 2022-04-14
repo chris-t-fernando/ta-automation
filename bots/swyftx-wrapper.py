@@ -126,9 +126,9 @@ class OrderResult(IOrderResult):
 
 # concrete class
 class Swyftx(ITradeAPI):
-    def __init__(self, access_token: str, environment: str = "demo"):
+    def __init__(self, api_key: str, environment: str = "demo"):
         # this is munted. there's no Markets endpoint in demo?!
-        self.api = pyswyft.API(access_token=access_token, environment="live")
+        self.api = pyswyft.API(access_token=api_key, environment="live")
         # set up asset lists
         self.asset_list_by_id = self._structure_asset_dict_by_id(
             self.api.request(markets.MarketsAssets())
@@ -137,7 +137,7 @@ class Swyftx(ITradeAPI):
             self.api.request(markets.MarketsAssets())
         )
 
-        self.api = pyswyft.API(access_token=access_token, environment=environment)
+        self.api = pyswyft.API(access_token=api_key, environment=environment)
 
         # set up data structures
         self.default_currency = "AUD"
@@ -316,13 +316,13 @@ if __name__ == "__main__":
     import boto3
 
     ssm = boto3.client("ssm")
-    access_token = (
+    api_key = (
         ssm.get_parameter(Name="/tabot/swyftx/access_token", WithDecryption=True)
         .get("Parameter")
         .get("Value")
     )
 
-    api = Swyftx(access_token=access_token)
+    api = Swyftx(api_key=api_key)
     account = api.get_account()
     api.list_positions()
     api.order_create_by_value("XRP", 500, MARKET_BUY)

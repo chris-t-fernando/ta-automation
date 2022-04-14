@@ -47,7 +47,7 @@ class IOrderResult(ABC):
 # interface for api
 class ITradeAPI(ABC):
     @abstractmethod
-    def __init__(self, access_token: str, environment: str = "paper"):
+    def __init__(self, api_key: str, environment: str = "paper"):
         ...
 
     @abstractmethod
