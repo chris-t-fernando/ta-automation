@@ -9,6 +9,7 @@ class IAsset(ABC):
     symbol: str
     balance: float
 
+    @abstractmethod
     def __init__(self, symbol, balance):
         ...
 
