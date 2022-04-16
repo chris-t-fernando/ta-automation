@@ -1,6 +1,3 @@
-import warnings
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
 import btalib
 from numpy import NaN
 from feeder import Mocker
@@ -9,29 +6,8 @@ from dateutil.relativedelta import relativedelta
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-from buyorder import Purchase
-from math import floor
 
 PROFIT_TARGET = 1.5
-capital = 2000
-starting_capital = capital
-symbol = "ADA-USD"
-interval = "1d"
-window = 7
-
-start = "2020-01-01"
-current = "2020-01-01"
-end = "2022-04-15"
-
-position_taken = False
-
-start_dt = datetime.fromisoformat(start)
-current_dt = datetime.fromisoformat(current)
-end_dt = datetime.fromisoformat(end)
-
-losses = 0
-wins = 0
-partial_wins = 0
 
 
 def clean(number):
@@ -50,7 +26,7 @@ def get_interval_settings(interval):
         "60m": 500,
         "90m": 60,
         "1h": 500,
-        "1d": 2000,
+        "1d": 500,
         "5d": 500,
         "1wk": 500,
         "1mo": 500,
@@ -86,6 +62,31 @@ def find_neighbours(value, df, colname, ignore_index):
         return_dict["lower"] = df[df[colname] < value][colname].idxmax()
         return return_dict
 
+
+capital = 2000
+symbol = "AAPL"
+interval = "1d"
+window = 7
+
+start = "2021-01-01"
+current = "2021-01-01"
+end = "2022-04-15"
+
+start = "2021-10-05"
+current = "2021-10-05"
+end = "2022-04-15"
+# start = "2021-09-01T00:00:00+10:00"
+# current = "2021-09-01T00:00:00+10:00"
+# end = "2022-04-15T00:00:00+10:00"
+position_taken = False
+
+start_dt = datetime.fromisoformat(start)
+current_dt = datetime.fromisoformat(current)
+end_dt = datetime.fromisoformat(end)
+
+losses = 0
+wins = 0
+partial_wins = 0
 
 mocker = Mocker(
     real_end=end_dt,
@@ -207,13 +208,16 @@ while True:
             # print(f"{current_dt} No signal in the last {window} days")
             ...
         else:
-            # STEP 4: PREP FOR AN ORDER!
+            # STEP 3.5: DID WE FIND MORE THAN ONE SIGNAL?
+            # todo: just grab the most recent one
+
             crossover_index = df_output.loc[
                 (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
             ].index[-1]
             crossover_record = df_output.loc[[crossover_index]]
             crossover_index_position = df_output.index.get_loc(crossover_index)
 
+            # STEP 4: PREP FOR AN ORDER!
             # entry_unit = crossover_record.Close.values[0]
             entry_unit = df_output.Close.iloc[-1]
             # first start with calculating risk and stop loss
@@ -223,15 +227,10 @@ while True:
                 (df_output["macd_cycle"] == "blue")
                 & (df_output.index < crossover_index)
             ].index[-1]
-            # then get the lowest close price since the cycle began
             stop_unit = df_output.loc[blue_cycle_start:crossover_index].Close.min()
             stop_unit_date = df_output.loc[
                 blue_cycle_start:crossover_index
             ].Close.idxmin()
-
-            original_stop = stop_unit
-
-            # and for informational/confidence purposes, hold on to the intervals since this happened
             intervals_since_stop = len(df_output.loc[stop_unit_date:])
 
             # first need to get the last time the asset closed at this price
@@ -248,18 +247,12 @@ while True:
             # df_output.Close.loc[
             #    nearest_close["lower"] : crossover_index
             # ].min()
-            trade_date = df_output.index[-1]
-            steps = 1
-            units = floor(capital / entry_unit)
+
+            units = capital / entry_unit
             risk_unit = entry_unit - stop_unit
-            original_risk_unit = risk_unit
             risk_value = units * risk_unit
             target_profit = PROFIT_TARGET * risk_unit
             target_price = entry_unit + target_profit
-
-            leftover_capital = capital - (units * entry_unit)
-
-            order = Purchase(unit_quantity=units, unit_price=entry_unit)
 
             print(f"{crossover_index}: Found signal")
             print(f"Strength:\t\tNot sure how I want to do this yet")
@@ -270,7 +263,7 @@ while True:
             print(f"Units to buy:\t\t{clean(units)}")
             print(f"Entry point:\t\t{clean(entry_unit)}")
             print(f"Stop loss:\t\t{clean(stop_unit)}")
-            print(f"Cycle began:\t\t{intervals_since_stop} intervals ago")
+            print(f"Intervals since last crossover:\t{intervals_since_stop}")
             print(
                 f"Unit risk:\t\t{clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
             )
@@ -289,101 +282,44 @@ while True:
         # print(f"Checking {df.index[-1]}...")
         # first check to see if last close is below stop loss
 
-        # stop loss!
         if last_close <= stop_unit:
-            order.sell_units(sell_price=last_close)
-            capital = order.get_returns() + leftover_capital
-            if stop_unit > original_stop:
-                wins += 1
-                trade_won = "WON"
-            else:
-                losses += 1
-                trade_won = "LOST"
-
+            losses += 1
             win_rate = wins / (wins + losses) * 100
-
-            trade_duration = df_output.index[-1] - trade_date
+            capital = last_close * units
             print(
-                f"Trade ran for {trade_duration.days} days and {trade_won} and hit stop loss ({clean(last_close)} vs {clean(stop_unit)}). Win rate {round(win_rate,1)}%, balance {clean(capital)} (gain/loss of {clean(capital-starting_capital)})"
+                f"Lost :( Unit price {clean(last_close)} vs stop loss {clean(stop_unit)}, {clean(losses)} losses, win rate {round(win_rate,1)}%, balance {clean(capital)}"
             )
-            print(f"======================")
             position_taken = False
 
-        # hit win point, take 50% of winnings
         elif last_close >= target_price:
-            held = order.get_units()
-            units_to_sell = floor(held * 0.50)
-            order.sell_units(sell_price=last_close, unit_quantity=units_to_sell)
+            wins += 1
+            sale_price = units * last_close
+            profit = sale_price - capital
+            win_rate = wins / (wins + losses) * 100
+            capital = last_close * units
+            print(
+                f"Win! Unit price {clean(last_close)}, sale price {clean(units * last_close)}, profit {clean(profit)}, {wins} wins, win rate {round(win_rate,1)}%, balance {clean(capital)}"
+            )
+            position_taken = False
 
-            # and update stop loss
-            stop_unit = last_close * 0.95
-
-            # and update target_price
-
-            # sale_price = units * last_close
-            # capital = last_close * units
-            # position_taken = False
-
-            steps += 1
-            risk_unit = original_risk_unit * steps
-            target_profit = PROFIT_TARGET * risk_unit
-            target_price = entry_unit + target_profit
-
-        # hit win
         elif last_close >= (entry_unit + risk_unit):
-            # sell 25%
-            held = order.get_units()
-            units_to_sell = floor(held * 0.25)
-            order.sell_units(sell_price=last_close, unit_quantity=units_to_sell)
-
-            # and update stop loss
-            stop_unit = (
-                last_close * 0.98
-            )  #                                                     ************ HARDCODED BE SMARTER AND USE MACD DIFF
-
-            steps += 1
-            risk_unit = original_risk_unit * steps
-            target_profit = PROFIT_TARGET * risk_unit
-            target_price = entry_unit + target_profit
-
-            print(f"Step #{steps}")
+            # move 25%
             # partial_wins += 1
             # print(
             #    f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
             # )
-
-            # if we earn the risk amount:
-            # take 25% of the profit
-            # move stop loss to where we are now/move our break even to where we are now
-            # new profit target of 2 times the original risk
-
-            # stop_unit = new_stop_loss
-            # risk_unit = entry_unit - stop_unit
-            # risk_value = units * risk_unit
-            # target_profit = PROFIT_TARGET * risk_unit
-            # target_price = entry_unit + target_profit
-
-        # else:
-        # print(
-        #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
-        # )
-        # time.sleep(0.5)
+            ...
+        else:
+            # print(
+            #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
+            # )
+            time.sleep(0.5)
 
     current_dt += timedelta(days=1)
     window = 1
 
     if current_dt > datetime.now():
-        win_rate = round(wins / (wins + losses) * 100, 1)
-        loss_rate = 100 - win_rate
-        print(f"================")
-        print(f"Simulation complete")
-        print(f"Starting capital: {clean(starting_capital)}")
-        print(f"Ending capital: {clean(capital)}")
-        print(f"Change: {clean(capital-starting_capital)}")
-        print(f"% change: {1-round(starting_capital/capital*100,1)}")
-        print(f"Wins: {wins} ({win_rate}%)")
-        print(f"Losses: {losses} ({loss_rate}%)")
-
+        print(f"Simulation complete\n")
         break
 
     """capital = 2000

@@ -20,6 +20,7 @@ class Purchase:
     ):
         self.units_sold = []
         self.units_held = []
+        self.units_bought = []
         self.purchase_unit_quantity = unit_quantity
         self.purchase_unit_price = unit_price
         # self.purchase_target_unit_price = target_unit_price
@@ -29,7 +30,7 @@ class Purchase:
 
         for u in range(0, unit_quantity):
             self.units_held.append(unit_price)
-        self.units_bought = self.units_held
+            self.units_bought.append(unit_price)
 
     def sell_units(self, sell_price: float, unit_quantity: float = None):
         if unit_quantity == None:
@@ -39,8 +40,13 @@ class Purchase:
             self.units_sold.append(sell_price)
             self.units_held.pop()
 
-        print(f"Len of sold: {len(self.units_sold)}")
-        print(f"Len of bought: {len(self.units_held)}")
+        return sell_price * unit_quantity
+
+        # print(f"Len of sold: {len(self.units_sold)}")
+        # print(f"Len of bought: {len(self.units_held)}")
+
+    def get_units(self):
+        return len(self.units_held)
 
     def get_average_sell_price(self):
         if len(self.units_sold) > 0:
@@ -50,6 +56,9 @@ class Purchase:
 
     def get_profit(self):
         return sum(self.units_sold) - sum(self.units_bought[: len(self.units_sold)])
+
+    def get_returns(self):
+        return sum(self.units_sold)
 
 
 # b = Purchase(

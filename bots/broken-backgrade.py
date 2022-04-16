@@ -1,6 +1,3 @@
-import warnings
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
 import btalib
 from numpy import NaN
 from feeder import Mocker
@@ -13,25 +10,6 @@ from buyorder import Purchase
 from math import floor
 
 PROFIT_TARGET = 1.5
-capital = 2000
-starting_capital = capital
-symbol = "ADA-USD"
-interval = "1d"
-window = 7
-
-start = "2020-01-01"
-current = "2020-01-01"
-end = "2022-04-15"
-
-position_taken = False
-
-start_dt = datetime.fromisoformat(start)
-current_dt = datetime.fromisoformat(current)
-end_dt = datetime.fromisoformat(end)
-
-losses = 0
-wins = 0
-partial_wins = 0
 
 
 def clean(number):
@@ -87,6 +65,29 @@ def find_neighbours(value, df, colname, ignore_index):
         return return_dict
 
 
+capital = 2000
+starting_capital = capital
+symbol = "AAPL"
+interval = "1d"
+window = 7
+
+start = "2021-01-15"
+current = "2021-01-15"
+end = "2022-04-15"
+
+start = "2021-10-05"
+current = "2021-10-05"
+end = "2022-04-15"
+position_taken = False
+
+start_dt = datetime.fromisoformat(start)
+current_dt = datetime.fromisoformat(current)
+end_dt = datetime.fromisoformat(end)
+
+losses = 0
+wins = 0
+partial_wins = 0
+
 mocker = Mocker(
     real_end=end_dt,
 )
@@ -98,6 +99,7 @@ interval_delta, max_range = get_interval_settings(interval=interval)
 bars_start = datetime.now() + timedelta(days=-max_range)
 bars_end = datetime.now()
 
+df_output = pd.DataFrame(data=[])
 # todo: change this to use the actual requested start date
 # todo: get a better signal
 # todo: why is the EMA always <200? even in assets that seem like they're doing alright
@@ -108,7 +110,24 @@ while True:
         end=current_dt,
         interval=interval,
     )
-    df_output = df.copy(deep=True)
+    if len(df) == 0:
+        print(f"Panic - no data in dataframe! Bad symbol {symbol}?")
+        break
+
+    # we haven't copied df into df_output yet
+    if len(df_output) == 0:
+        df_output = df.copy(deep=True)
+        diff = df.index
+    else:
+        # this is not the first run of this loop, so just append the new data to the existing df
+        df_idx = df.index
+        df_output_idx = df_output.index
+        diff = df_idx.difference(df_output_idx)
+        df_output = df_output.append(df.loc[diff])
+
+    if len(df) != len(df_output):
+        print(f"Panic! Chris's logic is bad")
+        break
 
     if position_taken == False:
         # STEP 0: GET EMA FOR THE MARKET AS A WHOLE
@@ -150,7 +169,8 @@ while True:
         # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
         cycle = None
 
-        for d in df_output.index:
+        # for d in df_output.index:
+        for d in diff:
             # start with crossover search
             # convert index to a datetime so we can do a delta against it                           ****************
             last_key = d - interval_delta
@@ -207,13 +227,16 @@ while True:
             # print(f"{current_dt} No signal in the last {window} days")
             ...
         else:
-            # STEP 4: PREP FOR AN ORDER!
+            # STEP 3.5: DID WE FIND MORE THAN ONE SIGNAL?
+            # todo: just grab the most recent one
+
             crossover_index = df_output.loc[
                 (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
             ].index[-1]
             crossover_record = df_output.loc[[crossover_index]]
             crossover_index_position = df_output.index.get_loc(crossover_index)
 
+            # STEP 4: PREP FOR AN ORDER!
             # entry_unit = crossover_record.Close.values[0]
             entry_unit = df_output.Close.iloc[-1]
             # first start with calculating risk and stop loss
@@ -223,15 +246,10 @@ while True:
                 (df_output["macd_cycle"] == "blue")
                 & (df_output.index < crossover_index)
             ].index[-1]
-            # then get the lowest close price since the cycle began
             stop_unit = df_output.loc[blue_cycle_start:crossover_index].Close.min()
             stop_unit_date = df_output.loc[
                 blue_cycle_start:crossover_index
             ].Close.idxmin()
-
-            original_stop = stop_unit
-
-            # and for informational/confidence purposes, hold on to the intervals since this happened
             intervals_since_stop = len(df_output.loc[stop_unit_date:])
 
             # first need to get the last time the asset closed at this price
@@ -248,16 +266,13 @@ while True:
             # df_output.Close.loc[
             #    nearest_close["lower"] : crossover_index
             # ].min()
-            trade_date = df_output.index[-1]
-            steps = 1
+
+            # BUG - if units is 0 then this isn't really a position at all hey
             units = floor(capital / entry_unit)
             risk_unit = entry_unit - stop_unit
-            original_risk_unit = risk_unit
             risk_value = units * risk_unit
             target_profit = PROFIT_TARGET * risk_unit
             target_price = entry_unit + target_profit
-
-            leftover_capital = capital - (units * entry_unit)
 
             order = Purchase(unit_quantity=units, unit_price=entry_unit)
 
@@ -270,7 +285,7 @@ while True:
             print(f"Units to buy:\t\t{clean(units)}")
             print(f"Entry point:\t\t{clean(entry_unit)}")
             print(f"Stop loss:\t\t{clean(stop_unit)}")
-            print(f"Cycle began:\t\t{intervals_since_stop} intervals ago")
+            print(f"Intervals since last crossover:\t{intervals_since_stop}")
             print(
                 f"Unit risk:\t\t{clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
             )
@@ -291,62 +306,45 @@ while True:
 
         # stop loss!
         if last_close <= stop_unit:
+
+            # close_position()
+            # first sell what's left
             order.sell_units(sell_price=last_close)
-            capital = order.get_returns() + leftover_capital
-            if stop_unit > original_stop:
-                wins += 1
-                trade_won = "WON"
+            profit = order.get_profit()
+            if profit > 0:
+                # win!
+                print("win!")
             else:
-                losses += 1
-                trade_won = "LOST"
+                print("Loss :(")
 
-            win_rate = wins / (wins + losses) * 100
-
-            trade_duration = df_output.index[-1] - trade_date
-            print(
-                f"Trade ran for {trade_duration.days} days and {trade_won} and hit stop loss ({clean(last_close)} vs {clean(stop_unit)}). Win rate {round(win_rate,1)}%, balance {clean(capital)} (gain/loss of {clean(capital-starting_capital)})"
-            )
-            print(f"======================")
+            capital = last_close * units
             position_taken = False
-
-        # hit win point, take 50% of winnings
+        # hit full win
         elif last_close >= target_price:
+            # sell 50%
             held = order.get_units()
-            units_to_sell = floor(held * 0.50)
-            order.sell_units(sell_price=last_close, unit_quantity=units_to_sell)
+            to_sell = floor(held * 0.5)
+            order.sell_units(sell_price=last_close, unit_quantity=to_sell)
 
             # and update stop loss
-            stop_unit = last_close * 0.95
-
-            # and update target_price
+            stop_unit = last_close * 0.90
 
             # sale_price = units * last_close
             # capital = last_close * units
             # position_taken = False
 
-            steps += 1
-            risk_unit = original_risk_unit * steps
-            target_profit = PROFIT_TARGET * risk_unit
-            target_price = entry_unit + target_profit
-
         # hit win
         elif last_close >= (entry_unit + risk_unit):
             # sell 25%
             held = order.get_units()
-            units_to_sell = floor(held * 0.25)
-            order.sell_units(sell_price=last_close, unit_quantity=units_to_sell)
+            to_sell = floor(held * 0.25)
+            order.sell_units(sell_price=last_close, unit_quantity=to_sell)
 
             # and update stop loss
             stop_unit = (
                 last_close * 0.98
-            )  #                                                     ************ HARDCODED BE SMARTER AND USE MACD DIFF
+            )  #                                                     ************ HARDCODED
 
-            steps += 1
-            risk_unit = original_risk_unit * steps
-            target_profit = PROFIT_TARGET * risk_unit
-            target_price = entry_unit + target_profit
-
-            print(f"Step #{steps}")
             # partial_wins += 1
             # print(
             #    f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
@@ -363,24 +361,30 @@ while True:
             # target_profit = PROFIT_TARGET * risk_unit
             # target_price = entry_unit + target_profit
 
-        # else:
-        # print(
-        #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
-        # )
-        # time.sleep(0.5)
+        else:
+            # print(
+            #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
+            # )
+            time.sleep(0.5)
 
     current_dt += timedelta(days=1)
     window = 1
 
     if current_dt > datetime.now():
-        win_rate = round(wins / (wins + losses) * 100, 1)
+        try:
+            win_rate = round(wins / (wins + losses) * 100, 1)
+        except ZeroDivisionError:
+            win_rate = 100
+        except Exception:
+            raise
+
         loss_rate = 100 - win_rate
         print(f"================")
         print(f"Simulation complete")
         print(f"Starting capital: {clean(starting_capital)}")
         print(f"Ending capital: {clean(capital)}")
         print(f"Change: {clean(capital-starting_capital)}")
-        print(f"% change: {1-round(starting_capital/capital*100,1)}")
+        print(f"% change: {round(starting_capital/capital*100,1)}")
         print(f"Wins: {wins} ({win_rate}%)")
         print(f"Losses: {losses} ({loss_rate}%)")
 
