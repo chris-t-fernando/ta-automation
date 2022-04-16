@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
+from buyorder import Purchase
 
 PROFIT_TARGET = 1.5
 
@@ -26,7 +27,7 @@ def get_interval_settings(interval):
         "60m": 500,
         "90m": 60,
         "1h": 500,
-        "1d": 2000,
+        "1d": 500,
         "5d": 500,
         "1wk": 500,
         "1mo": 500,
@@ -65,17 +66,17 @@ def find_neighbours(value, df, colname, ignore_index):
 
 capital = 2000
 starting_capital = capital
-symbol = "AAPL"
-interval = "1d"
+symbol = "BTC-USD"
+interval = "1h"
 window = 7
 
-start = "2020-01-01"
-current = "2020-01-01"
+start = "2021-01-15"
+current = "2021-01-15"
 end = "2022-04-15"
 
-# start = "2021-09-01T00:00:00+10:00"
-# current = "2021-09-01T00:00:00+10:00"
-# end = "2022-04-15T00:00:00+10:00"
+start = "2022-04-09"
+current = "2022-04-09"
+end = "2022-04-15"
 position_taken = False
 
 start_dt = datetime.fromisoformat(start)
@@ -252,6 +253,8 @@ while True:
             target_profit = PROFIT_TARGET * risk_unit
             target_price = entry_unit + target_profit
 
+            order = Purchase(unit_quantity=units, unit_price=entry_unit)
+
             print(f"{crossover_index}: Found signal")
             print(f"Strength:\t\tNot sure how I want to do this yet")
             print(f"MACD:\t\t\t{crossover_record.macd_macd.values[0]}")
@@ -280,6 +283,7 @@ while True:
         # print(f"Checking {df.index[-1]}...")
         # first check to see if last close is below stop loss
 
+        # stop loss!
         if last_close <= stop_unit:
             losses += 1
             win_rate = wins / (wins + losses) * 100
@@ -289,6 +293,7 @@ while True:
             )
             position_taken = False
 
+        # hit 25% win
         elif last_close >= target_price:
             wins += 1
             sale_price = units * last_close
@@ -300,13 +305,28 @@ while True:
             )
             position_taken = False
 
+        # hit win
         elif last_close >= (entry_unit + risk_unit):
             # move 25%
             # partial_wins += 1
             # print(
             #    f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
             # )
-            ...
+
+            # if we earn the risk amount:
+            # take 25% of the profit
+            # move stop loss to where we are now/move our break even to where we are now
+            # new profit target of 2 times the original risk
+
+            new_stop_loss = last_close * 0.98
+            if new_stop_loss > stop_unit:
+                # stop_unit = new_stop_loss
+                ...  ####                                   WIP!!
+                # risk_unit = entry_unit - stop_unit
+                # risk_value = units * risk_unit
+                # target_profit = PROFIT_TARGET * risk_unit
+                # target_price = entry_unit + target_profit
+
         else:
             # print(
             #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
