@@ -15,13 +15,13 @@ from math import floor
 PROFIT_TARGET = 1.5
 capital = 2000
 starting_capital = capital
-symbol = "ADA-USD"
-interval = "1d"
+symbol = "IVV.AX"
+interval = "1m"
 window = 7
 
-start = "2020-01-01"
-current = "2020-01-01"
-end = "2022-04-15"
+start = "2022-02-15"
+current = start
+end = "2022-04-17"
 
 position_taken = False
 
@@ -43,12 +43,12 @@ def get_interval_settings(interval):
     minutes_intervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m"]
     max_period = {
         "1m": 7,
-        "2m": 60,
-        "5m": 60,
-        "15m": 60,
-        "30m": 60,
+        "2m": 58,
+        "5m": 50,
+        "15m": 59,
+        "30m": 59,
         "60m": 500,
-        "90m": 60,
+        "90m": 59,
         "1h": 500,
         "1d": 2000,
         "5d": 500,
@@ -108,6 +108,26 @@ while True:
         end=current_dt,
         interval=interval,
     )
+    if len(df) == 0:
+        new_range = max_range
+
+    while len(df) == 0:
+        new_range -= 1
+        if new_range == 0:
+            print(f"New range got to zero?!")
+            exit()
+        print(f"Bad start date. Trying again with range {new_range}")
+        mocker = Mocker(
+            real_end=end_dt,
+        )
+
+        df = mocker.get_bars(
+            symbol=symbol,
+            start=datetime.now() + timedelta(days=-new_range),
+            end=current_dt,
+            interval=interval,
+        )
+
     df_output = df.copy(deep=True)
 
     if position_taken == False:
@@ -371,18 +391,24 @@ while True:
 
     current_dt += timedelta(days=1)
     window = 1
+    if capital <= starting_capital:
+        outcome_text = "gained"
+    else:
+        outcome_text = "lost"
 
     if current_dt > datetime.now():
         win_rate = round(wins / (wins + losses) * 100, 1)
         loss_rate = 100 - win_rate
+
         print(f"================")
         print(f"Simulation complete")
-        print(f"Starting capital: {clean(starting_capital)}")
-        print(f"Ending capital: {clean(capital)}")
-        print(f"Change: {clean(capital-starting_capital)}")
-        print(f"% change: {1-round(starting_capital/capital*100,1)}")
-        print(f"Wins: {wins} ({win_rate}%)")
-        print(f"Losses: {losses} ({loss_rate}%)")
+        print(f"Starting capital:\t{clean(starting_capital)}")
+        print(f"Ending capital:\t\t{clean(capital)}")
+        print(f"Change:\t\t{clean(capital-starting_capital)} ({outcome_text} capital)")
+        print(f"% change:\t\t{round((capital/starting_capital*100)-100,1)}")
+        print(f"Total trades:\t\t{wins+losses}")
+        print(f"Wins:\t\t{wins} ({win_rate}%)")
+        print(f"Losses:\t\t{losses} ({loss_rate}%)")
 
         break
 
