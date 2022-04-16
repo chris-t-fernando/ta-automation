@@ -91,7 +91,7 @@ class Mocker:
             )
 
         #
-
+        #       this logic wouldn't even work anyway since there is a months symbol....
         #        if len(end) > 10 and "m" not in interval:
         #            raise ValueError(
         #                f"Interval must be <24 hours when specifying a real_end that contains time and timezone. Found {interval} interval and {end} date/time"
