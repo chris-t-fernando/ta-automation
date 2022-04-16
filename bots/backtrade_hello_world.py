@@ -5,6 +5,7 @@ from datetime import timedelta, datetime
 from dateutil.relativedelta import relativedelta
 import pandas as pd
 import matplotlib.pyplot as plt
+import time
 
 PROFIT_TARGET = 1.5
 
@@ -22,14 +23,14 @@ def get_interval_settings(interval):
         "5m": 60,
         "15m": 60,
         "30m": 60,
-        "60m": 729,
+        "60m": 500,
         "90m": 60,
-        "1h": 729,
-        "1d": 10000,
-        "5d": 10000,
-        "1wk": 10000,
-        "1mo": 10000,
-        "3mo": 10000,
+        "1h": 500,
+        "1d": 500,
+        "5d": 500,
+        "1wk": 500,
+        "1mo": 500,
+        "3mo": 500,
     }
 
     if interval in minutes_intervals:
@@ -51,7 +52,7 @@ def find_neighbours(value, df, colname, ignore_index):
     return_dict = {}
 
     exactmatch = df[df[colname] == value]
-    exactmatch.drop([ignore_index], axis=0, inplace=True)
+    # exactmatch.drop([ignore_index], axis=0, inplace=True)
     if not exactmatch.empty:
         return_dict["higher"] = exactmatch.index
         return_dict["lower"] = exactmatch.index
@@ -65,8 +66,14 @@ def find_neighbours(value, df, colname, ignore_index):
 capital = 2000
 symbol = "AAPL"
 interval = "1d"
+window = 7
+
 start = "2021-01-01"
 current = "2021-01-01"
+end = "2022-04-15"
+
+start = "2021-10-05"
+current = "2021-10-05"
 end = "2022-04-15"
 # start = "2021-09-01T00:00:00+10:00"
 # current = "2021-09-01T00:00:00+10:00"
@@ -79,6 +86,7 @@ end_dt = datetime.fromisoformat(end)
 
 losses = 0
 wins = 0
+partial_wins = 0
 
 mocker = Mocker(
     real_end=end_dt,
@@ -95,19 +103,6 @@ bars_end = datetime.now()
 # todo: get a better signal
 # todo: why is the EMA always <200? even in assets that seem like they're doing alright
 while True:
-
-    # STEP 0: GET EMA FOR THE MARKET AS A WHOLE
-    # get tech stock for use as EMA signal
-    df_tech = tech_mocker.get_bars(
-        # todo: dynamic lookup of market comparison                                             *****************
-        symbol="XLK",
-        # todo: fix hardcoded days                                                              *****************
-        start=bars_start,
-        # i dunno about having these two dataframes with different end dates                    *****************
-        end=current_dt,
-        interval=interval,
-    )
-
     df = mocker.get_bars(
         symbol=symbol,
         start=bars_start,
@@ -117,10 +112,22 @@ while True:
     df_output = df.copy(deep=True)
 
     if position_taken == False:
+        # STEP 0: GET EMA FOR THE MARKET AS A WHOLE
+        # get tech stock for use as EMA signal
+        # df_tech = tech_mocker.get_bars(
+        #    # todo: dynamic lookup of market comparison                                             *****************
+        #    symbol="XLK",
+        #    # todo: fix hardcoded days                                                              *****************
+        #    start=bars_start,
+        #    # i dunno about having these two dataframes with different end dates                    *****************
+        #    end=current_dt,
+        #    interval=interval,
+        # )
+
         # STEP 1: are we in a bull market?
         # this should be done against the whole market but i don't know how to do that for crypto stocks?
-        ema = btalib.ema(df)
-        df_output["ema"] = ema.df
+        # ema = btalib.ema(df)
+        # df_output["ema"] = ema.df
 
         # todo: delete these lines once you work out what kind of market this is                    ******************
         # if ema.df["ema"].iloc[-1] < 200:
@@ -133,112 +140,187 @@ while True:
         df_output["macd_signal"] = macd["signal"]
         df_output["macd_histogram"] = macd["histogram"]
         df_output["macd_crossover"] = False
+        df_output["macd_signal_crossover"] = False
         df_output["macd_above_signal"] = False
+        df_output["macd_cycle"] = None
 
         # todo: take out this fudged attempt at showing crossover                                   *******************
         # fake_loc = df_output.index.get_loc("2022-03-22 10:00:00-04:00")
         # df_output.macd_histogram.iloc[fake_loc] = -1
 
-        # loops looking for two things - crossover and whether macd is above signal
+        # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
+        cycle = None
+
         for d in df_output.index:
             # start with crossover search
             # convert index to a datetime so we can do a delta against it                           ****************
             last_key = d - interval_delta
             # previous key had macd less than or equal to signal
             if df_output["macd_macd"].loc[d] > df_output["macd_signal"].loc[d]:
-                # macd is greater than signal
-                df_output["macd_above_signal"].loc[d] = True
-
+                # macd is greater than signal - crossover
+                df_output.at[d, "macd_above_signal"] = True
                 try:
                     if (
                         df_output["macd_macd"].loc[last_key]
                         <= df_output["macd_signal"].loc[last_key]
                     ):
-                        df_output["macd_crossover"].loc[d] = True
+                        cycle = "blue"
+                        df_output.at[d, "macd_crossover"] = True
 
                 except KeyError as e:
                     # ellipsis because i don't care if i'm missing data (maybe i should...)
                     ...
 
+            if df_output["macd_macd"].loc[d] < df_output["macd_signal"].loc[d]:
+                # macd is less than signal
+                try:
+                    if (
+                        df_output["macd_macd"].loc[last_key]
+                        >= df_output["macd_signal"].loc[last_key]
+                    ):
+                        cycle = "red"
+                        df_output.at[d, "macd_signal_crossover"] = True
+
+                except KeyError as e:
+                    # ellipsis because i don't care if i'm missing data (maybe i should...)
+                    ...
+
+            df_output.at[d, "macd_cycle"] = cycle
+            # df_output["macd_cycle"].loc[d] = cycle
+
         # STEP 3: DID WE FIND A SIGNAL? BAIL OUT IF NOT
+        window_start = df_output.index[-1] - relativedelta(days=window)
+
         if (
             len(
-                df_output.loc[df_output.macd_histogram > 0].loc[
-                    df_output.macd_crossover == True
+                # df_output.loc[df_output.macd_histogram < 0].loc[
+                #    df_output.macd_crossover == True
+                # ]
+                df_output.loc[
+                    (df_output.macd_crossover == True)
+                    & (df_output.macd_macd < 0)
+                    & (df_output.index > window_start)
                 ]
             )
             == 0
         ):
             # no signal
-            print("breaking, didn't find a signal")
-            break
+            # print(f"{current_dt} No signal in the last {window} days")
+            ...
+        else:
+            # STEP 3.5: DID WE FIND MORE THAN ONE SIGNAL?
+            # todo: just grab the most recent one
 
-        # STEP 3.5: DID WE FIND MORE THAN ONE SIGNAL?
-        # todo: just grab the most recent one
+            crossover_index = df_output.loc[
+                (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
+            ].index[-1]
+            crossover_record = df_output.loc[[crossover_index]]
+            crossover_index_position = df_output.index.get_loc(crossover_index)
 
-        crossover_index = (
-            df_output.loc[df_output.macd_histogram > 0]
-            .loc[df_output.macd_above_signal == True]
-            .index[-1]
-        )
-        crossover_record = df_output.loc[[crossover_index]]
-        crossover_index_position = df_output.index.get_loc(crossover_index)
+            # STEP 4: PREP FOR AN ORDER!
+            # entry_unit = crossover_record.Close.values[0]
+            entry_unit = df_output.Close.iloc[-1]
+            # first start with calculating risk and stop loss
+            # stop loss is based on the lowest unit price since this cycle began
+            # first find the beginning of this cycle, which is when the blue line crossed under the red line
+            blue_cycle_start = df_output.loc[
+                (df_output["macd_cycle"] == "blue")
+                & (df_output.index < crossover_index)
+            ].index[-1]
+            stop_unit = df_output.loc[blue_cycle_start:crossover_index].Close.min()
+            stop_unit_date = df_output.loc[
+                blue_cycle_start:crossover_index
+            ].Close.idxmin()
+            intervals_since_stop = len(df_output.loc[stop_unit_date:])
 
-        # STEP 4: PREP FOR AN ORDER!
-        entry_unit = crossover_record.Close.values[0]
-        # first start with calculating risk and stop loss
-        # stop loss is based on the lowest unit price since this cycle began
-        # first need to get the last time the asset closed at this price
-        nearest_close = find_neighbours(
-            entry_unit,
-            df_output.iloc[: (crossover_index_position + 1)],
-            "Close",
-            crossover_index,
-        )
-        stop_unit = df_output.Close.loc[nearest_close["lower"] : crossover_index].min()
+            # first need to get the last time the asset closed at this price
+            # nearest_close = find_neighbours(
+            #    entry_unit,
+            #    df_output.iloc[: (crossover_index_position + 1)],
+            #    "Close",
+            #    crossover_index,
+            # )
 
-        units = capital / entry_unit
-        risk_unit = entry_unit - stop_unit
-        risk_value = units * risk_unit
-        profit_target = PROFIT_TARGET * risk_value
+            # get the price at the most recent point where signal crossed over macd
 
-        print(f"Found signal")
-        print(f"Strength:\t\tNot sure how I want to do this yet")
-        print(f"Capital:\t\t{clean(capital)}")
-        print(f"Units to buy:\t\t{clean(units)}")
-        print(f"Entry point:\t\t{clean(entry_unit)}")
-        print(f"Stop loss:\t\t{clean(stop_unit)}")
-        print(
-            f"Days since stop loss:\t{(datetime.now() - nearest_close['lower'].tz_localize(None)).days}"
-        )
-        print(f"Risk:\t\t\t{clean(risk_value)} ({round(risk_value/capital,1)*100}%)")
-        print(
-            f"Reward:\t\t\t{clean(profit_target)} ({round(profit_target/capital,1)*100}%)"
-        )
+            # stop_unit = last_crossover.Close.iloc[-1]
+            # df_output.Close.loc[
+            #    nearest_close["lower"] : crossover_index
+            # ].min()
 
-        position_taken = True
+            units = capital / entry_unit
+            risk_unit = entry_unit - stop_unit
+            risk_value = units * risk_unit
+            target_profit = PROFIT_TARGET * risk_unit
+            target_price = entry_unit + target_profit
+
+            print(f"{crossover_index}: Found signal")
+            print(f"Strength:\t\tNot sure how I want to do this yet")
+            print(f"MACD:\t\t\t{crossover_record.macd_macd.values[0]}")
+            print(f"Signal:\t\t\t{crossover_record.macd_signal.values[0]}")
+            print(f"Histogram:\t\t{crossover_record.macd_histogram.values[0]}")
+            print(f"Capital:\t\t{clean(capital)}")
+            print(f"Units to buy:\t\t{clean(units)}")
+            print(f"Entry point:\t\t{clean(entry_unit)}")
+            print(f"Stop loss:\t\t{clean(stop_unit)}")
+            print(f"Intervals since last crossover:\t{intervals_since_stop}")
+            print(
+                f"Unit risk:\t\t{clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
+            )
+            print(
+                f"Unit profit:\t\t{clean(target_profit)} ({round(target_profit/entry_unit*100,1)}% of unit cost)"
+            )
+            print(
+                f"Target price:\t\t{clean(target_price)} ({round(target_price/capital*100,1)}% of capital)"
+            )
+
+            position_taken = True
+
     else:
         # we are in sell/stop loss mode
         last_close = df.Close.iloc[-1]
-        print(f"Checking {df.index[-1]}...")
+        # print(f"Checking {df.index[-1]}...")
         # first check to see if last close is below stop loss
 
         if last_close <= stop_unit:
             losses += 1
+            win_rate = wins / (wins + losses) * 100
+            capital = clean(last_close) * units
             print(
-                f"STOP LOSS TRIGGERED - close {last_close} vs stop loss {stop_unit}. {losses} losses so far"
-            )
-            position_taken = False
-        elif last_close == risk_unit:
-            # move 25%
-            wins += 1
-            print(
-                f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
+                f"Lost :( Unit price {clean(last_close)} vs stop loss {clean(stop_unit)}, {clean(losses)} losses, win rate {round(win_rate,1)}%, balance {clean(capital)}"
             )
             position_taken = False
 
+        elif last_close >= target_price:
+            wins += 1
+            sale_price = units * last_close
+            profit = sale_price - capital
+            win_rate = wins / (wins + losses) * 100
+            capital = clean(last_close) * units
+            print(
+                f"Win! Unit price {clean(last_close)}, sale price {clean(units * last_close)}, profit {clean(profit)}, {wins} wins, win rate {round(win_rate,1)}%, balance {clean(capital)}"
+            )
+            position_taken = False
+
+        elif last_close >= (entry_unit + risk_unit):
+            # move 25%
+            # partial_wins += 1
+            # print(
+            #    f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
+            # )
+            ...
+        else:
+            # print(
+            #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
+            # )
+            time.sleep(0.5)
+
     current_dt += timedelta(days=1)
-    print(current_dt)
+    window = 1
+
+    if current_dt > datetime.now():
+        print(f"Simulation complete\n")
+        break
 
     """capital = 2000
     entry_unit = 0.35
@@ -266,7 +348,7 @@ while True:
 
     get 2% of our funds
     profit target = 1.5 times risk
-    stop loss = below the pullback of the trend (i think find the last time red > blue)
+    stop loss = below the pullback of the trend (i think find the last time red > blue and get close price)
     risk = entry - stop loss
 
     if we earn the risk amount:
@@ -301,5 +383,27 @@ while True:
     # df_graph.plot(y="Close", kind="line")
     # plt.show()
 
-
-# last_run = datetime.fromisoformat(start)
+    # last_run = datetime.fromisoformat(start)
+    #            last_crossover = df_output.loc[df_output.macd_crossover == True]
+    #            last_crossover_index_position = df_output.index.get_loc(
+    #                last_crossover.index[-1]
+    #            )
+    #            intervals_between_crossovers = (
+    #                last_crossover_index_position - crossover_index_position
+    #            )
+    """max_period = {
+        "1m": 7,
+        "2m": 60,
+        "5m": 60,
+        "15m": 60,
+        "30m": 60,
+        "60m": 729,
+        "90m": 60,
+        "1h": 729,
+        "1d": 10000,
+        "5d": 10000,
+        "1wk": 10000,
+        "1mo": 10000,
+        "3mo": 10000,
+    }
+    """
