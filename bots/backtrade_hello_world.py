@@ -26,7 +26,7 @@ def get_interval_settings(interval):
         "60m": 500,
         "90m": 60,
         "1h": 500,
-        "1d": 500,
+        "1d": 2000,
         "5d": 500,
         "1wk": 500,
         "1mo": 500,
@@ -64,17 +64,15 @@ def find_neighbours(value, df, colname, ignore_index):
 
 
 capital = 2000
+starting_capital = capital
 symbol = "AAPL"
 interval = "1d"
 window = 7
 
-start = "2021-01-01"
-current = "2021-01-01"
+start = "2020-01-01"
+current = "2020-01-01"
 end = "2022-04-15"
 
-start = "2021-10-05"
-current = "2021-10-05"
-end = "2022-04-15"
 # start = "2021-09-01T00:00:00+10:00"
 # current = "2021-09-01T00:00:00+10:00"
 # end = "2022-04-15T00:00:00+10:00"
@@ -285,7 +283,7 @@ while True:
         if last_close <= stop_unit:
             losses += 1
             win_rate = wins / (wins + losses) * 100
-            capital = clean(last_close) * units
+            capital = last_close * units
             print(
                 f"Lost :( Unit price {clean(last_close)} vs stop loss {clean(stop_unit)}, {clean(losses)} losses, win rate {round(win_rate,1)}%, balance {clean(capital)}"
             )
@@ -296,7 +294,7 @@ while True:
             sale_price = units * last_close
             profit = sale_price - capital
             win_rate = wins / (wins + losses) * 100
-            capital = clean(last_close) * units
+            capital = last_close * units
             print(
                 f"Win! Unit price {clean(last_close)}, sale price {clean(units * last_close)}, profit {clean(profit)}, {wins} wins, win rate {round(win_rate,1)}%, balance {clean(capital)}"
             )
@@ -319,7 +317,17 @@ while True:
     window = 1
 
     if current_dt > datetime.now():
-        print(f"Simulation complete\n")
+        win_rate = round(wins / (wins + losses) * 100, 1)
+        loss_rate = 100 - win_rate
+        print(f"================")
+        print(f"Simulation complete")
+        print(f"Starting capital: {clean(starting_capital)}")
+        print(f"Ending capital: {clean(capital)}")
+        print(f"Change: {clean(capital-starting_capital)}")
+        print(f"% change: {round(starting_capital/capital*100,1)}")
+        print(f"Wins: {wins} ({win_rate}%)")
+        print(f"Losses: {losses} ({loss_rate}%)")
+
         break
 
     """capital = 2000
