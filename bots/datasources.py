@@ -45,11 +45,11 @@ class YFinanceFeeder:
         )
 
 
-class MockerException(Exception):
+class MockDataSourceException(Exception):
     ...
 
 
-class Mocker:
+class MockDataSource:
     symbol: str
     start: datetime
     end: datetime
@@ -178,7 +178,7 @@ class Mocker:
                     or self.start != start
                     or self.interval != interval
                 ):
-                    raise MockerException(
+                    raise MockDataSourceException(
                         "Can't change symbol, start or interval once instantiated!"
                     )
 

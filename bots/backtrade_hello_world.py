@@ -1,8 +1,8 @@
-from feeder import Mocker, YFinanceFeeder
+from datasources import MockDataSource, YFinanceFeeder
 from datetime import timedelta, datetime
-from dateutil.relativedelta import relativedelta
 from purchase import Purchase
 from math import floor
+import pandas as pd
 
 
 def clean(number):
@@ -11,7 +11,16 @@ def clean(number):
 
 
 class BackTrade:
-    def __init__(self):
+    def __init__(
+        self,
+        symbol: str,
+        capital: float,
+        start: str,
+        interval: str = "15m",
+        end: str = None,
+        profit_target: float = 1.5,
+        fast_mode: bool = True,
+    ):
         # internal variables, not inputs
         self.position_taken = False
         self.losses = 0
@@ -21,25 +30,28 @@ class BackTrade:
         self.complete = False
 
         ## INPUTS AND CONSTANTS
-        self.PROFIT_TARGET = 1.5
-        self.FAST_MODE = (
-            True  # don't use tick to get next period, use next entry in dataframe
-        )
-        self.capital = 2000
+        self.PROFIT_TARGET = profit_target
+        # this means don't blindly query the DF by incrementing time/date, instead ask the DF for the next row
+        self.FAST_MODE = fast_mode
+        self.capital = capital
         self.starting_capital = self.capital
-        self.symbol = "IVV.AX"
-        self.interval = "60m"
+        self.symbol = symbol
+        self.interval = interval
 
-        self.start = "2021-04-01"
+        self.start = start
         self.current = self.start
-        self.end = "2022-04-13"
+
+        if end == None:
+            self.end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            self.end = end
 
         # setup
         self.start_dt = datetime.fromisoformat(self.start)
         self.current_dt = datetime.fromisoformat(self.current)
         self.end_dt = datetime.fromisoformat(self.end)
 
-        self.backtest_source = Mocker(
+        self.backtest_source = MockDataSource(
             data_source=YFinanceFeeder(),
             real_end=self.end_dt,
         )
@@ -49,6 +61,7 @@ class BackTrade:
             self.max_range,
             self.tick,
         ) = self.backtest_source.get_interval_settings(interval=self.interval)
+
         self.bars_start = datetime.now() + timedelta(days=-self.max_range)
         self.bars_end = datetime.now()
 
@@ -268,102 +281,85 @@ class BackTrade:
 
         # FAST_MODE means just jump to the next entry in the df, as opposed to ticking the clock (even at times when a market is shut so there'll be no data)
         if self.FAST_MODE:
-            self.current_dt = self.backtest_source.get_next()
-            if self.current_dt == False:
+            next_key = self.backtest_source.get_next()
+
+            if next_key == False:
                 self.complete = True
                 return False
-                # self.current_dt = datetime.now() + relativedelta(
-                #    minutes=100
-                # )  #   just some fake number that's beyond the horizon we're searching for so that the iteration stops
+
+            self.current_dt = next_key
+            # self.current_dt = datetime.now() + relativedelta(
+            #    minutes=100
+            # )  #   just some fake number that's beyond the horizon we're searching for so that the iteration stops
         else:
             self.current_dt += self.tick
 
-
-backtest = BackTrade()
-while True:
-    if backtest.get_next() == False:
-        if backtest.position_taken:
-            backtest.current_holding_value = backtest.order.get_held_value(
-                backtest.df_output["Close"].iloc[-1]
-            )
-        else:
-            backtest.current_holding_value = 0
-
-        if (
-            backtest.capital + backtest.current_holding_value
-        ) >= backtest.starting_capital:
-            backtest.outcome_text = "gained"
-        else:
-            backtest.outcome_text = "lost"
-
+    def get_results(self):
         try:
-            backtest.win_rate = round(
-                backtest.wins / (backtest.wins + backtest.losses) * 100, 1
-            )
-            backtest.loss_rate = 100 - backtest.win_rate
+            self.win_rate = round(self.wins / (self.wins + self.losses) * 100, 1)
+            self.loss_rate = 100 - self.win_rate
+
         except ZeroDivisionError:
-            backtest.win_rate = 0
-            backtest.loss_rate = 0
+            self.win_rate = 0
+            self.loss_rate = 0
 
-        print(f"\n===============================================================")
-        print(
-            f"Backtrading of {backtest.symbol} between {backtest.start_dt} and {backtest.current_dt} using {backtest.interval} intervals complete"
+        return pd.Series(
+            {
+                "start": self.start_dt,
+                "end": self.current_dt,
+                "capital_start": self.starting_capital,
+                "capital_end": self.capital,
+                "capital_change": self.capital - self.starting_capital,
+                "capital_change_pct": round(
+                    (self.capital / self.starting_capital * 100) - 100, 1
+                ),
+                "intervals": self.interval,
+                "trades_total": self.wins + self.losses,
+                "trades_won": self.wins,
+                "trades_won_rate": self.win_rate,
+                "trades_lost": self.losses,
+                "trades_lost_rate": self.loss_rate,
+                "trades_skipped": self.skipped_trades,
+            }
         )
-        print(f"Starting capital:\t${clean(backtest.starting_capital)}")
-        print(f"Ending capital:\t\t${clean(backtest.capital)}")
-        print(
-            f"Change:\t\t\t${clean(backtest.capital-backtest.starting_capital)} ({backtest.outcome_text} capital)"
-        )
-        print(
-            f"% change:\t\t{round((backtest.capital/backtest.starting_capital*100)-100,1)}%"
-        )
-        print(f"Total trades:\t\t{backtest.wins+backtest.losses}")
-        print(f"Wins:\t\t\t{backtest.wins} ({backtest.win_rate}%)")
-        print(f"Losses:\t\t\t{backtest.losses} ({backtest.loss_rate}%)")
-        print(
-            f"Skipped:\t\t{backtest.skipped_trades} trades (low SMA: {backtest.skipped_trades_sma})"
-        )
-        break
 
-        """capital = 2000
-        self.entry_unit = 0.35
-        units = capital / self.entry_unit = 700
-        stop_unit = 0.307
-        risk = self.entry_unit - stop_unit 0.35 - 0.30 = 0.05
-        risk_value = capital * stop_unit = 2000 * 0.30 = 600
-        profit_target = 1.5 * risk_value
-        entry as macd cross over
-        profit should be more than the risk taken on the trade
-        stop loss at the pullback of the trend
+    def do_backtest(self):
+        while True:
+            self.get_next()
+            if self.complete:
+                break
 
-        25% off the trade when the trade reaches 1 times the risk and move stop loss ot break even
-        then set a profit target of 2 times the original risk i took on the trade
 
-        profit = 1.5 times risk taken
+symbol = "IVV.AX"
+capital = 2000
+start = "2022-03-01"
+interval = "5m"
 
-        get 200 period EMA for the market segment we're looking at
-        if
-            EMA is above 200 
-        and
-            macd blue is higher than signal red
-        and
-            crossover happens way below zero line on histogram
+symbols = ["IVV.AX", "BHP.AX", "ACN", "AAPL", "MSFT", "RIO"]
 
-        get 2% of our funds
-        profit target = 1.5 times risk
-        stop loss = below the pullback of the trend (i think find the last time red > blue and get close price)
-        risk = entry - stop loss
+df_report = pd.DataFrame(
+    columns=[
+        "start",
+        "end",
+        "capital_start",
+        "capital_end",
+        "capital_change",
+        "capital_change_pct",
+        "intervals",
+        "trades_total",
+        "trades_won",
+        "trades_won_rate",
+        "trades_lost",
+        "trades_lost_rate",
+        "trades_skipped",
+    ],
+    index=symbols,
+)
 
-        if we earn the risk amount:
-            take 25% of the profit
-            move stop loss to where we are now/move our break even to where we are now
-            new profit target of 2 times the original risk
+for symbol in symbols:
+    backtest = BackTrade(symbol=symbol, capital=capital, start=start, interval=interval)
+    backtest.do_backtest()
+    df_report.loc[symbol] = backtest.get_results()
 
-        capital = 2000 (2%)
-        self.entry_unit = whatever the latest close price was
-        units = capital / self.entry_unit = 700
-        stop_unit = what is the lowest price its been since the last time the price was the same as now? = 0.307
-        risk = self.entry_unit - stop_unit 0.35 - 0.30 = 0.05
-        risk_value = capital * stop_unit = 2000 * 0.30 = 600
-        profit_target = 1.5 * risk_value
-        """
+print("banana")
+print("banana")
