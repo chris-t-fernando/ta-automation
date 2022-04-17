@@ -40,11 +40,6 @@ class YFinanceFeeder:
         if end == None:
             end = datetime.now().astimezone()
 
-        #### datetime.now().astimezone()
-
-        # start = datetime.fromisoformat(start)
-        # end = datetime.fromisoformat(end)
-
         return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False
         )
@@ -76,7 +71,13 @@ class Mocker:
         self.data_source = data_source
 
     def get_bars(
-        self, symbol: str, start: str, end: str, interval: str = "1d", do_macd=False
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        interval: str = "1d",
+        do_macd=False,
+        do_sma=False,
     ):
         # yf/pandas will drop time and timezone if interval is greater than 24 hours
         if not self.initialised:
@@ -117,8 +118,13 @@ class Mocker:
             self.interval = interval
             self.initialised = True
 
+            if do_sma:
+                sma = btalib.sma(self.bars, period=200)
+                self.bars["sma_200"] = sma["sma"]
+
+            # if i was smart i'd make this a separate function so i could reuse it...
             if do_macd:
-                # do it
+
                 macd = btalib.macd(self.bars)
                 self.bars["macd_macd"] = macd["macd"]
                 self.bars["macd_signal"] = macd["signal"]
@@ -176,16 +182,6 @@ class Mocker:
                         "Can't change symbol, start or interval once instantiated!"
                     )
 
-        #
-        #       this logic wouldn't even work anyway since there is a months symbol....
-        #        if len(end) > 10 and "m" not in interval:
-        #            raise ValueError(
-        #                f"Interval must be <24 hours when specifying a real_end that contains time and timezone. Found {interval} interval and {end} date/time"
-        #            )
-        #        elif len(end) < 25 and "m" in interval:
-        #            raise ValueError(
-        #                f"When interval is set to minutes, date/time must be specified similar to 2022-03-30T00:00:00+10:00. Found {end}"
-        #            )
         self.last_end = end
 
         return self.bars.loc[:end]

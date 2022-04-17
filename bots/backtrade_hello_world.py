@@ -1,8 +1,7 @@
-from numpy import NaN
 from feeder import Mocker, YFinanceFeeder
 from datetime import timedelta, datetime
 from dateutil.relativedelta import relativedelta
-from buyorder import Purchase
+from purchase import Purchase
 from math import floor
 
 
@@ -15,7 +14,8 @@ def clean(number):
 position_taken = False
 losses = 0
 wins = 0
-partial_wins = 0
+skipped_trades = 0
+skipped_trades_sma = 0
 
 ## INPUTS AND CONSTANTS
 PROFIT_TARGET = 1.5
@@ -50,7 +50,12 @@ bars_end = datetime.now()
 # todo: why is the EMA always <200? even in assets that seem like they're doing alright
 while True:
     df = backtest_source.get_bars(
-        symbol=symbol, start=bars_start, end=current_dt, interval=interval, do_macd=True
+        symbol=symbol,
+        start=bars_start,
+        end=current_dt,
+        interval=interval,
+        do_macd=True,
+        do_sma=True,
     )
     if len(df) == 0:
         print(
@@ -86,67 +91,76 @@ while True:
             # no signal
             print(f"\r{current_dt} - no signal", end="")
         else:
-            # STEP 4: PREP FOR AN ORDER!
-            crossover_index = df_output.loc[
-                (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
-            ].index[-1]
-            crossover_record = df_output.loc[[crossover_index]]
-            crossover_index_position = df_output.index.get_loc(crossover_index)
+            # is SMA good?
+            if df_output.iloc[-1].sma_200 > df_output.iloc[-5].sma_200:
+                # STEP 4: PREP FOR AN ORDER!
+                crossover_index = df_output.loc[
+                    (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
+                ].index[-1]
+                crossover_record = df_output.loc[[crossover_index]]
+                crossover_index_position = df_output.index.get_loc(crossover_index)
 
-            entry_unit = df_output.Close.iloc[-1]
-            # first start with calculating risk and stop loss
-            # stop loss is based on the lowest unit price since this cycle began
-            # first find the beginning of this cycle, which is when the blue line crossed under the red line
-            blue_cycle_start = df_output.loc[
-                (df_output["macd_cycle"] == "blue")
-                & (df_output.index < crossover_index)
-            ].index[-1]
-            # then get the lowest close price since the cycle began
-            stop_unit = df_output.loc[blue_cycle_start:crossover_index].Close.min()
-            stop_unit_date = df_output.loc[
-                blue_cycle_start:crossover_index
-            ].Close.idxmin()
+                entry_unit = df_output.Close.iloc[-1]
+                # first start with calculating risk and stop loss
+                # stop loss is based on the lowest unit price since this cycle began
+                # first find the beginning of this cycle, which is when the blue line crossed under the red line
+                blue_cycle_start = df_output.loc[
+                    (df_output["macd_cycle"] == "blue")
+                    & (df_output.index < crossover_index)
+                ].index[-1]
+                # then get the lowest close price since the cycle began
+                stop_unit = df_output.loc[blue_cycle_start:crossover_index].Close.min()
+                stop_unit_date = df_output.loc[
+                    blue_cycle_start:crossover_index
+                ].Close.idxmin()
 
-            original_stop = stop_unit
+                original_stop = stop_unit
 
-            # and for informational/confidence purposes, hold on to the intervals since this happened
-            intervals_since_stop = len(df_output.loc[stop_unit_date:])
+                # and for informational/confidence purposes, hold on to the intervals since this happened
+                intervals_since_stop = len(df_output.loc[stop_unit_date:])
 
-            # calculate other order variables
-            trade_date = df_output.index[-1]
-            steps = 1
-            units = floor(capital / entry_unit)
-            risk_unit = entry_unit - stop_unit
-            original_risk_unit = risk_unit
-            risk_value = units * risk_unit
-            target_profit = PROFIT_TARGET * risk_unit
-            target_price = entry_unit + target_profit
+                # calculate other order variables
+                trade_date = df_output.index[-1]
+                steps = 1
+                units = floor(capital / entry_unit)
+                risk_unit = entry_unit - stop_unit
+                original_risk_unit = risk_unit
+                risk_value = units * risk_unit
+                target_profit = PROFIT_TARGET * risk_unit
+                target_price = entry_unit + target_profit
 
-            leftover_capital = capital - (units * entry_unit)
+                leftover_capital = capital - (units * entry_unit)
 
-            order = Purchase(unit_quantity=units, unit_price=entry_unit)
+                order = Purchase(unit_quantity=units, unit_price=entry_unit)
 
-            print(f"\n{crossover_index}: Found signal")
-            print(f"Strength:\t\tNot sure how I want to do this yet")
-            print(f"MACD:\t\t\t{crossover_record.macd_macd.values[0]}")
-            print(f"Signal:\t\t\t{crossover_record.macd_signal.values[0]}")
-            print(f"Histogram:\t\t{crossover_record.macd_histogram.values[0]}")
-            print(f"Capital:\t\t${clean(capital)}")
-            print(f"Units to buy:\t\t{clean(units)} units")
-            print(f"Entry point:$\t\t{clean(entry_unit)}")
-            print(f"Stop loss:$\t\t{clean(stop_unit)}")
-            print(f"Cycle began:\t\t{intervals_since_stop} intervals ago")
-            print(
-                f"Unit risk:\t\t${clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
-            )
-            print(
-                f"Unit profit:\t\t${clean(target_profit)} ({round(target_profit/entry_unit*100,1)}% of unit cost)"
-            )
-            print(
-                f"Target price:\t\t${clean(target_price)} ({round(target_price/capital*100,1)}% of capital)"
-            )
+                print(f"\n{crossover_index}: Found signal")
+                print(f"Strength:\t\tNot sure how I want to do this yet")
+                print(f"MACD:\t\t\t{crossover_record.macd_macd.values[0]}")
+                print(f"Signal:\t\t\t{crossover_record.macd_signal.values[0]}")
+                print(f"Histogram:\t\t{crossover_record.macd_histogram.values[0]}")
+                print(f"Capital:\t\t${clean(capital)}")
+                print(f"Units to buy:\t\t{clean(units)} units")
+                print(f"Entry point:$\t\t{clean(entry_unit)}")
+                print(f"Stop loss:$\t\t{clean(stop_unit)}")
+                print(f"Cycle began:\t\t{intervals_since_stop} intervals ago")
+                print(
+                    f"Unit risk:\t\t${clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
+                )
+                print(
+                    f"Unit profit:\t\t${clean(target_profit)} ({round(target_profit/entry_unit*100,1)}% of unit cost)"
+                )
+                print(
+                    f"Target price:\t\t${clean(target_price)} ({round(target_price/capital*100,1)}% of capital)"
+                )
 
-            position_taken = True
+                position_taken = True
+            else:
+                print(
+                    f"\r{current_dt} - found signal but SMA is trending downward - avoiding this trade                                   ",
+                    end="",
+                )
+                skipped_trades += 1
+                skipped_trades_sma += 1
 
     else:
         # we are in sell/stop loss mode
@@ -252,7 +266,7 @@ while True:
 
         print(f"\n===============================================================")
         print(
-            f"Backtrading between {start_dt} and {current_dt} using {interval} intervals complete"
+            f"Backtrading of {symbol} between {start_dt} and {current_dt} using {interval} intervals complete"
         )
         print(f"Starting capital:\t${clean(starting_capital)}")
         print(f"Ending capital:\t\t${clean(capital)}")
@@ -263,6 +277,7 @@ while True:
         print(f"Total trades:\t\t{wins+losses}")
         print(f"Wins:\t\t\t{wins} ({win_rate}%)")
         print(f"Losses:\t\t\t{losses} ({loss_rate}%)")
+        print(f"Skipped:\t\t{skipped_trades} trades (low SMA: {skipped_trades_sma})")
 
         break
 
