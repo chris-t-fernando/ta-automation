@@ -100,11 +100,7 @@ class BackTrade:
             # STEP 1: are we in a bull market?
             # todo
 
-            # STEP 2: has there been a crossover since our last run?
-
-            # STEP 3: DID WE FIND A SIGNAL? BAIL OUT IF NOT
-            window_start = df_output.index[-1]
-
+            # STEP 2: has there been a crossover?
             if (
                 len(
                     df_output.loc[
@@ -182,8 +178,8 @@ class BackTrade:
                     )
                     print(f"Capital:\t\t${clean(self.capital)}")
                     print(f"Units to buy:\t\t{clean(self.units)} units")
-                    print(f"Entry point:$\t\t{clean(self.entry_unit)}")
-                    print(f"Stop loss:$\t\t{clean(self.stop_unit)}")
+                    print(f"Entry point:\t\t${clean(self.entry_unit)}")
+                    print(f"Stop loss:\t\t${clean(self.stop_unit)}")
                     print(f"Cycle began:\t\t{self.intervals_since_stop} intervals ago")
                     print(
                         f"Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit*100,1)}% of unit cost)"
