@@ -38,9 +38,9 @@ class Purchase:
 
     def get_returns(self):
         return sum(self.units_sold)
-    
+
     def get_held_value(self, current_unit_price):
-        return sum(self.units_held * current_unit_price)
+        return len(self.units_held) * current_unit_price
 
 
 # b = Purchase(

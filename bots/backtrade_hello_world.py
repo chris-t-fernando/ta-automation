@@ -1,7 +1,7 @@
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
-import btalib
+
 from numpy import NaN
 from feeder import Mocker, YFinanceFeeder
 from datetime import timedelta, datetime
@@ -16,12 +16,12 @@ PROFIT_TARGET = 1.5
 FAST_MODE = True  # don't use tick to get next period, use next entry in dataframe
 capital = 2000
 starting_capital = capital
-symbol = "IVV.AX"
-interval = "1d"
+symbol = "ADA-USD"
+interval = "1h"
 
-start = "2022-02-18"
+start = "2021-12-01"
 current = start
-end = "2022-04-17"
+end = "2022-04-13"
 
 start_dt = datetime.fromisoformat(start)
 current_dt = datetime.fromisoformat(current)
@@ -40,60 +40,6 @@ def clean(number):
     return "{:,}".format(number)
 
 
-def get_interval_settings(interval):
-    minutes_intervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m"]
-    max_period = {
-        "1m": 7,
-        "2m": 60,
-        "5m": 60,
-        "15m": 60,
-        "30m": 60,
-        "60m": 500,
-        "90m": 60,
-        "1h": 500,
-        "1d": 2000,
-        "5d": 500,
-        "1wk": 500,
-        "1mo": 500,
-        "3mo": 500,
-    }
-
-    if interval in minutes_intervals:
-        return (
-            relativedelta(minutes=int(interval[:-1])),
-            max_period[interval],
-            timedelta(minutes=int(interval[:-1])),
-        )
-    elif interval == "1h":
-        return (
-            relativedelta(hours=int(interval[:-1])),
-            max_period[interval],
-            timedelta(hours=int(interval[:-1])),
-        )
-    elif interval == "1d" or interval == "5d":
-        return (
-            relativedelta(days=int(interval[:-1])),
-            max_period[interval],
-            timedelta(days=int(interval[:-1])),
-        )
-    elif interval == "1wk":
-        return (
-            relativedelta(weeks=int(interval[:-2])),
-            max_period[interval],
-            timedelta(weeks=int(interval[:-2])),
-        )
-    elif interval == "1mo" or interval == "3mo":
-        raise ValueError("I can't be bothered implementing month intervals")
-        return (
-            relativedelta(months=int(interval[:-2])),
-            max_period[interval],
-            timedelta(months=int(interval[:-1])),
-        )
-    else:
-        # got an unknown interval
-        raise ValueError(f"Unknown interval type {interval}")
-
-
 mocker = Mocker(
     data_source=YFinanceFeeder(),
     real_end=end_dt,
@@ -102,7 +48,7 @@ mocker = Mocker(
 # technology sector
 tech_mocker = Mocker(end_dt)
 
-interval_delta, max_range, tick = get_interval_settings(interval=interval)
+interval_delta, max_range, tick = mocker.get_interval_settings(interval=interval)
 bars_start = datetime.now() + timedelta(days=-max_range)
 bars_end = datetime.now()
 
@@ -111,10 +57,7 @@ bars_end = datetime.now()
 # todo: why is the EMA always <200? even in assets that seem like they're doing alright
 while True:
     df = mocker.get_bars(
-        symbol=symbol,
-        start=bars_start,
-        end=current_dt,
-        interval=interval,
+        symbol=symbol, start=bars_start, end=current_dt, interval=interval, do_macd=True
     )
     if len(df) == 0:
         new_range = max_range
@@ -135,6 +78,7 @@ while True:
             start=bars_start,
             end=current_dt,
             interval=interval,
+            do_macd=True,
         )
 
     df_output = df.copy(deep=True)
@@ -147,54 +91,6 @@ while True:
         # todo
 
         # STEP 2: has there been a crossover since our last run?
-        macd = btalib.macd(df)
-        df_output["macd_macd"] = macd["macd"]
-        df_output["macd_signal"] = macd["signal"]
-        df_output["macd_histogram"] = macd["histogram"]
-        df_output["macd_crossover"] = False
-        df_output["macd_signal_crossover"] = False
-        df_output["macd_above_signal"] = False
-        df_output["macd_cycle"] = None
-
-        # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
-        cycle = None
-
-        for d in df_output.index:
-            # start with crossover search
-            # convert index to a datetime so we can do a delta against it                           ****************
-            last_key = d - interval_delta
-            # previous key had macd less than or equal to signal
-            if df_output["macd_macd"].loc[d] > df_output["macd_signal"].loc[d]:
-                # macd is greater than signal - crossover
-                df_output.at[d, "macd_above_signal"] = True
-                try:
-                    if (
-                        df_output["macd_macd"].loc[last_key]
-                        <= df_output["macd_signal"].loc[last_key]
-                    ):
-                        cycle = "blue"
-                        df_output.at[d, "macd_crossover"] = True
-
-                except KeyError as e:
-                    # ellipsis because i don't care if i'm missing data (maybe i should...)
-                    ...
-
-            if df_output["macd_macd"].loc[d] < df_output["macd_signal"].loc[d]:
-                # macd is less than signal
-                try:
-                    if (
-                        df_output["macd_macd"].loc[last_key]
-                        >= df_output["macd_signal"].loc[last_key]
-                    ):
-                        cycle = "red"
-                        df_output.at[d, "macd_signal_crossover"] = True
-
-                except KeyError as e:
-                    # ellipsis because i don't care if i'm missing data (maybe i should...)
-                    ...
-
-            df_output.at[d, "macd_cycle"] = cycle
-            # df_output["macd_cycle"].loc[d] = cycle
 
         # STEP 3: DID WE FIND A SIGNAL? BAIL OUT IF NOT
         window_start = df_output.index[-1]
