@@ -20,6 +20,8 @@ class BackTrade:
         end: str = None,
         profit_target: float = 1.5,
         fast_mode: bool = True,
+        verbose: bool = False,
+        ignore_sma: bool = False,
     ):
         # internal variables, not inputs
         self.position_taken = False
@@ -37,6 +39,8 @@ class BackTrade:
         self.starting_capital = self.capital
         self.symbol = symbol
         self.interval = interval
+        self.verbose = verbose
+        self.ignore_sma = ignore_sma
 
         self.start = start
         self.current = self.start
@@ -112,10 +116,13 @@ class BackTrade:
                 == 0
             ):
                 # no signal
-                print(f"\r{self.current_dt} - no signal", end="")
+                if self.verbose:
+                    print(f"\r{self.current_dt} - no signal", end="")
             else:
                 # is SMA good?
-                if df_output.iloc[-1].sma_200 > df_output.iloc[-5].sma_200:
+                if (
+                    df_output.iloc[-1].sma_200 > df_output.iloc[-5].sma_200
+                ) or self.ignore_sma:
                     # STEP 4: PREP FOR AN ORDER!
                     self.crossover_index = df_output.loc[
                         (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
@@ -273,7 +280,7 @@ class BackTrade:
                     f"\r{df_output.index[-1]} Met target price, new target price {clean(self.target_price)}, new stop price {clean(self.stop_unit)}",
                     end="",
                 )
-            else:
+            elif self.verbose:
                 print(
                     f"\r{self.current_dt} nothing happened, target price {clean(self.target_price)} / stop loss {clean(self.stop_unit)} holds vs last close of {clean(last_close)}",
                     end="",
@@ -303,13 +310,26 @@ class BackTrade:
             self.win_rate = 0
             self.loss_rate = 0
 
+        macd_change = self.capital - self.starting_capital
+        hold_units = floor(
+            self.starting_capital / self.backtest_source.bars.Close.iloc[0]
+        )
+        hold_change = (
+            self.backtest_source.bars.Close.iloc[-1]
+            - self.backtest_source.bars.Close.iloc[0]
+        ) * hold_units
+        if hold_change > macd_change:
+            better_strategy = "hold"
+        else:
+            better_strategy = "macd"
+
         return pd.Series(
             {
                 "start": self.start_dt,
                 "end": self.current_dt,
                 "capital_start": self.starting_capital,
                 "capital_end": self.capital,
-                "capital_change": self.capital - self.starting_capital,
+                "capital_change": macd_change,
                 "capital_change_pct": round(
                     (self.capital / self.starting_capital * 100) - 100, 1
                 ),
@@ -320,6 +340,20 @@ class BackTrade:
                 "trades_lost": self.losses,
                 "trades_lost_rate": self.loss_rate,
                 "trades_skipped": self.skipped_trades,
+                "hold_units": hold_units,
+                "hold_start_buy": self.backtest_source.bars.Close.iloc[0],
+                "hold_end_buy": self.backtest_source.bars.Close.iloc[-1],
+                "hold_change": hold_change,
+                "hold_change_pct": round(
+                    (
+                        self.backtest_source.bars.Close.iloc[-1]
+                        / self.backtest_source.bars.Close.iloc[0]
+                        * 100
+                    )
+                    - 100,
+                    1,
+                ),
+                "better_strategy": better_strategy,
             }
         )
 
@@ -336,6 +370,7 @@ start = "2022-03-01"
 interval = "5m"
 
 symbols = ["IVV.AX", "BHP.AX", "ACN", "AAPL", "MSFT", "RIO"]
+# symbols = ["IVV.AX", "BHP.AX"]
 
 df_report = pd.DataFrame(
     columns=[
@@ -352,6 +387,12 @@ df_report = pd.DataFrame(
         "trades_lost",
         "trades_lost_rate",
         "trades_skipped",
+        "hold_units",
+        "hold_start_buy",
+        "hold_end_buy",
+        "hold_change",
+        "hold_change_pct",
+        "better_strategy",
     ],
     index=symbols,
 )
@@ -361,5 +402,4 @@ for symbol in symbols:
     backtest.do_backtest()
     df_report.loc[symbol] = backtest.get_results()
 
-print("banana")
-print("banana")
+df_report.to_csv("out.csv")
