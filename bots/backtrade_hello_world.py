@@ -17,7 +17,7 @@ FAST_MODE = True  # don't use tick to get next period, use next entry in datafra
 capital = 2000
 starting_capital = capital
 symbol = "IVV.AX"
-interval = "5m"
+interval = "1h"
 # window = 7
 
 start = "2022-02-18"
@@ -438,6 +438,8 @@ while True:
 
     if FAST_MODE:
         current_dt = mocker.get_next()
+        if current_dt == False:
+            current_dt = datetime.now() + relativedelta(minutes=100)
     else:
         current_dt += tick
 

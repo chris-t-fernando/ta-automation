@@ -109,7 +109,10 @@ class Mocker:
         return self.bars.loc[:end]
 
     def get_next(self):
-        return self.bars.loc[self.bars.index > self.last_end].index[0]
+        try:
+            return self.bars.loc[self.bars.index > self.last_end].index[0]
+        except:
+            return False
 
 
 # self.bars.index
