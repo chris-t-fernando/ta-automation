@@ -126,24 +126,24 @@ while True:
 
             order = Purchase(unit_quantity=units, unit_price=entry_unit)
 
-            print(f"{crossover_index}: Found signal")
+            print(f"\n{crossover_index}: Found signal")
             print(f"Strength:\t\tNot sure how I want to do this yet")
             print(f"MACD:\t\t\t{crossover_record.macd_macd.values[0]}")
             print(f"Signal:\t\t\t{crossover_record.macd_signal.values[0]}")
             print(f"Histogram:\t\t{crossover_record.macd_histogram.values[0]}")
-            print(f"Capital:\t\t{clean(capital)}")
-            print(f"Units to buy:\t\t{clean(units)}")
-            print(f"Entry point:\t\t{clean(entry_unit)}")
-            print(f"Stop loss:\t\t{clean(stop_unit)}")
+            print(f"Capital:\t\t${clean(capital)}")
+            print(f"Units to buy:\t\t{clean(units)} units")
+            print(f"Entry point:$\t\t{clean(entry_unit)}")
+            print(f"Stop loss:$\t\t{clean(stop_unit)}")
             print(f"Cycle began:\t\t{intervals_since_stop} intervals ago")
             print(
-                f"Unit risk:\t\t{clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
+                f"Unit risk:\t\t${clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)"
             )
             print(
-                f"Unit profit:\t\t{clean(target_profit)} ({round(target_profit/entry_unit*100,1)}% of unit cost)"
+                f"Unit profit:\t\t${clean(target_profit)} ({round(target_profit/entry_unit*100,1)}% of unit cost)"
             )
             print(
-                f"Target price:\t\t{clean(target_price)} ({round(target_price/capital*100,1)}% of capital)"
+                f"Target price:\t\t${clean(target_price)} ({round(target_price/capital*100,1)}% of capital)"
             )
 
             position_taken = True
@@ -170,7 +170,7 @@ while True:
                 df_output.index[-1]
             ) - df_output.index.get_loc(trade_date)
             print(
-                f"\rTrade ran for {trade_iteration_count} iterations ({trade_duration.days} days) and {trade_won}. Increased stop loss {steps} times before hitting stop loss ({clean(last_close)} vs {clean(stop_unit)}). Win rate {round(win_rate,1)}%, balance {clean(capital)} (gain/loss of {clean(capital-starting_capital)})",
+                f"\rTrade ran for {trade_iteration_count} intervals ({trade_duration.days} days) and {trade_won}. Increased stop loss {steps} times before hitting stop loss ({clean(last_close)} vs {clean(stop_unit)}). Win rate {round(win_rate,1)}%, balance {clean(capital)} (gain/loss of {clean(capital-starting_capital)})",
                 end="",
             )
             print(f"\n===============================================================")
@@ -250,14 +250,16 @@ while True:
             win_rate = 0
             loss_rate = 0
 
-        print(f"================")
-        print(f"Simulation complete on {current_dt}")
-        print(f"Starting capital:\t{clean(starting_capital)}")
-        print(f"Ending capital:\t\t{clean(capital)}")
+        print(f"\n===============================================================")
         print(
-            f"Change:\t\t\t{clean(capital-starting_capital)} ({outcome_text} capital)"
+            f"Backtrading between {start_dt} and {current_dt} using {interval} intervals complete"
         )
-        print(f"% change:\t\t{round((capital/starting_capital*100)-100,1)}")
+        print(f"Starting capital:\t${clean(starting_capital)}")
+        print(f"Ending capital:\t\t${clean(capital)}")
+        print(
+            f"Change:\t\t\t${clean(capital-starting_capital)} ({outcome_text} capital)"
+        )
+        print(f"% change:\t\t{round((capital/starting_capital*100)-100,1)}%")
         print(f"Total trades:\t\t{wins+losses}")
         print(f"Wins:\t\t\t{wins} ({win_rate}%)")
         print(f"Losses:\t\t\t{losses} ({loss_rate}%)")
