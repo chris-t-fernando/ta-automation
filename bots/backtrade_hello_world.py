@@ -3,7 +3,7 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 import btalib
 from numpy import NaN
-from feeder import Mocker
+from feeder import Mocker, YFinanceFeeder
 from datetime import timedelta, datetime
 from dateutil.relativedelta import relativedelta
 import pandas as pd
@@ -16,18 +16,18 @@ PROFIT_TARGET = 1.5
 capital = 2000
 starting_capital = capital
 symbol = "IVV.AX"
-interval = "1m"
+interval = "5m"
 window = 7
 
-start = "2022-02-15"
+start = "2022-04-15"
 current = start
 end = "2022-04-17"
 
 position_taken = False
 
-start_dt = datetime.fromisoformat(start)
-current_dt = datetime.fromisoformat(current)
-end_dt = datetime.fromisoformat(end)
+start_dt = datetime.fromisoformat(start).astimezone()
+current_dt = datetime.fromisoformat(current).astimezone()
+end_dt = datetime.fromisoformat(end).astimezone()
 
 losses = 0
 wins = 0
@@ -43,12 +43,12 @@ def get_interval_settings(interval):
     minutes_intervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m"]
     max_period = {
         "1m": 7,
-        "2m": 58,
-        "5m": 50,
-        "15m": 59,
-        "30m": 59,
+        "2m": 60,
+        "5m": 60,
+        "15m": 60,
+        "30m": 60,
         "60m": 500,
-        "90m": 59,
+        "90m": 60,
         "1h": 500,
         "1d": 2000,
         "5d": 500,
@@ -58,15 +58,36 @@ def get_interval_settings(interval):
     }
 
     if interval in minutes_intervals:
-        return relativedelta(minutes=int(interval[:-1])), max_period[interval]
+        return (
+            relativedelta(minutes=int(interval[:-1])),
+            max_period[interval],
+            timedelta(minutes=int(interval[:-1])),
+        )
     elif interval == "1h":
-        return relativedelta(hours=int(interval[:-1])), max_period[interval]
+        return (
+            relativedelta(hours=int(interval[:-1])),
+            max_period[interval],
+            timedelta(hours=int(interval[:-1])),
+        )
     elif interval == "1d" or interval == "5d":
-        return relativedelta(days=int(interval[:-1])), max_period[interval]
+        return (
+            relativedelta(days=int(interval[:-1])),
+            max_period[interval],
+            timedelta(days=int(interval[:-1])),
+        )
     elif interval == "1wk":
-        return relativedelta(weeks=int(interval[:-2])), max_period[interval]
+        return (
+            relativedelta(weeks=int(interval[:-2])),
+            max_period[interval],
+            timedelta(weeks=int(interval[:-2])),
+        )
     elif interval == "1mo" or interval == "3mo":
-        return relativedelta(months=int(interval[:-2])), max_period[interval]
+        raise ValueError("I can't be bothered implementing month intervals")
+        return (
+            relativedelta(months=int(interval[:-2])),
+            max_period[interval],
+            timedelta(months=int(interval[:-1])),
+        )
     else:
         # got an unknown interval
         raise ValueError(f"Unknown interval type {interval}")
@@ -88,13 +109,14 @@ def find_neighbours(value, df, colname, ignore_index):
 
 
 mocker = Mocker(
+    data_source=YFinanceFeeder(),
     real_end=end_dt,
 )
 
 # technology sector
 tech_mocker = Mocker(end_dt)
 
-interval_delta, max_range = get_interval_settings(interval=interval)
+interval_delta, max_range, tick = get_interval_settings(interval=interval)
 bars_start = datetime.now() + timedelta(days=-max_range)
 bars_end = datetime.now()
 
@@ -118,12 +140,13 @@ while True:
             exit()
         print(f"Bad start date. Trying again with range {new_range}")
         mocker = Mocker(
+            data_source=YFinanceFeeder(),
             real_end=end_dt,
         )
-
+        bars_start = datetime.now() + timedelta(days=-new_range)
         df = mocker.get_bars(
             symbol=symbol,
-            start=datetime.now() + timedelta(days=-new_range),
+            start=bars_start,
             end=current_dt,
             interval=interval,
         )
@@ -304,6 +327,9 @@ while True:
             position_taken = True
 
     else:
+        if current_dt > datetime.fromisoformat("2022-04-14 10:00").astimezone():
+            print("fake break")
+
         # we are in sell/stop loss mode
         last_close = df.Close.iloc[-1]
         # print(f"Checking {df.index[-1]}...")
@@ -349,6 +375,10 @@ while True:
             target_profit = PROFIT_TARGET * risk_unit
             target_price = entry_unit + target_profit
 
+            print(
+                f"Met target price on {df_output.index[-1]} and updated target unit price to {target_price}"
+            )
+
         # hit win
         elif last_close >= (entry_unit + risk_unit):
             # sell 25%
@@ -367,6 +397,13 @@ while True:
             target_price = entry_unit + target_profit
 
             print(f"Step #{steps}")
+            print(
+                f"Met target price on {df_output.index[-1]} and updated target unit price to {target_price}"
+            )
+        else:
+            print(
+                f"{current_dt} nothing happened, {target_price} still holds vs last close of {last_close}"
+            )
             # partial_wins += 1
             # print(
             #    f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
@@ -389,26 +426,32 @@ while True:
         # )
         # time.sleep(0.5)
 
-    current_dt += timedelta(days=1)
+    current_dt += tick
     window = 1
     if capital <= starting_capital:
         outcome_text = "gained"
     else:
         outcome_text = "lost"
 
-    if current_dt > datetime.now():
-        win_rate = round(wins / (wins + losses) * 100, 1)
-        loss_rate = 100 - win_rate
+    if current_dt > datetime.now().astimezone():
+        try:
+            win_rate = round(wins / (wins + losses) * 100, 1)
+            loss_rate = 100 - win_rate
+        except ZeroDivisionError:
+            win_rate = 0
+            loss_rate = 0
 
         print(f"================")
-        print(f"Simulation complete")
+        print(f"Simulation complete on {current_dt}")
         print(f"Starting capital:\t{clean(starting_capital)}")
         print(f"Ending capital:\t\t{clean(capital)}")
-        print(f"Change:\t\t{clean(capital-starting_capital)} ({outcome_text} capital)")
+        print(
+            f"Change:\t\t\t{clean(capital-starting_capital)} ({outcome_text} capital)"
+        )
         print(f"% change:\t\t{round((capital/starting_capital*100)-100,1)}")
         print(f"Total trades:\t\t{wins+losses}")
-        print(f"Wins:\t\t{wins} ({win_rate}%)")
-        print(f"Losses:\t\t{losses} ({loss_rate}%)")
+        print(f"Wins:\t\t\t{wins} ({win_rate}%)")
+        print(f"Losses:\t\t\t{losses} ({loss_rate}%)")
 
         break
 

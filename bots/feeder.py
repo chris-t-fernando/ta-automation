@@ -58,11 +58,11 @@ class Mocker:
     current: datetime
     interval: str
     initialised: bool = False
-    yf
     bars: df
 
     def __init__(
         self,
+        data_source,
         real_end: datetime = None,
     ):
         if real_end == None:
@@ -70,12 +70,12 @@ class Mocker:
         else:
             self.real_end = real_end.astimezone()
 
-    def get_bars(self, symbol: str, start: str, end: str, interval: str = "1d"):
-        # yf/pandas will drop time and timezone is interval is greater than 24 hours
-        if not self.initialised:
-            self.yf = YFinanceFeeder()
+        self.data_source = data_source
 
-            self.bars = self.yf.get_bars(
+    def get_bars(self, symbol: str, start: str, end: str, interval: str = "1d"):
+        # yf/pandas will drop time and timezone if interval is greater than 24 hours
+        if not self.initialised:
+            self.bars = self.data_source.get_bars(
                 symbol=symbol, start=start, end=self.real_end, interval=interval
             )
 
