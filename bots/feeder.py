@@ -84,17 +84,38 @@ class Mocker:
                 symbol=symbol, start=start, end=self.real_end, interval=interval
             )
 
-            self.symbol = symbol
-            self.start = start
-            self.current = end
-            self.interval = interval
-            self.initialised = True
-
             self.bars = self.bars.tz_localize(None)
 
             interval_delta, max_range, tick = self.get_interval_settings(
                 interval=interval
             )
+
+            # if len(self.bars) == 0:
+            #    raise ValueError("No rows. Check symbol exists and dates provided")
+            if len(self.bars) == 0:
+                new_range = max_range
+                # something went wrong - usually bad symbol and search parameters
+                while len(self.bars) == 0:
+                    new_range -= 1
+                    if new_range == 0:
+                        print(f"New range got to zero?!")
+                        exit()
+                    print(f"Bad start date. Trying again with range {new_range}")
+
+                    bars_start = datetime.now() + timedelta(days=-new_range)
+
+                    self.bars = self.data_source.get_bars(
+                        symbol=symbol,
+                        start=bars_start,
+                        end=self.real_end,
+                        interval=interval,
+                    )
+
+            self.symbol = symbol
+            self.start = start
+            self.current = end
+            self.interval = interval
+            self.initialised = True
 
             if do_macd:
                 # do it
@@ -146,7 +167,11 @@ class Mocker:
 
                     self.bars.at[d, "macd_cycle"] = cycle
 
-                if self.symbol != symbol or self.start != start or self.interval != interval:
+                if (
+                    self.symbol != symbol
+                    or self.start != start
+                    or self.interval != interval
+                ):
                     raise MockerException(
                         "Can't change symbol, start or interval once instantiated!"
                     )
@@ -174,13 +199,13 @@ class Mocker:
     def get_interval_settings(self, interval):
         minutes_intervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m"]
         max_period = {
-            "1m": 7,
-            "2m": 60,
-            "5m": 60,
-            "15m": 60,
-            "30m": 60,
+            "1m": 6,
+            "2m": 59,
+            "5m": 59,
+            "15m": 59,
+            "30m": 59,
             "60m": 500,
-            "90m": 60,
+            "90m": 59,
             "1h": 500,
             "1d": 2000,
             "5d": 500,

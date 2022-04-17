@@ -1,31 +1,14 @@
-import warnings
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
-
 from numpy import NaN
 from feeder import Mocker, YFinanceFeeder
 from datetime import timedelta, datetime
 from dateutil.relativedelta import relativedelta
-import pandas as pd
-import matplotlib.pyplot as plt
-import time
 from buyorder import Purchase
 from math import floor
 
-PROFIT_TARGET = 1.5
-FAST_MODE = True  # don't use tick to get next period, use next entry in dataframe
-capital = 2000
-starting_capital = capital
-symbol = "ADA-USD"
-interval = "1h"
 
-start = "2021-12-01"
-current = start
-end = "2022-04-13"
-
-start_dt = datetime.fromisoformat(start)
-current_dt = datetime.fromisoformat(current)
-end_dt = datetime.fromisoformat(end)
+def clean(number):
+    number = round(number, 2)
+    return "{:,}".format(number)
 
 
 # internal variables, not inputs
@@ -34,53 +17,48 @@ losses = 0
 wins = 0
 partial_wins = 0
 
+## INPUTS AND CONSTANTS
+PROFIT_TARGET = 1.5
+FAST_MODE = True  # don't use tick to get next period, use next entry in dataframe
+capital = 2000
+starting_capital = capital
+symbol = "ADA-USD"
+interval = "15m"
 
-def clean(number):
-    number = round(number, 2)
-    return "{:,}".format(number)
+start = "2022-03-18"
+current = start
+end = "2022-04-13"
 
+# setup
+start_dt = datetime.fromisoformat(start)
+current_dt = datetime.fromisoformat(current)
+end_dt = datetime.fromisoformat(end)
 
-mocker = Mocker(
+backtest_source = Mocker(
     data_source=YFinanceFeeder(),
     real_end=end_dt,
 )
 
-# technology sector
-tech_mocker = Mocker(end_dt)
-
-interval_delta, max_range, tick = mocker.get_interval_settings(interval=interval)
+interval_delta, max_range, tick = backtest_source.get_interval_settings(
+    interval=interval
+)
 bars_start = datetime.now() + timedelta(days=-max_range)
 bars_end = datetime.now()
 
-# todo: change this to use the actual requested start date
+
 # todo: get a better signal
 # todo: why is the EMA always <200? even in assets that seem like they're doing alright
 while True:
-    df = mocker.get_bars(
+    df = backtest_source.get_bars(
         symbol=symbol, start=bars_start, end=current_dt, interval=interval, do_macd=True
     )
     if len(df) == 0:
-        new_range = max_range
-
-    while len(df) == 0:
-        new_range -= 1
-        if new_range == 0:
-            print(f"New range got to zero?!")
-            exit()
-        print(f"Bad start date. Trying again with range {new_range}")
-        mocker = Mocker(
-            data_source=YFinanceFeeder(),
-            real_end=end_dt,
+        print(
+            f"Error - dataframe is empty. Check symbol exists or reduce search timespan"
         )
-        bars_start = datetime.now() + timedelta(days=-new_range)
-        df = mocker.get_bars(
-            symbol=symbol,
-            start=bars_start,
-            end=current_dt,
-            interval=interval,
-            do_macd=True,
-        )
+        exit()
 
+    # need to make a copy of df, because the TA library gets pantsy if you add columns to it
     df_output = df.copy(deep=True)
 
     if position_taken == False:
@@ -106,7 +84,7 @@ while True:
             == 0
         ):
             # no signal
-            print(f"{current_dt} - no signal\r", end="")
+            print(f"\r{current_dt} - no signal", end="")
         else:
             # STEP 4: PREP FOR AN ORDER!
             crossover_index = df_output.loc[
@@ -188,10 +166,14 @@ while True:
             win_rate = wins / (wins + losses) * 100
 
             trade_duration = df_output.index[-1] - trade_date
+            trade_iteration_count = df_output.index.get_loc(
+                df_output.index[-1]
+            ) - df_output.index.get_loc(trade_date)
             print(
-                f"Trade ran for {trade_duration.days} days and {trade_won} and hit stop loss ({clean(last_close)} vs {clean(stop_unit)}). Win rate {round(win_rate,1)}%, balance {clean(capital)} (gain/loss of {clean(capital-starting_capital)})"
+                f"\rTrade ran for {trade_iteration_count} iterations ({trade_duration.days} days) and {trade_won}. Increased stop loss {steps} times before hitting stop loss ({clean(last_close)} vs {clean(stop_unit)}). Win rate {round(win_rate,1)}%, balance {clean(capital)} (gain/loss of {clean(capital-starting_capital)})",
+                end="",
             )
-            print(f"======================")
+            print(f"\n===============================================================")
             position_taken = False
 
         # hit win point, take 50% of winnings
@@ -210,7 +192,7 @@ while True:
             target_price = entry_unit + target_profit
 
             print(
-                f"{df_output.index[-1]} Met target price, new target price {clean(target_price)}, new stop price {clean(stop_unit)}"
+                f"\r{df_output.index[-1]} Met target price, new target price {clean(target_price)}, new stop price {clean(stop_unit)}"
             )
 
         # hit win
@@ -230,27 +212,20 @@ while True:
             target_profit = PROFIT_TARGET * risk_unit
             target_price = entry_unit + target_profit
 
-            print(f"Step #{steps}")
+            # print(f"Step #{steps}")
             print(
-                f"{df_output.index[-1]} Met target price, new target price {clean(target_price)}, new stop price {clean(stop_unit)}"
+                f"\r{df_output.index[-1]} Met target price, new target price {clean(target_price)}, new stop price {clean(stop_unit)}",
+                end="",
             )
         else:
             print(
-                f"{current_dt} nothing happened, target price {clean(target_price)} / stop loss {clean( stop_unit)} holds vs last close of {clean(last_close)}\r",
+                f"\r{current_dt} nothing happened, target price {clean(target_price)} / stop loss {clean( stop_unit)} holds vs last close of {clean(last_close)}",
                 end="",
             )
 
-    pauses = ["2022-02-23 11:00:00", "2022-03-08 16:00:00", "2022-03-11 15:00:00"]
-    p_dates = []
-    for p in pauses:
-        p_dates.append(datetime.fromisoformat(p))
-
-    if current_dt in p_dates:
-        print("banana")
-
     # FAST_MODE means just jump to the next entry in the df, as opposed to ticking the clock (even at times when a market is shut so there'll be no data)
     if FAST_MODE:
-        current_dt = mocker.get_next()
+        current_dt = backtest_source.get_next()
         if current_dt == False:
             current_dt = datetime.now() + relativedelta(minutes=100)
     else:
@@ -263,7 +238,7 @@ while True:
         else:
             current_holding_value = 0
 
-        if (capital + current_holding_value) <= starting_capital:
+        if (capital + current_holding_value) >= starting_capital:
             outcome_text = "gained"
         else:
             outcome_text = "lost"
