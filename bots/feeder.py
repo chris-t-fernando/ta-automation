@@ -85,6 +85,10 @@ class Mocker:
             self.interval = interval
             self.initialised = True
 
+            self.bars = self.bars.tz_localize(None)
+
+            # self.bars['time'].dt.tz_localize(None)
+
         if self.symbol != symbol or self.start != start or self.interval != interval:
             raise MockerException(
                 "Can't change symbol, start or interval once instantiated!"
@@ -100,8 +104,12 @@ class Mocker:
         #            raise ValueError(
         #                f"When interval is set to minutes, date/time must be specified similar to 2022-03-30T00:00:00+10:00. Found {end}"
         #            )
+        self.last_end = end
 
         return self.bars.loc[:end]
+
+    def get_next(self):
+        return self.bars.loc[self.bars.index > self.last_end].index[0]
 
 
 # self.bars.index

@@ -13,21 +13,27 @@ from buyorder import Purchase
 from math import floor
 
 PROFIT_TARGET = 1.5
+FAST_MODE = True  # don't use tick to get next period, use next entry in dataframe
 capital = 2000
 starting_capital = capital
 symbol = "IVV.AX"
 interval = "5m"
-window = 7
+# window = 7
 
-start = "2022-04-15"
+start = "2022-02-18"
 current = start
 end = "2022-04-17"
 
 position_taken = False
 
-start_dt = datetime.fromisoformat(start).astimezone()
-current_dt = datetime.fromisoformat(current).astimezone()
-end_dt = datetime.fromisoformat(end).astimezone()
+# start_dt = datetime.fromisoformat(start).astimezone()
+# current_dt = datetime.fromisoformat(current).astimezone()
+# end_dt = datetime.fromisoformat(end).astimezone()
+
+start_dt = datetime.fromisoformat(start)
+current_dt = datetime.fromisoformat(current)
+end_dt = datetime.fromisoformat(end)
+
 
 losses = 0
 wins = 0
@@ -231,7 +237,8 @@ while True:
             # df_output["macd_cycle"].loc[d] = cycle
 
         # STEP 3: DID WE FIND A SIGNAL? BAIL OUT IF NOT
-        window_start = df_output.index[-1] - relativedelta(days=window)
+        # window_start = df_output.index[-1] - relativedelta(days=window)
+        window_start = df_output.index[-1]
 
         if (
             len(
@@ -241,14 +248,14 @@ while True:
                 df_output.loc[
                     (df_output.macd_crossover == True)
                     & (df_output.macd_macd < 0)
-                    & (df_output.index > window_start)
+                    & (df_output.index == current_dt)
                 ]
             )
             == 0
         ):
             # no signal
-            # print(f"{current_dt} No signal in the last {window} days")
-            ...
+            # print(f"{current_dt} No signal in the last {window} days"))
+            print(f"{current_dt} - no signal\r", end="")
         else:
             # STEP 4: PREP FOR AN ORDER!
             crossover_index = df_output.loc[
@@ -327,7 +334,8 @@ while True:
             position_taken = True
 
     else:
-        if current_dt > datetime.fromisoformat("2022-04-14 10:00").astimezone():
+        # if current_dt > datetime.fromisoformat("2022-04-14 10:00").astimezone():
+        if current_dt > datetime.fromisoformat("2022-04-14 10:00"):
             print("fake break")
 
         # we are in sell/stop loss mode
@@ -362,7 +370,8 @@ while True:
             order.sell_units(sell_price=last_close, unit_quantity=units_to_sell)
 
             # and update stop loss
-            stop_unit = last_close * 0.95
+            if stop_unit < last_close * 0.99:
+                stop_unit = last_close * 0.99
 
             # and update target_price
 
@@ -376,7 +385,7 @@ while True:
             target_price = entry_unit + target_profit
 
             print(
-                f"Met target price on {df_output.index[-1]} and updated target unit price to {target_price}"
+                f"{df_output.index[-1]} Met target price, new target price {clean(target_price)}, new stop price {clean(stop_unit)}"
             )
 
         # hit win
@@ -387,9 +396,9 @@ while True:
             order.sell_units(sell_price=last_close, unit_quantity=units_to_sell)
 
             # and update stop loss
-            stop_unit = (
-                last_close * 0.98
-            )  #                                                     ************ HARDCODED BE SMARTER AND USE MACD DIFF
+            if stop_unit < last_close * 0.99:
+                stop_unit = last_close * 0.99
+                #                                                     ************ HARDCODED BE SMARTER AND USE MACD DIFF
 
             steps += 1
             risk_unit = original_risk_unit * steps
@@ -398,11 +407,12 @@ while True:
 
             print(f"Step #{steps}")
             print(
-                f"Met target price on {df_output.index[-1]} and updated target unit price to {target_price}"
+                f"{df_output.index[-1]} Met target price, new target price {clean(target_price)}, new stop price {clean(stop_unit)}"
             )
         else:
             print(
-                f"{current_dt} nothing happened, {target_price} still holds vs last close of {last_close}"
+                f"{current_dt} nothing happened, target price {clean(target_price)} / stop loss {clean( stop_unit)} holds vs last close of {clean(last_close)}\r",
+                end="",
             )
             # partial_wins += 1
             # print(
@@ -426,14 +436,19 @@ while True:
         # )
         # time.sleep(0.5)
 
-    current_dt += tick
-    window = 1
-    if capital <= starting_capital:
-        outcome_text = "gained"
+    if FAST_MODE:
+        current_dt = mocker.get_next()
     else:
-        outcome_text = "lost"
+        current_dt += tick
 
-    if current_dt > datetime.now().astimezone():
+    # window = 1
+
+    # if current_dt > datetime.now().astimezone():
+    if current_dt > datetime.now():
+        if capital <= starting_capital:
+            outcome_text = "gained"
+        else:
+            outcome_text = "lost"
         try:
             win_rate = round(wins / (wins + losses) * 100, 1)
             loss_rate = 100 - win_rate
