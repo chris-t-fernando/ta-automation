@@ -363,9 +363,10 @@ while True:
     if current_dt > datetime.now():
         # BUG this if statement also need to include the value of currently held units
         if position_taken:
-            current_holding_value = order.get_held_value()
+            current_holding_value = order.get_held_value(df_output["Close"].iloc[-1])
         else:
             current_holding_value = 0
+
         if (capital + current_holding_value) <= starting_capital:
             outcome_text = "gained"
         else:
