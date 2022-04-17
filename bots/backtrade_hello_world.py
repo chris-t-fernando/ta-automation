@@ -17,24 +17,19 @@ FAST_MODE = True  # don't use tick to get next period, use next entry in datafra
 capital = 2000
 starting_capital = capital
 symbol = "IVV.AX"
-interval = "1h"
-# window = 7
+interval = "1d"
 
 start = "2022-02-18"
 current = start
 end = "2022-04-17"
-
-position_taken = False
-
-# start_dt = datetime.fromisoformat(start).astimezone()
-# current_dt = datetime.fromisoformat(current).astimezone()
-# end_dt = datetime.fromisoformat(end).astimezone()
 
 start_dt = datetime.fromisoformat(start)
 current_dt = datetime.fromisoformat(current)
 end_dt = datetime.fromisoformat(end)
 
 
+# internal variables, not inputs
+position_taken = False
 losses = 0
 wins = 0
 partial_wins = 0
@@ -99,21 +94,6 @@ def get_interval_settings(interval):
         raise ValueError(f"Unknown interval type {interval}")
 
 
-def find_neighbours(value, df, colname, ignore_index):
-    return_dict = {}
-
-    exactmatch = df[df[colname] == value]
-    # exactmatch.drop([ignore_index], axis=0, inplace=True)
-    if not exactmatch.empty:
-        return_dict["higher"] = exactmatch.index
-        return_dict["lower"] = exactmatch.index
-        return return_dict
-    else:
-        return_dict["higher"] = df[df[colname] > value][colname].idxmin()
-        return_dict["lower"] = df[df[colname] < value][colname].idxmax()
-        return return_dict
-
-
 mocker = Mocker(
     data_source=YFinanceFeeder(),
     real_end=end_dt,
@@ -161,26 +141,10 @@ while True:
 
     if position_taken == False:
         # STEP 0: GET EMA FOR THE MARKET AS A WHOLE
-        # get tech stock for use as EMA signal
-        # df_tech = tech_mocker.get_bars(
-        #    # todo: dynamic lookup of market comparison                                             *****************
-        #    symbol="XLK",
-        #    # todo: fix hardcoded days                                                              *****************
-        #    start=bars_start,
-        #    # i dunno about having these two dataframes with different end dates                    *****************
-        #    end=current_dt,
-        #    interval=interval,
-        # )
+        # todo
 
         # STEP 1: are we in a bull market?
-        # this should be done against the whole market but i don't know how to do that for crypto stocks?
-        # ema = btalib.ema(df)
-        # df_output["ema"] = ema.df
-
-        # todo: delete these lines once you work out what kind of market this is                    ******************
-        # if ema.df["ema"].iloc[-1] < 200:
-        #    print(f"Breaking, not a bull market)
-        #    break
+        # todo
 
         # STEP 2: has there been a crossover since our last run?
         macd = btalib.macd(df)
@@ -191,10 +155,6 @@ while True:
         df_output["macd_signal_crossover"] = False
         df_output["macd_above_signal"] = False
         df_output["macd_cycle"] = None
-
-        # todo: take out this fudged attempt at showing crossover                                   *******************
-        # fake_loc = df_output.index.get_loc("2022-03-22 10:00:00-04:00")
-        # df_output.macd_histogram.iloc[fake_loc] = -1
 
         # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
         cycle = None
@@ -237,14 +197,10 @@ while True:
             # df_output["macd_cycle"].loc[d] = cycle
 
         # STEP 3: DID WE FIND A SIGNAL? BAIL OUT IF NOT
-        # window_start = df_output.index[-1] - relativedelta(days=window)
         window_start = df_output.index[-1]
 
         if (
             len(
-                # df_output.loc[df_output.macd_histogram < 0].loc[
-                #    df_output.macd_crossover == True
-                # ]
                 df_output.loc[
                     (df_output.macd_crossover == True)
                     & (df_output.macd_macd < 0)
@@ -254,7 +210,6 @@ while True:
             == 0
         ):
             # no signal
-            # print(f"{current_dt} No signal in the last {window} days"))
             print(f"{current_dt} - no signal\r", end="")
         else:
             # STEP 4: PREP FOR AN ORDER!
@@ -264,7 +219,6 @@ while True:
             crossover_record = df_output.loc[[crossover_index]]
             crossover_index_position = df_output.index.get_loc(crossover_index)
 
-            # entry_unit = crossover_record.Close.values[0]
             entry_unit = df_output.Close.iloc[-1]
             # first start with calculating risk and stop loss
             # stop loss is based on the lowest unit price since this cycle began
@@ -284,20 +238,7 @@ while True:
             # and for informational/confidence purposes, hold on to the intervals since this happened
             intervals_since_stop = len(df_output.loc[stop_unit_date:])
 
-            # first need to get the last time the asset closed at this price
-            # nearest_close = find_neighbours(
-            #    entry_unit,
-            #    df_output.iloc[: (crossover_index_position + 1)],
-            #    "Close",
-            #    crossover_index,
-            # )
-
-            # get the price at the most recent point where signal crossed over macd
-
-            # stop_unit = last_crossover.Close.iloc[-1]
-            # df_output.Close.loc[
-            #    nearest_close["lower"] : crossover_index
-            # ].min()
+            # calculate other order variables
             trade_date = df_output.index[-1]
             steps = 1
             units = floor(capital / entry_unit)
@@ -334,14 +275,8 @@ while True:
             position_taken = True
 
     else:
-        # if current_dt > datetime.fromisoformat("2022-04-14 10:00").astimezone():
-        if current_dt > datetime.fromisoformat("2022-04-14 10:00"):
-            print("fake break")
-
         # we are in sell/stop loss mode
         last_close = df.Close.iloc[-1]
-        # print(f"Checking {df.index[-1]}...")
-        # first check to see if last close is below stop loss
 
         # stop loss!
         if last_close <= stop_unit:
@@ -373,13 +308,7 @@ while True:
             if stop_unit < last_close * 0.99:
                 stop_unit = last_close * 0.99
 
-            # and update target_price
-
-            # sale_price = units * last_close
-            # capital = last_close * units
-            # position_taken = False
-
-            steps += 1
+            steps += 1  #                                                                    ############## BADLY NAMED VARIABLE
             risk_unit = original_risk_unit * steps
             target_profit = PROFIT_TARGET * risk_unit
             target_price = entry_unit + target_profit
@@ -414,28 +343,16 @@ while True:
                 f"{current_dt} nothing happened, target price {clean(target_price)} / stop loss {clean( stop_unit)} holds vs last close of {clean(last_close)}\r",
                 end="",
             )
-            # partial_wins += 1
-            # print(
-            #    f"Move 25% and move stop loss and set profit 2 * risk. {wins} wins so far"
-            # )
 
-            # if we earn the risk amount:
-            # take 25% of the profit
-            # move stop loss to where we are now/move our break even to where we are now
-            # new profit target of 2 times the original risk
+    pauses = ["2022-02-23 11:00:00", "2022-03-08 16:00:00", "2022-03-11 15:00:00"]
+    p_dates = []
+    for p in pauses:
+        p_dates.append(datetime.fromisoformat(p))
 
-            # stop_unit = new_stop_loss
-            # risk_unit = entry_unit - stop_unit
-            # risk_value = units * risk_unit
-            # target_profit = PROFIT_TARGET * risk_unit
-            # target_price = entry_unit + target_profit
+    if current_dt in p_dates:
+        print("banana")
 
-        # else:
-        # print(
-        #    f"Last close {last_close} did not trigger stop_loss {stop_unit} or target price {(entry_unit + risk_unit)}"
-        # )
-        # time.sleep(0.5)
-
+    # FAST_MODE means just jump to the next entry in the df, as opposed to ticking the clock (even at times when a market is shut so there'll be no data)
     if FAST_MODE:
         current_dt = mocker.get_next()
         if current_dt == False:
@@ -443,14 +360,17 @@ while True:
     else:
         current_dt += tick
 
-    # window = 1
-
-    # if current_dt > datetime.now().astimezone():
     if current_dt > datetime.now():
-        if capital <= starting_capital:
+        # BUG this if statement also need to include the value of currently held units
+        if position_taken:
+            current_holding_value = order.get_held_value()
+        else:
+            current_holding_value = 0
+        if (capital + current_holding_value) <= starting_capital:
             outcome_text = "gained"
         else:
             outcome_text = "lost"
+
         try:
             win_rate = round(wins / (wins + losses) * 100, 1)
             loss_rate = 100 - win_rate
