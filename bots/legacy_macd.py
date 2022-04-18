@@ -6,6 +6,7 @@ from swyftx_wrapper import SwyftxAPI
 from math import floor
 import pandas as pd
 import boto3
+import json
 
 
 def clean(number):
@@ -218,101 +219,106 @@ class BackTrade:
                     self.skipped_trades += 1
                     self.skipped_trades_sma += 1
 
-        else:
-            # we have taken a position and need to monitor
-            last_close = df.Close.iloc[-1]
-
-            # stop loss!
-            if last_close <= self.stop_unit:
-                self.order.sell_units(sell_price=last_close)
-                self.capital = self.order.get_returns() + self.leftover_capital
-                if self.stop_unit > self.original_stop:
-                    self.wins += 1
-                    self.trade_won = "WON"
-                else:
-                    self.losses += 1
-                    self.trade_won = "LOST"
-
-                self.win_rate = self.wins / (self.wins + self.losses) * 100
-
-                self.trade_duration = df_output.index[-1] - self.trade_date
-                self.trade_iteration_count = df_output.index.get_loc(
-                    df_output.index[-1]
-                ) - df_output.index.get_loc(self.trade_date)
-                print(
-                    f"\rTrade ran for {self.trade_iteration_count} intervals ({self.trade_duration.days} days) and {self.trade_won}. Increased stop loss {self.steps} times before hitting stop loss ({clean(last_close)} vs {clean(self.stop_unit)}). Win rate {round(self.win_rate,1)}%, balance {clean(self.capital)} (gain/loss of {clean(self.capital-self.starting_capital)})",
-                    end="",
-                )
-                print(
-                    f"\n==============================================================="
-                )
-                self.position_taken = False
-
-            # hit win point, take 50% of winnings
-            elif last_close >= self.target_price:
-                self.held = self.order.get_units()
-                self.units_to_sell = floor(self.held * 0.50)
-                self.order.sell_units(
-                    sell_price=last_close, unit_quantity=self.units_to_sell
-                )
-
-                # and update stop loss
-                if self.stop_unit < last_close * 0.99:
-                    self.stop_unit = last_close * 0.99
-
-                self.steps += 1  #                                                                    ############## BADLY NAMED VARIABLE
-                self.risk_unit = self.original_risk_unit * self.steps
-                self.target_profit = self.PROFIT_TARGET * self.risk_unit
-                self.target_price = self.entry_unit + self.target_profit
-
-                print(
-                    f"\r{df_output.index[-1]} Met target price, new target price {clean(self.target_price)}, new stop price {clean(self.stop_unit)}"
-                )
-
-            # hit win
-            elif last_close >= (self.entry_unit + self.risk_unit):
-                # sell 25%
-                self.held = self.order.get_units()
-                self.units_to_sell = floor(self.held * 0.25)
-                self.order.sell_units(
-                    sell_price=last_close, unit_quantity=self.units_to_sell
-                )
-
-                # and update stop loss
-                if self.stop_unit < last_close * 0.99:
-                    self.stop_unit = last_close * 0.99
-                    #                                                     ************ HARDCODED BE SMARTER AND USE MACD DIFF
-
-                self.steps += 1
-                self.risk_unit = self.original_risk_unit * self.steps
-                self.target_profit = self.PROFIT_TARGET * self.risk_unit
-                self.target_price = self.entry_unit + self.target_profit
-
-                # print(f"Step #{steps}")
-                print(
-                    f"\r{df_output.index[-1]} Met target price, new target price {clean(self.target_price)}, new stop price {clean(self.stop_unit)}",
-                    end="",
-                )
-            elif self.verbose:
-                print(
-                    f"\r{self.current_dt} nothing happened, target price {clean(self.target_price)} / stop loss {clean(self.stop_unit)} holds vs last close of {clean(last_close)}",
-                    end="",
-                )
-
         # FAST_MODE means just jump to the next entry in the df, as opposed to ticking the clock (even at times when a market is shut so there'll be no data)
-        if self.FAST_MODE:
-            next_key = self.backtest_source.get_next()
 
-            if next_key == False:
-                self.complete = True
-                return False
+    def get_sells(self):
+        if self.complete == True:
+            return None
 
-            self.current_dt = next_key
-            # self.current_dt = datetime.now() + relativedelta(
-            #    minutes=100
-            # )  #   just some fake number that's beyond the horizon we're searching for so that the iteration stops
-        else:
-            self.current_dt += self.tick
+        df = self.backtest_source.get_bars(
+            symbol=self.symbol,
+            start=self.bars_start,
+            end=self.current_dt,
+            interval=self.interval,
+            do_macd=True,
+            do_sma=True,
+        )
+        if len(df) == 0:
+            print(
+                f"Error - dataframe is empty. Check symbol exists or reduce search timespan"
+            )
+            exit()
+
+        # need to make a copy of df, because the TA library gets pantsy if you add columns to it
+        df_output = df.copy(deep=True)
+
+        # we have taken a position and need to monitor
+        last_close = df.Close.iloc[-1]
+
+        # stop loss!
+        if last_close <= self.stop_unit:
+            self.order.sell_units(sell_price=last_close)
+            self.capital = self.order.get_returns() + self.leftover_capital
+            if self.stop_unit > self.original_stop:
+                self.wins += 1
+                self.trade_won = "WON"
+            else:
+                self.losses += 1
+                self.trade_won = "LOST"
+
+            self.win_rate = self.wins / (self.wins + self.losses) * 100
+
+            self.trade_duration = df_output.index[-1] - self.trade_date
+            self.trade_iteration_count = df_output.index.get_loc(
+                df_output.index[-1]
+            ) - df_output.index.get_loc(self.trade_date)
+            print(
+                f"\rTrade ran for {self.trade_iteration_count} intervals ({self.trade_duration.days} days) and {self.trade_won}. Increased stop loss {self.steps} times before hitting stop loss ({clean(last_close)} vs {clean(self.stop_unit)}). Win rate {round(self.win_rate,1)}%, balance {clean(self.capital)} (gain/loss of {clean(self.capital-self.starting_capital)})",
+                end="",
+            )
+            print(f"\n===============================================================")
+            self.position_taken = False
+
+        # hit win point, take 50% of winnings
+        elif last_close >= self.target_price:
+            self.held = self.order.get_units()
+            self.units_to_sell = floor(self.held * 0.50)
+            self.order.sell_units(
+                sell_price=last_close, unit_quantity=self.units_to_sell
+            )
+
+            # and update stop loss
+            if self.stop_unit < last_close * 0.99:
+                self.stop_unit = last_close * 0.99
+
+            self.steps += 1  #                                                                    ############## BADLY NAMED VARIABLE
+            self.risk_unit = self.original_risk_unit * self.steps
+            self.target_profit = self.PROFIT_TARGET * self.risk_unit
+            self.target_price = self.entry_unit + self.target_profit
+
+            print(
+                f"\r{df_output.index[-1]} Met target price, new target price {clean(self.target_price)}, new stop price {clean(self.stop_unit)}"
+            )
+
+        # hit risk win
+        elif last_close >= (self.entry_unit + self.risk_unit):
+            # sell 25%
+            self.held = self.order.get_units()
+            self.units_to_sell = floor(self.held * 0.25)
+            self.order.sell_units(
+                sell_price=last_close, unit_quantity=self.units_to_sell
+            )
+
+            # and update stop loss
+            if self.stop_unit < last_close * 0.99:
+                self.stop_unit = last_close * 0.99
+                #                                                     ************ HARDCODED BE SMARTER AND USE MACD DIFF
+
+            self.steps += 1
+            self.risk_unit = self.original_risk_unit * self.steps
+            self.target_profit = self.PROFIT_TARGET * self.risk_unit
+            self.target_price = self.entry_unit + self.target_profit
+
+            # print(f"Step #{steps}")
+            print(
+                f"\r{df_output.index[-1]} Met target price, new target price {clean(self.target_price)}, new stop price {clean(self.stop_unit)}",
+                end="",
+            )
+        elif self.verbose:
+            print(
+                f"\r{self.current_dt} nothing happened, target price {clean(self.target_price)} / stop loss {clean(self.stop_unit)} holds vs last close of {clean(last_close)}",
+                end="",
+            )
 
     def get_results(self):
         try:
@@ -370,9 +376,23 @@ class BackTrade:
             }
         )
 
+    def move_to_next_interval(self):
+        if self.FAST_MODE:
+            next_key = self.backtest_source.get_next()
+
+            if next_key == False:
+                self.complete = True
+                return False
+
+            self.current_dt = next_key
+
+        else:
+            self.current_dt += self.tick
+
     def do_backtest(self):
         while True:
             self.get_next()
+            self.move_to_next_interval()
             if self.complete:
                 break
 
@@ -451,7 +471,12 @@ def do_ta(job):
             "current_cycle_duration": backtest.intervals_since_stop,
         }
 
-    return {"type": "pass"}
+    return {
+        "type": "pass",
+        "symbol": symbol,
+        "broker": broker,
+        "interval": interval,
+    }
 
 
 # i don't think i need this
@@ -467,17 +492,12 @@ def prioritise_buys(buy_orders):
     return buys + passes
 
 
-def get_funds(jobs):
-    balances = {}
-    # get unique brokers from job list
-    brokers = []
+def setup_brokers(broker_list, ssm=None):
+    broker_set = set(broker_list)
+    api = {}
 
-    for symbol in jobs["symbols"]:
-        brokers.append(symbol["broker"])
-
-    broker_set = set(brokers)
-
-    ssm = boto3.client("ssm")
+    if ssm == None:
+        ssm = boto3.client("ssm")
 
     for broker in broker_set:
         if broker == "swyftx":
@@ -488,7 +508,7 @@ def get_funds(jobs):
                 .get("Parameter")
                 .get("Value")
             )
-            api = SwyftxAPI(api_key=api_key)
+            api[broker] = SwyftxAPI(api_key=api_key)
         elif broker == "alpaca":
             api_key = (
                 ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
@@ -502,11 +522,23 @@ def get_funds(jobs):
                 .get("Parameter")
                 .get("Value")
             )
-            api = AlpacaAPI(alpaca_key_id=api_key, alpaca_secret_key=secret_key)
+            api[broker] = AlpacaAPI(alpaca_key_id=api_key, alpaca_secret_key=secret_key)
         else:
             raise ValueError(f"Unknown broker specified {broker}")
+    return api
 
-        balances[broker] = api.get_account()
+
+def get_funds(jobs):
+    balances = {}
+    # get unique brokers from job list
+    brokers = []
+
+    for symbol in jobs["symbols"]:
+        brokers.append(symbol["broker"])
+
+    api_dict = setup_brokers(broker_list=brokers)
+    for broker in set(brokers):
+        balances[broker] = api_dict[broker].get_account()
 
     return balances
 
@@ -522,49 +554,19 @@ def execute_orders(balances, jobs):
 
     # get unique brokers from job list
     brokers = []
-    broker_api = {}
 
     for job in jobs:
         if job["type"] == "buy":
             brokers.append(job["broker"])
 
-    broker_set = set(brokers)
-
     # instantiate brokers
-    for broker in broker_set:
-        if broker == "swyftx":
-            api_key = (
-                ssm.get_parameter(
-                    Name="/tabot/swyftx/access_token", WithDecryption=True
-                )
-                .get("Parameter")
-                .get("Value")
-            )
-            broker_api[broker] = SwyftxAPI(api_key=api_key)
-        elif broker == "alpaca":
-            api_key = (
-                ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
-                .get("Parameter")
-                .get("Value")
-            )
-            secret_key = (
-                ssm.get_parameter(
-                    Name="/tabot/alpaca/security_key", WithDecryption=True
-                )
-                .get("Parameter")
-                .get("Value")
-            )
-            broker_api[broker] = AlpacaAPI(
-                alpaca_key_id=api_key, alpaca_secret_key=secret_key
-            )
-        else:
-            raise ValueError(f"Unknown broker specified {broker}")
+    api_dict = setup_brokers(broker_list=brokers)
 
-    # now we have instantiated the brokers, we can iterate through the jobs executing the relevant buy jobs
+    # iterate through the jobs executing the relevant buy jobs
     for job in jobs:
         if job["type"] == "buy":
             broker = job["broker"]
-            api = broker_api[broker]
+            api = api_dict[broker]
             symbol = job["symbol"]
             current_balance = balances[broker].assets[api.default_currency]
 
@@ -581,6 +583,24 @@ def execute_orders(balances, jobs):
                 )
 
             job["order_result"] = order_result
+            job["unit_price"] = job["order_result"].unit_price
+            if job["order_result"].status == 4:
+                # no point repeating the filled string
+                job["order_status"] = (
+                    job["order_result"].status_summary
+                    + " (status ID "
+                    + str(job["order_result"].status)
+                    + ")"
+                )
+            else:
+                job["order_status"] = (
+                    job["order_result"].status_summary
+                    + " - "
+                    + job["order_result"].status_text
+                    + " (status ID "
+                    + str(job["order_result"].status)
+                    + ")"
+                )
 
             balances[broker].assets["usd"] = current_balance - ORDER_SIZE
 
@@ -588,13 +608,19 @@ def execute_orders(balances, jobs):
 
 
 def notify(results):
+    print(f"Job report")
+    print(f"====================")
     for job in results:
-        print(f"Job report")
-        print(f"====================")
-        print(f'Symbol: \t\t\t{job["symbol"]}')
-        print(f'Broker: \t\t\t{job["broker"]}')
-        print(f'Target buy price: \t{job["last_price"]}')
-        print(f'Actual buy price: \t{job["unit_price"]}')
+        print(f'Symbol: \t\t{job["symbol"]}')
+        if job["type"] == "pass":
+            print(f"Skipped - no signal found")
+
+        elif job["type"] == "buy":
+            print(f'Broker: \t\t{job["broker"]}')
+            print(f'Order status: \t\t{job["order_status"]}')
+            print(f'Target buy price: \t{job["last_price"]}')
+            print(f'Actual buy price: \t{job["unit_price"]}')
+            print(f"- - - - - - -")
 
     """
         df_report.loc[symbol] = backtest.get_results()
@@ -673,5 +699,181 @@ def buys():
     notify(results=execution_results)
 
 
-def sells():
+def get_rules():
+    ssm = boto3.client("ssm")
+    return json.loads(
+        ssm.get_parameter(Name="/tabot/rules/5m", WithDecryption=False)
+        .get("Parameter")
+        .get("Value")
+    )
+
+
+def validate_rule(rule):
+    required_keys = [
+        "symbol",
+        "original_stop_loss",
+        "current_stop_loss",
+        "original_target_price",
+        "current_target_price",
+        "steps",
+        "original_risk",
+        "purchase_date",
+        "units_held",
+        "units_sold",
+        "units_bought",
+        "win_point_sell_down_pct",
+        "win_point_new_stop_loss_pct",
+        "risk_point_sell_down_pct",
+        "risk_point_new_stop_loss_pct",
+    ]
+
+    rule_keys = rule.keys()
+
+    # duplicate key
+    duplicate_keys = len(set(rule_keys)) - len(rule_keys)
+    if duplicate_keys != 0:
+        raise ValueError(
+            f'Duplicate rules found for symbol {rule["symbol"]}: {str(set(required_keys) ^ set(rule_keys))}'
+        )
+
+    for req_key in required_keys:
+        if req_key not in rule_keys:
+            raise ValueError(
+                f'Invalid rule found for symbol {rule["symbol"]}: {req_key}'
+            )
+
+
+def validate_rules(rules):
+    found_symbols = []
+    for rule in rules:
+        validate_rule(rule)
+        if rule["symbol"] in found_symbols:
+            raise ValueError(f'More than 1 rule found for {rule["symbol"]}')
+
+        found_symbols.append(rule["symbol"])
+
+    return True
+
+
+def get_positions():
+    holdings = {}
+
+    ssm = boto3.client("ssm")
+    api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
+
+    for broker in api_dict:
+        api = api_dict[broker]
+        holdings[broker] = api.list_positions()
+
+    return holdings
+
+
+def check_stop_loss(rule, last_price):
+    if rule["current_stop_loss"] >= last_price:
+        return True
+    else:
+        return False
+
+
+def check_sell_point(rule, last_price):
     ...
+
+
+def check_risk_point(rule, last_price):
+    ...
+
+
+def apply_rules(rules, positions):
+    stop_loss_triggered = []
+    sell_point_triggered = []
+    risk_point_triggered = []
+
+    ssm = boto3.client("ssm")
+
+    for broker in positions:
+        for held in positions[broker]:
+            held_symbol = held.symbol.lower()
+            held_quantity = held.quantity
+
+            for rule in rules:
+                rule_symbol = rule["symbol"].lower()
+                rule_quantity = rule["symbol"]
+
+                if rule_symbol == held_symbol:
+                    # matched a rule and a holding
+                    if check_stop_loss(rule, held):
+                        # stop loss hit!
+                        ...
+                    elif check_sell_point(rule, held):
+                        # hit high watermark of target price
+                        ...
+                    elif check_risk_point(rule, held):
+                        # made our risk point back
+                        ...
+
+
+def get_last_close(positions):
+    ssm = boto3.client("ssm")
+    api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
+
+    for broker in positions:
+        api = api_dict[broker]
+        for position in positions[broker]:
+            last_close = api.get_last_close(position.symbol)
+            print("banana")
+
+
+def sells():
+    rules = get_rules()
+    validate_rules(rules)
+    positions = get_positions()
+    last_close = get_last_close(positions)
+    stopped_orders = apply_rules(
+        rules=rules, positions=positions, last_close=last_close
+    )
+    # stop_loss()
+    # update_stop_loss()
+    # do_pass()
+
+
+# buys()
+sells()
+
+"""
+            {
+                "symbol": "XRP",
+                "original_stop_loss": 0.996667,
+                "current_stop_loss": 0.996667,
+                "original_target_price": 1.03,
+                "current_target_price": 1.03,
+                "steps": 0,
+                "original_risk": 0.0003,
+                "purchase_date": "2022-04-15 15:45:00",
+                "units_held": 3427,
+                "units_sold": 0,
+                "units_bought": 5000,
+                "win_point_sell_down_pct": 0.50,
+                "win_point_new_stop_loss_pct": 0.99,
+                "risk_point_sell_down_pct": 0.25,
+                "risk_point_new_stop_loss_pct": 0.99,
+            },
+            {
+                "symbol": "ADA",
+                "original_stop_loss": 1.2,
+                "current_stop_loss": 1.2,
+                "original_target_price": 1,
+                "current_target_price": 1,
+                "steps": 5,
+                "original_risk": 0.0002,
+                "purchase_date": "2022-04-09 03:00:00",
+                "units_held": 5,
+                "units_sold": 5,
+                "units_bought": 10,
+                "win_point_sell_down_pct": 0.50,
+                "win_point_new_stop_loss_pct": 0.99,
+                "risk_point_sell_down_pct": 0.25,
+                "risk_point_new_stop_loss_pct": 0.99,
+            },
+        ]
+
+"""

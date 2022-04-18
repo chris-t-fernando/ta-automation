@@ -265,6 +265,14 @@ class SwyftxAPI(ITradeAPI):
 
         return return_positions
 
+    def get_last_close(self, symbol: str):
+        if symbol.lower() == self.default_currency:
+            return 1
+        else:
+            return self.api.request(
+                orders.OrdersExchangeRate(buy=symbol, sell=self.default_currency)
+            )
+
     def get_bars(self, symbol: str, start: str, end: str = None, interval: str = "1d"):
         intervals = [
             "1m",

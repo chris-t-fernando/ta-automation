@@ -210,6 +210,10 @@ class AlpacaAPI(ITradeAPI):
     def _translate_bars(self, bars):
         ...
 
+    def get_last_close(self, symbol:str):
+        history = yf.Ticker(symbol).history(interval="1m", actions=False)
+        return history["Close"].iloc[-1]
+
     def get_bars(self, symbol: str, start: str, end: str, interval: str):
         return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False
