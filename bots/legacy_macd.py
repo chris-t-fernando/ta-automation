@@ -7,6 +7,7 @@ from math import floor
 import pandas as pd
 import boto3
 import json
+from pushover import init, Client
 
 
 def clean(number):
@@ -771,7 +772,7 @@ def get_positions():
 def trigger_stop_loss(rule, last_price):
     if rule["current_stop_loss"] >= last_price:
         print(
-            f'{rule["symbol"]}: Stop loss triggered (market {last_price} vs {rule["current_stop_loss"]}'
+            f'{rule["symbol"]}: Stop loss triggered (market {last_price} vs {rule["current_stop_loss"]})'
         )
         return True
     else:
@@ -779,26 +780,38 @@ def trigger_stop_loss(rule, last_price):
 
 
 def trigger_sell_point(rule, last_price):
-    ...
+    if rule["current_target_price"] < last_price:
+        print(
+            f'{rule["symbol"]}: Target price met (market {last_price} vs {rule["current_target_price"]})'
+        )
+        return True
+    else:
+        return False
 
 
 def trigger_risk_point(rule, last_price):
-    ...
+    if (last_price + rule["current_risk"]) < last_price:
+        print(
+            f'{rule["symbol"]}: Risk price met (market {last_price} vs {(last_price + rule["current_risk"])}'
+        )
+        return True
+    else:
+        return False
 
 
-def write_rules(symbol, action: str, new_rule=None):
+def write_rules(symbol: str, action: str, new_rule=None):
     ssm = boto3.client("ssm")
-    rules = json.loads(
-        ssm.get_parameter(Name="/tabot/rules/5m", WithDecryption=False)
-        .get("Parameter")
-        .get("Value")
-    )
+    old_rules = ssm.get_parameter(Name="/tabot/rules/5m").get("Parameter").get("Value")
+    rules = json.loads(old_rules)
 
+    changed = False
     if action == "delete":
         new_rules = []
         for rule in rules:
             if rule["symbol"].lower() != symbol.lower():
                 new_rules.append(rule)
+            else:
+                changed = True
 
     elif action == "replace":
         new_rules = []
@@ -807,15 +820,19 @@ def write_rules(symbol, action: str, new_rule=None):
                 new_rules.append(rule)
             else:
                 new_rules.append(new_rule)
+                changed = True
     else:
         raise Exception("write_rules: No action specified?")
 
-    result = ssm.put_parameter(
-        Name="/tabot/rules/5m",
-        Value=json.dumps(new_rules),
-        Type="String",
-        Overwrite=True,
-    )
+    if changed == True:
+        ssm.put_parameter(
+            Name="/tabot/rules/5m",
+            Value=json.dumps(new_rules),
+            Type="String",
+            Overwrite=True,
+        )
+    else:
+        print(f"Symbol {symbol} - tried updating rules but nothing to change")
 
     return True
 
@@ -832,28 +849,33 @@ def apply_rules(rules, positions, last_close_dict):
     for broker in positions:
         for held in positions[broker]:
             held_symbol = held.symbol.lower()
-            held_quantity = held.quantity
+            held_quantity = float(held.quantity)
             last_close = last_close_dict[held_symbol]
 
             for rule in rules:
                 rule_symbol = rule["symbol"].lower()
-                rule_quantity = rule["symbol"]
 
                 if rule_symbol == held_symbol:
                     # matched a rule and a holding
                     if trigger_stop_loss(rule, last_close):
                         # stop loss hit! liquidate
-                        stop_loss_triggered.append(
-                            {
-                                "symbol": held_symbol,
-                                "last_close": last_close,
-                                "rule": rule,
-                            }
-                        )
-
                         close_response = api_dict[broker].close_position(held_symbol)
 
                         if close_response.success:
+                            # also need to write an updated rule to SSM for next run
+                            updated_rules = write_rules(
+                                action="delete", symbol=held_symbol
+                            )
+
+                            # hold on to this for reporting
+                            stop_loss_triggered.append(
+                                {
+                                    "symbol": held_symbol,
+                                    "last_close": last_close,
+                                    "rule": rule,
+                                }
+                            )
+
                             print(
                                 f"Symbol {held_symbol} hit stop loss and was liquidated"
                             )
@@ -866,14 +888,92 @@ def apply_rules(rules, positions, last_close_dict):
                                 f"CRITICAL: SYMBOL {held_symbol} HIT STOP LOSS {last_close} BUT FAILED TO BE LIQUIDATED"
                             )
 
-                        updated_rules = write_rules(action="delete", symbol=held_symbol)
+                    elif trigger_sell_point(rule, last_close) or trigger_risk_point(
+                        rule, last_close
+                    ):
+                        if trigger_sell_point(rule, last_close):
+                            new_target_pct = rule["win_point_sell_down_pct"]
+                            # reporting
+                            sell_point_triggered.append(
+                                {
+                                    "symbol": held_symbol,
+                                    "last_close": last_close,
+                                    "rule": rule,
+                                }
+                            )
+                        else:
+                            new_target_pct = rule["risk_point_sell_down_pct"]
+                            # reporting
+                            risk_point_triggered.append(
+                                {
+                                    "symbol": held_symbol,
+                                    "last_close": last_close,
+                                    "rule": rule,
+                                }
+                            )
 
-                    elif trigger_sell_point(rule, held):
                         # hit high watermark of target price
-                        ...
-                    elif trigger_risk_point(rule, held):
-                        # made our risk point back
-                        ...
+                        units_to_sell = held_quantity * new_target_pct
+                        sell_response = api_dict[broker].sell_order_market(
+                            symbol=held_symbol, units=units_to_sell
+                        )
+                        sell_value = sell_response.total_value
+
+                        if sell_response.success:
+                            print(
+                                f'Symbol {held_symbol} hit target sale point. Successfully sold {round(rule["win_point_sell_down_pct"]*100,0)}% of units for total value {round(sell_value,2)}'
+                            )
+
+                            new_units_held = (
+                                api_dict[broker]
+                                .get_position(symbol=held_symbol)
+                                .quantity
+                            )
+
+                            updated_ssm_rule = rule.copy()
+
+                            new_units_sold = rule["units_sold"] + sell_response.units
+                            new_sales_obj = {
+                                "units": new_units_sold,
+                                "sale_price": sell_response.unit_price,
+                            }
+                            new_steps = updated_ssm_rule["steps"] + 1
+                            new_risk = rule["original_risk"] * new_steps
+                            new_stop_loss = sell_response.unit_price + new_risk
+
+                            updated_ssm_rule["current_stop_loss"] = new_stop_loss
+                            updated_ssm_rule["current_risk"] = new_risk
+                            updated_ssm_rule["sales"].append(new_sales_obj)
+                            updated_ssm_rule["units_held"] = new_units_held
+                            updated_ssm_rule["units_sold"] = new_units_sold
+                            updated_ssm_rule["steps"] += new_steps
+                            updated_ssm_rule["current_target_price"] = (
+                                updated_ssm_rule["current_target_price"]
+                                + updated_ssm_rule["original_risk"]
+                            )
+
+                            updated_rules = write_rules(
+                                action="replace",
+                                symbol=held_symbol,
+                                new_rule=updated_ssm_rule,
+                            )
+
+                        else:
+                            # need a better way of notifying me of this stuff
+                            print(
+                                f"CRITICAL - SYMBOL {held_symbol} FAILED TO TAKE PROFIT ****** DO NOT IGNORE THIS *****"
+                            )
+                            trigger_results.append(
+                                f"CRITICAL: SYMBOL {held_symbol} FAILED TO TAKE PROFIT"
+                            )
+
+                    else:
+                        print("do nothing")
+    return {
+        "stop_loss": stop_loss_triggered,
+        "sell_point": sell_point_triggered,
+        "risk_point": risk_point_triggered,
+    }
 
 
 def get_last_close(positions):
@@ -889,55 +989,70 @@ def get_last_close(positions):
     return close_dict
 
 
+def notify_sale(order_results):
+    ssm = boto3.client("ssm")
+    pushover_api_key = (
+        ssm.get_parameter(Name="/tabot/pushover/api_key", WithDecryption=False)
+        .get("Parameter")
+        .get("Value")
+    )
+    pushover_user_key = (
+        ssm.get_parameter(Name="/tabot/pushover/user_key", WithDecryption=False)
+        .get("Parameter")
+        .get("Value")
+    )
+    stop_loss = order_results["stop_loss"]
+    sell_point = order_results["sell_point"]
+    risk_point = order_results["risk_point"]
+
+    report_string = "MACD BOT SUMMARY"
+    report_string += "================"
+
+    if len(stop_loss) + len(sell_point) + len(risk_point) == 0:
+        # nothing happened
+        print("No stop loss, risk trigger or target trigger conditions met")
+        exit()
+    else:
+        for stop in stop_loss:
+            stop_rule = stop["rule"]
+            if stop["last_close"] > stop_rule["purchase_price"]:
+                deal_outcome = "win"
+            else:
+                deal_outcome = "loss"
+
+            report_string += (
+                f'{stop["symbol"]}: trade terminated at {stop["last_close"]}'
+            )
+            report_string += f'Deal outcome: {deal_outcome} (purchase price {stop_rule["purchase_price"]} vs {stop["last_close"]}'
+
+        for sell in sell_point:
+            sell_rule = sell["rule"]
+            report_string += f'{sell["symbol"]}: 50% selldown at {sell["last_close"]}'
+            report_string += f'Triggered because {sell["last_close"]} exceeds previous target price of {sell_rule["current_target_price"]}'
+
+        for risk in risk_point:
+            risk_rule = risk["rule"]
+            report_string += f'{risk["symbol"]}: 25% selldown at {risk["last_close"]}'
+            report_string += f'Triggered because {risk["last_close"]} exceeds risk point price of {(risk_rule["current_risk"]+risk_rule["purchase_price"])}'
+
+    init(pushover_api_key)
+    Client(pushover_user_key).send_message(
+        report_string,
+        title=f"MACD bot report",
+    )
+
+
 def sells():
     rules = get_rules()
     validate_rules(rules)
     positions = get_positions()
     last_close = get_last_close(positions)
-    stopped_orders = apply_rules(
+    order_results = apply_rules(
         rules=rules, positions=positions, last_close_dict=last_close
     )
+    notify_sale(order_results)
     # send notifications
 
 
 # buys()
 sells()
-
-"""
-            {
-                "symbol": "XRP",
-                "original_stop_loss": 0.996667,
-                "current_stop_loss": 0.996667,
-                "original_target_price": 1.03,
-                "current_target_price": 1.03,
-                "steps": 0,
-                "original_risk": 0.0003,
-                "purchase_date": "2022-04-15 15:45:00",
-                "units_held": 3427,
-                "units_sold": 0,
-                "units_bought": 5000,
-                "win_point_sell_down_pct": 0.50,
-                "win_point_new_stop_loss_pct": 0.99,
-                "risk_point_sell_down_pct": 0.25,
-                "risk_point_new_stop_loss_pct": 0.99,
-            },
-            {
-                "symbol": "ADA",
-                "original_stop_loss": 1.2,
-                "current_stop_loss": 1.2,
-                "original_target_price": 1,
-                "current_target_price": 1,
-                "steps": 5,
-                "original_risk": 0.0002,
-                "purchase_date": "2022-04-09 03:00:00",
-                "units_held": 5,
-                "units_sold": 5,
-                "units_bought": 10,
-                "win_point_sell_down_pct": 0.50,
-                "win_point_new_stop_loss_pct": 0.99,
-                "risk_point_sell_down_pct": 0.25,
-                "risk_point_new_stop_loss_pct": 0.99,
-            },
-        ]
-
-"""

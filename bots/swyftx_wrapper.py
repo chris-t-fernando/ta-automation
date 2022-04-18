@@ -258,10 +258,14 @@ class SwyftxAPI(ITradeAPI):
         return_positions = []
 
         for position in raw_positions:
-            symbol = self.symbol_id_to_text(id=position["assetId"])
-            return_positions.append(
-                Position(symbol=symbol.lower(), quantity=position["availableBalance"])
-            )
+            # dumb api lets you have incredibly small units
+            if float(position["availableBalance"]) > 100:
+                symbol = self.symbol_id_to_text(id=position["assetId"])
+                return_positions.append(
+                    Position(
+                        symbol=symbol.lower(), quantity=position["availableBalance"]
+                    )
+                )
 
         return return_positions
 
