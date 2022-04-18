@@ -6,7 +6,10 @@ from itradeapi import (
     IAsset,
     NotImplementedException,
 )
+import yfinance as yf
+from datetime import datetime
 from alpaca_trade_api import REST
+import pandas as pd
 
 # CONSTANTS
 MARKET_BUY = 1
@@ -56,6 +59,13 @@ ORDER_MAP = {
 }
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
 
+INTERVAL_MAP = {
+    "1m": "1Min",
+    "5m": "5Min",
+    "15m": "15Min",
+    "1d": "1Day",
+}
+
 
 class Asset(IAsset):
     symbol: str
@@ -67,9 +77,9 @@ class Asset(IAsset):
 
 
 class Account(IAccount):
-    assets: list
+    assets: dict
 
-    def __init__(self, assets: list):
+    def __init__(self, assets: dict):
         self.assets = assets
 
 
@@ -133,9 +143,11 @@ class OrderResult(IOrderResult):
 class AlpacaAPI(ITradeAPI):
     supported_crypto_symbols = []
 
-    def __init__(self, alpaca_key_id: str, alpaca_secret_key: str, environment="paper"):
+    def __init__(
+        self, alpaca_key_id: str, alpaca_secret_key: str, real_money_trading=False
+    ):
         # self.order_types = ORDER_TYPES
-        if environment == "live":
+        if real_money_trading:
             base_url = "https://api.alpaca.markets"
         else:
             base_url = "https://paper-api.alpaca.markets"
@@ -153,7 +165,7 @@ class AlpacaAPI(ITradeAPI):
 
         self.supported_crypto_symbols = self._get_crypto_symbols()
 
-        self.default_currency = "USD"
+        self.default_currency = "usd"
 
     def _get_crypto_symbols(self):
         crypto_symbols = []
@@ -176,7 +188,9 @@ class AlpacaAPI(ITradeAPI):
 
     def get_account(self) -> Account:
         request = self.api.get_account()
-        account = Account([Asset(request.currency, request.cash)])
+        currency = request.currency
+        currency = currency.lower()
+        account = Account({currency: float(request.cash)})
         # account.USD = account.cash
         return account
 
@@ -193,18 +207,14 @@ class AlpacaAPI(ITradeAPI):
             positions.append(Position(symbol=position.symbol, quantity=position.qty))
         return positions
 
-    def get_bars(self, *args, **kwargs):
-        # i think there's probably a better way of doing this
-        if kwargs.get("symbol") != None:
-            symbol = kwargs.get("symbol")
-        else:
-            symbol = args[0]
+    def _translate_bars(self, bars):
+        ...
 
-        if symbol in self.supported_crypto_symbols:
-            return self.api.get_crypto_bars(*args, **kwargs)
-        else:
-            return self.api.get_bars(*args, **kwargs)
-    
+    def get_bars(self, symbol: str, start: str, end: str, interval: str):
+        return yf.Ticker(symbol).history(
+            start=start, end=end, interval=interval, actions=False
+        )
+
     # todo: basically everything after this!
     def _translate_order_types(self, order_type):
         if order_type == "MARKET_BUY":
@@ -228,6 +238,24 @@ class AlpacaAPI(ITradeAPI):
             # side = args[3]
 
         return self.api.submit_order(*args, **kwargs)
+
+    def buy_order_limit(self):
+        ...
+
+    def buy_order_market(self):
+        ...
+
+    def delete_order(self):
+        ...
+
+    def list_orders(self):
+        ...
+
+    def sell_order_limit(self):
+        ...
+
+    def sell_order_market(self):
+        ...
 
     def order_create_by_units(self):
         ...

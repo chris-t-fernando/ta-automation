@@ -1,0 +1,73 @@
+    def get_bars(self, *args, **kwargs):
+        # i think there's probably a better way of doing this
+        # intercept symbol so i can redirect it to the right alpaca query
+        if kwargs.get("symbol") != None:
+            symbol = kwargs.get("symbol")
+        else:
+            symbol = args[0]
+
+        # intercept interval and transpose it to "timeframe", which is what alpaca expects
+        if kwargs.get("interval") != None:
+            interval = kwargs.get("interval")
+            del kwargs["interval"]
+        else:
+            interval = args[1]
+            del args[1]
+
+        if interval not in INTERVAL_MAP:
+            raise ValueError(
+                f"Specified interval {interval} is not accepted by Alpaca. Valid intervals are: {str(INTERVAL_MAP)}"
+            )
+
+        if kwargs.get("start") != None:
+            start = kwargs.get("start")
+            start = datetime.strftime(start, "%Y-%m-%d %H:%M:%S")
+            del kwargs["start"]
+        elif len(args) > 2:
+            start = args[2]
+            start = datetime.strftime(start, "%Y-%m-%d %H:%M:%S")
+            del args[2]
+
+        if kwargs.get("end") != None:
+            end = kwargs.get("end")
+            end = datetime.strftime(end, "%Y-%m-%d %H:%M:%S")
+            del kwargs["end"]
+        elif len(args) > 3:
+            end = args[3]
+            end = datetime.strftime(end, "%Y-%m-%d %H:%M:%S")
+            del args[3]
+
+        timeframe = INTERVAL_MAP[interval]
+
+        if symbol in self.supported_crypto_symbols:
+            bars = self.api.get_crypto_bars(*args, **kwargs, timeframe=timeframe)
+
+        else:
+            bars = self.api.get_bars(*args, **kwargs, timeframe=timeframe)
+
+        # got the values in bars, now need to structure it into a dataframe
+        index = []
+        close = []
+        open = []
+        high = []
+        low = []
+        volume = []
+        for b in bars:
+            index.append(b.t)
+            close.append(b.c)
+            open.append(b.o)
+            high.append(b.h)
+            low.append(b.l)
+            volume.append(b.v)
+
+        d = {
+            "Close": close,
+            "Open": open,
+            "High": high,
+            "Low": low,
+            "Volume": volume,
+        }
+        df_bars = pd.DataFrame(d, index=index)
+
+        df_bars = df_bars.tz_localize(None)
+        return df_bars

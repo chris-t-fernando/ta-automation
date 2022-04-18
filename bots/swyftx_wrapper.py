@@ -81,9 +81,9 @@ class Asset(IAsset):
 
 
 class Account(IAccount):
-    assets: list
+    assets: dict
 
-    def __init__(self, assets: list):
+    def __init__(self, assets: dict):
         self.assets = assets
 
 
@@ -148,8 +148,8 @@ class OrderResult(IOrderResult):
 
 
 # concrete class
-class Swyftx(ITradeAPI):
-    def __init__(self, api_key: str, environment: str = "demo"):
+class SwyftxAPI(ITradeAPI):
+    def __init__(self, api_key: str, real_money_trading: bool = False):
         # this is munted. there's no Markets endpoint in demo?!
         self.api = pyswyft.API(access_token=api_key, environment="live")
         # set up asset lists
@@ -160,11 +160,12 @@ class Swyftx(ITradeAPI):
             self.api.request(markets.MarketsAssets())
         )
 
-        # now use the environment that was actually requested. i hate this.
-        self.api = pyswyft.API(access_token=api_key, environment=environment)
+        if real_money_trading != True:
+            # now use the environment that was actually requested. i hate this.
+            self.api = pyswyft.API(access_token=api_key, environment="demo")
 
         # set up data structures
-        self.default_currency = "AUD"
+        self.default_currency = "USD"
 
     def _structure_asset_dict_by_id(self, asset_dict):
         return_dict = {}
@@ -199,13 +200,28 @@ class Swyftx(ITradeAPI):
             Account: User's trading account information
         """
         # AccountBalance
-        assets = []
+        assets = {}
         request = self.api.request(accounts.AccountBalance())
 
         for asset in request:
             symbol = self.symbol_id_to_text(asset["assetId"])
+            symbol = symbol.lower()
 
-            assets = Asset(symbol=symbol, balance=asset["availableBalance"])
+            # intercept aud and convert it to usd
+            if symbol == "aud":
+                # convert it to usd
+                rate = self.api.request(
+                    orders.OrdersExchangeRate(
+                        buy="USD",
+                        sell="AUD",
+                        amount=asset["availableBalance"],
+                        limit="AUD",
+                    )
+                )
+                symbol = "usd"
+                asset["availableBalance"] = rate["amount"]
+
+            assets[symbol] = float(asset["availableBalance"])
 
         return Account(assets=assets)
 
@@ -256,18 +272,18 @@ class Swyftx(ITradeAPI):
             "1mo",
             "3mo",
         ]
-        if interval in intervals:
+        if interval not in intervals:
             raise ValueError(f"Interval must be one of {str(intervals)}")
 
         if end == None:
             end = datetime.now()
 
-        start = datetime.fromisoformat(start)
+        if type(start) == str:
+            start = datetime.fromisoformat(start)
 
-        thisTicker = yf.Ticker(symbol).history(
+        return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False
         )
-        print("bananS")
 
         # the owner of the pyswyftx library has not implemented Charts????? or swyftx don't offer it??
         # raw_bars = self.api.request(charts.)
@@ -476,7 +492,7 @@ if __name__ == "__main__":
         .get("Value")
     )
 
-    api = Swyftx(api_key=api_key)
+    api = SwyftxAPI(api_key=api_key)
     api.get_bars("SOL-USD", start="2022-04-01T00:00:00+10:00")
 
     api.get_account()

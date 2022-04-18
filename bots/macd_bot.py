@@ -1,8 +1,12 @@
 from datasources import MockDataSource, YFinanceFeeder
 from datetime import timedelta, datetime
+from dateutil import relativedelta
 from purchase import Purchase
 from math import floor
 import pandas as pd
+from alpaca_wrapper import AlpacaAPI
+from swyftx_wrapper import SwyftxAPI
+import boto3
 
 
 def clean(number):
@@ -13,6 +17,7 @@ def clean(number):
 class BackTrade:
     def __init__(
         self,
+        data_source,
         symbol: str,
         capital: float,
         start: str,
@@ -56,8 +61,10 @@ class BackTrade:
         self.current_dt = datetime.fromisoformat(self.current)
         self.end_dt = datetime.fromisoformat(self.end)
 
+        self.data_source = data_source
+
         self.backtest_source = MockDataSource(
-            data_source=YFinanceFeeder(),
+            data_source=data_source,
             real_end=self.end_dt,
         )
 
@@ -73,7 +80,7 @@ class BackTrade:
     # todo: get a better signal
     # todo: why is the EMA always <200? even in assets that seem like they're doing alright
     # while True:
-    def get_next(self):
+    def get_market_data(self):
         if self.complete == True:
             return None
 
@@ -97,115 +104,79 @@ class BackTrade:
 
         # need to make a copy of df, because the TA library gets pantsy if you add columns to it
         df_output = df.copy(deep=True)
+        return df_output
 
-        if self.position_taken == False:
-            # STEP 0: GET EMA FOR THE MARKET AS A WHOLE
-            # todo
+    def do_stuff(self):
 
-            # STEP 1: are we in a bull market?
-            # todo
+        self.entry_unit_price = df_output.Close.iloc[-1]
+        # first start with calculating risk and stop loss
+        # stop loss is based on the lowest unit price since this cycle began
+        # first find the beginning of this cycle, which is when the blue line crossed under the red line
+        self.blue_cycle_start = df_output.loc[
+            (df_output["macd_cycle"] == "blue")
+            & (df_output.index < self.crossover_index)
+        ].index[-1]
+        # then get the lowest close price since the cycle began
+        self.stop_unit = df_output.loc[
+            self.blue_cycle_start : self.crossover_index
+        ].Close.min()
+        self.stop_unit_date = df_output.loc[
+            self.blue_cycle_start : self.crossover_index
+        ].Close.idxmin()
 
-            # STEP 2: has there been a crossover?
-            if (
-                len(
-                    df_output.loc[
-                        (df_output.macd_crossover == True)
-                        & (df_output.macd_macd < 0)
-                        & (df_output.index == self.current_dt)
-                    ]
-                )
-                == 0
-            ):
-                # no signal
-                if self.verbose:
-                    print(f"\r{self.current_dt} - no signal", end="")
-            else:
-                # is SMA good?
-                if (
-                    df_output.iloc[-1].sma_200 > df_output.iloc[-5].sma_200
-                ) or self.ignore_sma:
-                    # STEP 4: PREP FOR AN ORDER!
-                    self.crossover_index = df_output.loc[
-                        (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
-                    ].index[-1]
-                    self.crossover_record = df_output.loc[[self.crossover_index]]
-                    self.crossover_index_position = df_output.index.get_loc(
-                        self.crossover_index
-                    )
+        self.original_stop = self.stop_unit
 
-                    self.entry_unit_price = df_output.Close.iloc[-1]
-                    # first start with calculating risk and stop loss
-                    # stop loss is based on the lowest unit price since this cycle began
-                    # first find the beginning of this cycle, which is when the blue line crossed under the red line
-                    self.blue_cycle_start = df_output.loc[
-                        (df_output["macd_cycle"] == "blue")
-                        & (df_output.index < self.crossover_index)
-                    ].index[-1]
-                    # then get the lowest close price since the cycle began
-                    self.stop_unit = df_output.loc[
-                        self.blue_cycle_start : self.crossover_index
-                    ].Close.min()
-                    self.stop_unit_date = df_output.loc[
-                        self.blue_cycle_start : self.crossover_index
-                    ].Close.idxmin()
+        # and for informational/confidence purposes, hold on to the intervals since this happened
+        self.intervals_since_stop = len(df_output.loc[self.stop_unit_date :])
 
-                    self.original_stop = self.stop_unit
+        # calculate other order variables
+        self.trade_date = df_output.index[-1]
+        self.steps = 1
+        self.units = floor(self.capital / self.entry_unit_price)
+        self.risk_unit = self.entry_unit_price - self.stop_unit
+        self.original_risk_unit = self.risk_unit
+        self.risk_value = self.units * self.risk_unit
+        self.target_profit = self.PROFIT_TARGET * self.risk_unit
+        self.target_price = self.entry_unit_price + self.target_profit
 
-                    # and for informational/confidence purposes, hold on to the intervals since this happened
-                    self.intervals_since_stop = len(
-                        df_output.loc[self.stop_unit_date :]
-                    )
+        self.leftover_capital = self.capital - (self.units * self.entry_unit_price)
 
-                    # calculate other order variables
-                    self.trade_date = df_output.index[-1]
-                    self.steps = 1
-                    self.units = floor(self.capital / self.entry_unit_price)
-                    self.risk_unit = self.entry_unit_price - self.stop_unit
-                    self.original_risk_unit = self.risk_unit
-                    self.risk_value = self.units * self.risk_unit
-                    self.target_profit = self.PROFIT_TARGET * self.risk_unit
-                    self.target_price = self.entry_unit_price + self.target_profit
+        self.order = Purchase(
+            unit_quantity=self.units, unit_price=self.entry_unit_price
+        )
 
-                    self.leftover_capital = self.capital - (
-                        self.units * self.entry_unit_price
-                    )
+        print(f"\n{self.crossover_index}: Found signal")
+        print(f"Strength:\t\tNot sure how I want to do this yet")
+        print(f"MACD:\t\t\t{self.crossover_record.macd_macd.values[0]}")
+        print(f"Signal:\t\t\t{self.crossover_record.macd_signal.values[0]}")
+        print(f"Histogram:\t\t{self.crossover_record.macd_histogram.values[0]}")
+        print(f"Capital:\t\t${clean(self.capital)}")
+        print(f"Units to buy:\t\t{clean(self.units)} units")
+        print(f"Entry point:\t\t${clean(self.entry_unit_price)}")
+        print(f"Stop loss:\t\t${clean(self.stop_unit)}")
+        print(f"Cycle began:\t\t{self.intervals_since_stop} intervals ago")
+        print(
+            f"Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit_price*100,1)}% of unit cost)"
+        )
+        print(
+            f"Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit_price*100,1)}% of unit cost)"
+        )
+        print(
+            f"Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)"
+        )
 
-                    self.order = Purchase(
-                        unit_quantity=self.units, unit_price=self.entry_unit_price
-                    )
+        self.position_taken = True
 
-                    print(f"\n{self.crossover_index}: Found signal")
-                    print(f"Strength:\t\tNot sure how I want to do this yet")
-                    print(f"MACD:\t\t\t{self.crossover_record.macd_macd.values[0]}")
-                    print(f"Signal:\t\t\t{self.crossover_record.macd_signal.values[0]}")
-                    print(
-                        f"Histogram:\t\t{self.crossover_record.macd_histogram.values[0]}"
-                    )
-                    print(f"Capital:\t\t${clean(self.capital)}")
-                    print(f"Units to buy:\t\t{clean(self.units)} units")
-                    print(f"Entry point:\t\t${clean(self.entry_unit_price)}")
-                    print(f"Stop loss:\t\t${clean(self.stop_unit)}")
-                    print(f"Cycle began:\t\t{self.intervals_since_stop} intervals ago")
-                    print(
-                        f"Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit_price*100,1)}% of unit cost)"
-                    )
-                    print(
-                        f"Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit_price*100,1)}% of unit cost)"
-                    )
-                    print(
-                        f"Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)"
-                    )
+        # else:   # not really commented out but whatever
+        print(
+            f"\r{self.current_dt} - found signal but SMA is trending downward - avoiding this trade                                   ",
+            end="",
+        )
+        self.skipped_trades += 1
+        self.skipped_trades_sma += 1
 
-                    self.position_taken = True
-
-                else:
-                    print(
-                        f"\r{self.current_dt} - found signal but SMA is trending downward - avoiding this trade                                   ",
-                        end="",
-                    )
-                    self.skipped_trades += 1
-                    self.skipped_trades_sma += 1
-
+        if True:
+            ...
         else:
             # we are in sell/stop loss mode
             last_close = df.Close.iloc[-1]
@@ -379,14 +350,8 @@ class BackTrade:
             }
         )
 
-    def do_backtest(self):
-        while True:
-            self.get_next()
-            if self.complete:
-                break
 
-
-def make_dataframe():
+def make_dataframe(symbols):
     df_report = pd.DataFrame(
         columns=[
             "start",
@@ -414,18 +379,192 @@ def make_dataframe():
     return df_report
 
 
-symbol = "IVV.AX"
-capital = 2000
-start = "2022-02-20 15:30:00"
+# set up api
+ssm = boto3.client("ssm")
+
+# symbols = ["IVV.AX", "BHP.AX", "ACN", "AAPL", "MSFT", "RIO"]
+symbols = ["SHIB-USD"]
+start = "2022-04-09 15:30:00"
 interval = "5m"
+capital = 2000
 
-symbols = ["IVV.AX", "BHP.AX", "ACN", "AAPL", "MSFT", "RIO"]
 # symbols = ["IVV.AX", "BHP.AX"]
-df_report = make_dataframe()
+df_report = make_dataframe(symbols)
 
-for symbol in symbols:
-    backtest = BackTrade(symbol=symbol, capital=capital, start=start, interval=interval)
-    backtest.do_backtest()
-    df_report.loc[symbol] = backtest.get_results()
+
+class MacdBot:
+    def macd_signal(self, df: pd.DataFrame, current_datetime: datetime):
+        if (
+            len(
+                df.loc[
+                    (df.macd_crossover == True)
+                    & (df.macd_macd < 0)
+                    & (df.index > current_datetime)
+                ]
+            )
+            == 0
+        ):
+            return False
+        else:
+            return True
+
+    def get_last_processed_record(self, df: pd.DataFrame, from_date: datetime):
+        return df.index[df.index.searchsorted(from_date) - 1]
+
+    def get_buy_signals(self, df: pd.DataFrame, from_datetime):
+        return df.loc[
+            (df.macd_crossover == True)
+            & (df.macd_macd < 0)
+            & (df.index > from_datetime)
+        ]
+
+        if this_bot.macd_signal(df=df, current_datetime=start_record) == False:
+            signal = False
+        else:
+            signal = True
+            print("found one!")
+
+    def get_last_buy_signal(self, buy_signals):
+        try:
+            return buy_signals.index[-1]
+        except:
+            return False
+
+    def get_sma_direction(self, df, buy_signal):
+        buy_index = df.index.get_loc(buy_signal)
+        inspect_index = buy_index - 5
+
+        if df.iloc[buy_index].sma_200 > df.iloc[inspect_index].sma_200:
+            return "increasing"
+        else:
+            return "decreasing"
+
+    def get_blue_cycle(self, df, last_buy_signal):
+        # get cycle start
+        blue_cycle_began = df.loc[
+            (df["macd_cycle"] == "blue") & (df.index < last_buy_signal)
+        ].index[-1]
+        mininum_close_during_cycle = df.loc[
+            blue_cycle_began:last_buy_signal
+        ].Close.min()
+        minimum_close_date = df.loc[blue_cycle_began:last_buy_signal].Close.idxmin()
+
+        intervals_since_minimum_close_date = len(
+            df.loc[minimum_close_date:last_buy_signal]
+        )
+
+        return (
+            mininum_close_during_cycle,
+            minimum_close_date,
+            intervals_since_minimum_close_date,
+        )
+
+
+api_key = (
+    ssm.get_parameter(Name="/tabot/swyftx/access_token", WithDecryption=True)
+    .get("Parameter")
+    .get("Value")
+)
+
+api = SwyftxAPI(api_key=api_key)
+
+# todo - save state between runs
+bot_state = "buying"
+# last_run_date = datetime.now()
+last_run_date = datetime.fromisoformat("2022-04-08")
+ignore_sma = True
+bots = [{"symbol": "AAPL", "bot_state": "buying"}]
+
+for bot in bots:
+    this_bot = MacdBot()
+    bot["bot_object"] = this_bot
+
+    # market data object, used to get further historical data as well as the period i care about
+    back_trade = BackTrade(
+        data_source=api,
+        symbol=bot["symbol"],
+        capital=capital,
+        start=start,
+        interval=interval,
+    )
+
+    # get market OHLC
+    market_data = back_trade.get_market_data()
+    bot["market_data"] = market_data
+
+    # find the most recently processed record so that we don't re-process records that we've already looked at in previous runs
+    start_record = this_bot.get_last_processed_record(
+        df=market_data, from_date=last_run_date
+    )
+
+    # if we are buying
+    if bot["bot_state"] == "buying":
+        # get a list of buy signals in this data set
+        buy_signals = this_bot.get_buy_signals(
+            df=market_data, from_datetime=start_record
+        )
+
+        last_buy_signal = this_bot.get_last_buy_signal(buy_signals)
+
+        if last_buy_signal == False:
+            print("No signal")
+            continue
+
+        last_buy_signal_record = market_data.loc[[last_buy_signal]]
+
+        sma_direction = this_bot.get_sma_direction(market_data, last_buy_signal)
+        if sma_direction == "decreasing":
+            if ignore_sma == False:
+                print("Good signal but bad SMA")
+                continue
+            print(
+                "Good signal, bad SMA, but ignore_sma is set to True so continuing anyway (this is a bad idea)"
+            )
+
+        # going to put in the order
+        (
+            unit_stop_loss_price,
+            unit_stop_loss_date,
+            unit_stop_loss_intervals,
+        ) = this_bot.get_blue_cycle(market_data, last_buy_signal)
+
+        original_stop = unit_stop_loss_price
+
+        print("a")
+        ### GOT HERE
+        ###### YOU NEED TO MAKE SWYFTX WORK IN USD
+        # OR YOU NEED TO WRITE THE BUY COMMAND FOR ALPACA AND FALL BACK TO THAT
+        """
+                # calculate other order variables
+                trade_date = datetime.now()
+                steps = 1
+                units = floor(capital / entry_unit_price)
+                self.risk_unit = self.entry_unit_price - self.stop_unit
+                self.original_risk_unit = self.risk_unit
+                self.risk_value = self.units * self.risk_unit
+                self.target_profit = self.PROFIT_TARGET * self.risk_unit
+                self.target_price = self.entry_unit_price + self.target_profit
+
+                self.leftover_capital = self.capital - (self.units * self.entry_unit_price)
+        """
+        print("Got to here")
+
+        print("banana")
+
+    elif bots[bot]["bot_state"] == "selling":
+        # we're selling
+        ...
+
+    else:
+        # this should never happen
+        print(
+            f"FATAL ERROR: Bot state must be 'buying' or 'selling'. Instead found {bots[bot]['bot_state']}"
+        )
+        exit()
+
+    print("banana")
+
+    # backtest.do_backtest()
+    # df_report.loc[symbol] = backtest.get_results()
 
 df_report.to_csv("out.csv")

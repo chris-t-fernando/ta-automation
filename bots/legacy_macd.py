@@ -1,8 +1,11 @@
 from datasources import MockDataSource, YFinanceFeeder
 from datetime import timedelta, datetime
 from purchase import Purchase
+from alpaca_wrapper import AlpacaAPI
+from swyftx_wrapper import SwyftxAPI
 from math import floor
 import pandas as pd
+import boto3
 
 
 def clean(number):
@@ -41,7 +44,6 @@ class BackTrade:
         self.interval = interval
         self.verbose = verbose
         self.ignore_sma = ignore_sma
-        self.entry_unit = None
 
         self.start = start
         self.current = self.start
@@ -68,7 +70,8 @@ class BackTrade:
         ) = self.backtest_source.get_interval_settings(interval=self.interval)
 
         self.bars_start = datetime.now() + timedelta(days=-self.max_range)
-        self.bars_end = datetime.now()
+        # self.bars_end = datetime.now()
+        self.bars_end = self.end_dt
 
     # todo: get a better signal
     # todo: why is the EMA always <200? even in assets that seem like they're doing alright
@@ -86,14 +89,10 @@ class BackTrade:
             do_sma=True,
         )
         if len(df) == 0:
-            # assume that no data means
-            print(f"Dataframe is empty. Check symbol exists and the search timespan")
-            self.complete = True
-            return False
-            # print(
-            #    f"Error - dataframe is empty. Check symbol exists or reduce search timespan"
-            # )
-            # exit()
+            print(
+                f"Error - dataframe is empty. Check symbol exists or reduce search timespan"
+            )
+            exit()
 
         # need to make a copy of df, because the TA library gets pantsy if you add columns to it
         df_output = df.copy(deep=True)
@@ -119,11 +118,15 @@ class BackTrade:
                 # no signal
                 if self.verbose:
                     print(f"\r{self.current_dt} - no signal", end="")
+
             else:
                 # is SMA good?
-                if (
-                    df_output.iloc[-1].sma_200 > df_output.iloc[-5].sma_200
-                ) or self.ignore_sma:
+                self.recent_average_sma = (
+                    df_output.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
+                )
+                self.last_sma = df_output.iloc[-1].sma_200
+                if (self.last_sma > self.recent_average_sma) or self.ignore_sma:
+
                     # STEP 4: PREP FOR AN ORDER!
                     self.crossover_index = df_output.loc[
                         (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
@@ -133,7 +136,7 @@ class BackTrade:
                         self.crossover_index
                     )
 
-                    self.entry_unit_price = df_output.Close.iloc[-1]
+                    self.entry_unit = df_output.Close.iloc[-1]
                     # first start with calculating risk and stop loss
                     # stop loss is based on the lowest unit price since this cycle began
                     # first find the beginning of this cycle, which is when the blue line crossed under the red line
@@ -159,19 +162,25 @@ class BackTrade:
                     # calculate other order variables
                     self.trade_date = df_output.index[-1]
                     self.steps = 1
-                    self.units = floor(self.capital / self.entry_unit_price)
-                    self.risk_unit = self.entry_unit_price - self.stop_unit
+                    self.units = floor(self.capital / self.entry_unit)
+                    self.risk_unit = self.entry_unit - self.stop_unit
                     self.original_risk_unit = self.risk_unit
                     self.risk_value = self.units * self.risk_unit
                     self.target_profit = self.PROFIT_TARGET * self.risk_unit
-                    self.target_price = self.entry_unit_price + self.target_profit
+                    self.target_price = self.entry_unit + self.target_profit
+
+                    self.macd_signal_gap = (
+                        self.crossover_record.macd_macd.values[0]
+                        - self.crossover_record.macd_signal.values[0]
+                    )
+                    self.sma_signal_gap = self.last_sma - self.recent_average_sma
 
                     self.leftover_capital = self.capital - (
-                        self.units * self.entry_unit_price
+                        self.units * self.entry_unit
                     )
 
                     self.order = Purchase(
-                        unit_quantity=self.units, unit_price=self.entry_unit_price
+                        unit_quantity=self.units, unit_price=self.entry_unit
                     )
 
                     print(f"\n{self.crossover_index}: Found signal")
@@ -181,16 +190,19 @@ class BackTrade:
                     print(
                         f"Histogram:\t\t{self.crossover_record.macd_histogram.values[0]}"
                     )
+                    print(
+                        f"SMA:\t\t\t{self.last_sma} vs recent average of {self.recent_average_sma}"
+                    )
                     print(f"Capital:\t\t${clean(self.capital)}")
                     print(f"Units to buy:\t\t{clean(self.units)} units")
-                    print(f"Entry point:\t\t${clean(self.entry_unit_price)}")
+                    print(f"Entry point:\t\t${clean(self.entry_unit)}")
                     print(f"Stop loss:\t\t${clean(self.stop_unit)}")
                     print(f"Cycle began:\t\t{self.intervals_since_stop} intervals ago")
                     print(
-                        f"Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit_price*100,1)}% of unit cost)"
+                        f"Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit*100,1)}% of unit cost)"
                     )
                     print(
-                        f"Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit_price*100,1)}% of unit cost)"
+                        f"Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)"
                     )
                     print(
                         f"Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)"
@@ -207,7 +219,7 @@ class BackTrade:
                     self.skipped_trades_sma += 1
 
         else:
-            # we are in sell/stop loss mode
+            # we have taken a position and need to monitor
             last_close = df.Close.iloc[-1]
 
             # stop loss!
@@ -251,14 +263,14 @@ class BackTrade:
                 self.steps += 1  #                                                                    ############## BADLY NAMED VARIABLE
                 self.risk_unit = self.original_risk_unit * self.steps
                 self.target_profit = self.PROFIT_TARGET * self.risk_unit
-                self.target_price = self.entry_unit_price + self.target_profit
+                self.target_price = self.entry_unit + self.target_profit
 
                 print(
                     f"\r{df_output.index[-1]} Met target price, new target price {clean(self.target_price)}, new stop price {clean(self.stop_unit)}"
                 )
 
             # hit win
-            elif last_close >= (self.entry_unit_price + self.risk_unit):
+            elif last_close >= (self.entry_unit + self.risk_unit):
                 # sell 25%
                 self.held = self.order.get_units()
                 self.units_to_sell = floor(self.held * 0.25)
@@ -274,7 +286,7 @@ class BackTrade:
                 self.steps += 1
                 self.risk_unit = self.original_risk_unit * self.steps
                 self.target_profit = self.PROFIT_TARGET * self.risk_unit
-                self.target_price = self.entry_unit_price + self.target_profit
+                self.target_price = self.entry_unit + self.target_profit
 
                 # print(f"Step #{steps}")
                 print(
@@ -303,30 +315,6 @@ class BackTrade:
             self.current_dt += self.tick
 
     def get_results(self):
-        if self.entry_unit == None:
-            return pd.Series(
-                {
-                    "start": self.start_dt,
-                    "end": self.current_dt,
-                    "capital_start": self.starting_capital,
-                    "capital_end": self.capital,
-                    "capital_change": None,
-                    "capital_change_pct": None,
-                    "intervals": self.interval,
-                    "trades_total": 0,
-                    "trades_won": 0,
-                    "trades_won_rate": None,
-                    "trades_lost": 0,
-                    "trades_lost_rate": None,
-                    "trades_skipped": None,
-                    "hold_units": None,
-                    "hold_start_buy": None,
-                    "hold_end_buy": None,
-                    "hold_change": None,
-                    "hold_change_pct": None,
-                    "better_strategy": None,
-                }
-            )
         try:
             self.win_rate = round(self.wins / (self.wins + self.losses) * 100, 1)
             self.loss_rate = 100 - self.win_rate
@@ -336,9 +324,12 @@ class BackTrade:
             self.loss_rate = 0
 
         macd_change = self.capital - self.starting_capital
-        hold_units = floor(self.starting_capital / self.entry_unit_price)
+        hold_units = floor(
+            self.starting_capital / self.backtest_source.bars.Close.iloc[0]
+        )
         hold_change = (
-            self.backtest_source.bars.Close.iloc[-1] - self.entry_unit_price
+            self.backtest_source.bars.Close.iloc[-1]
+            - self.backtest_source.bars.Close.iloc[0]
         ) * hold_units
         if hold_change > macd_change:
             better_strategy = "hold"
@@ -363,13 +354,13 @@ class BackTrade:
                 "trades_lost_rate": self.loss_rate,
                 "trades_skipped": self.skipped_trades,
                 "hold_units": hold_units,
-                "hold_start_buy": self.entry_unit_price,
+                "hold_start_buy": self.backtest_source.bars.Close.iloc[0],
                 "hold_end_buy": self.backtest_source.bars.Close.iloc[-1],
                 "hold_change": hold_change,
                 "hold_change_pct": round(
                     (
                         self.backtest_source.bars.Close.iloc[-1]
-                        / self.entry_unit_price
+                        / self.backtest_source.bars.Close.iloc[0]
                         * 100
                     )
                     - 100,
@@ -386,7 +377,209 @@ class BackTrade:
                 break
 
 
-def make_dataframe():
+def get_jobs():
+    capital = 2000
+    start = "2022-04-11 15:45:00"
+    end = "2022-04-11 15:50:00"
+    interval = "5m"
+
+    symbols = [
+        {"symbol": "IVV.AX", "broker": "swyftx"},
+        {"symbol": "BHP.AX", "broker": "swyftx"},
+        {"symbol": "ACN", "broker": "alpaca"},
+        {"symbol": "AAPL", "broker": "alpaca"},
+        {"symbol": "MSFT", "broker": "alpaca"},
+        {"symbol": "RIO", "broker": "alpaca"},
+    ]
+    # symbols = ["BHP.AX"]
+
+    jobs = {
+        "capital": capital,
+        "start": start,
+        "end": end,
+        "interval": interval,
+        "symbols": symbols,
+        "broker": "swyftx",
+        "real_money_trading": True,
+    }
+
+    return jobs
+
+
+def _meta_map(jobs):
+    job_results = []
+    for symbol in jobs["symbols"]:
+        job = jobs.copy()
+        del job["symbols"]
+        job["symbol"] = symbol["symbol"]
+        job["broker"] = symbol["broker"]
+        job_results.append(do_ta(job))
+
+    return job_results
+
+
+def do_ta(job):
+    symbol = job["symbol"]
+    broker = job["broker"]
+    capital = job["capital"]
+    start = job["start"]
+    end = job["end"]
+    interval = job["interval"]
+
+    backtest = BackTrade(
+        symbol=symbol, capital=capital, start=start, end=end, interval=interval
+    )
+    backtest.do_backtest()
+
+    if backtest.position_taken:
+        return {
+            "type": "buy",
+            "symbol": symbol,
+            "broker": broker,
+            "interval": interval,
+            "timestamp": backtest.crossover_index,
+            "signal_strength": None,
+            "macd_value": backtest.crossover_record.macd_macd.values[0],
+            "signal_value": backtest.crossover_record.macd_signal.values[0],
+            "macd_signal_gap": backtest.macd_signal_gap,
+            "histogram_value": backtest.crossover_record.macd_histogram.values[0],
+            "sma_value": backtest.last_sma,
+            "sma_recent": backtest.recent_average_sma,
+            "sma_gap": backtest.sma_signal_gap,
+            "stop_loss_price": backtest.stop_unit,
+            "last_price": backtest.entry_unit,
+            "current_cycle_duration": backtest.intervals_since_stop,
+        }
+
+    return {"type": "pass"}
+
+
+# i don't think i need this
+def _meta_map_merge(ta_results):
+    return ta_results
+
+
+def prioritise_buys(buy_orders):
+    # prioritise based on gap between macd and signal
+    buys = [o for o in buy_orders if o["type"] == "buy"]
+    passes = [o for o in buy_orders if o["type"] == "pass"]
+    buys.sort(key=lambda x: x["macd_signal_gap"], reverse=True)
+    return buys + passes
+
+
+def get_funds(jobs):
+    balances = {}
+    # get unique brokers from job list
+    brokers = []
+
+    for symbol in jobs["symbols"]:
+        brokers.append(symbol["broker"])
+
+    broker_set = set(brokers)
+
+    ssm = boto3.client("ssm")
+
+    for broker in broker_set:
+        if broker == "swyftx":
+            api_key = (
+                ssm.get_parameter(
+                    Name="/tabot/swyftx/access_token", WithDecryption=True
+                )
+                .get("Parameter")
+                .get("Value")
+            )
+            api = SwyftxAPI(api_key=api_key)
+        elif broker == "alpaca":
+            api_key = (
+                ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
+                .get("Parameter")
+                .get("Value")
+            )
+            secret_key = (
+                ssm.get_parameter(
+                    Name="/tabot/alpaca/security_key", WithDecryption=True
+                )
+                .get("Parameter")
+                .get("Value")
+            )
+            api = AlpacaAPI(alpaca_key_id=api_key, alpaca_secret_key=secret_key)
+        else:
+            raise ValueError(f"Unknown broker specified {broker}")
+
+        balances[broker] = api.get_account()
+
+    return balances
+
+
+def execute_orders(balances, jobs):
+    # get order size
+    ssm = boto3.client("ssm")
+    ORDER_SIZE = float(
+        ssm.get_parameter(Name="/tabot/order_size", WithDecryption=True)
+        .get("Parameter")
+        .get("Value")
+    )
+
+    # get unique brokers from job list
+    brokers = []
+    broker_api = {}
+
+    for job in jobs:
+        if job["type"] == "buy":
+            brokers.append(job["broker"])
+
+    broker_set = set(brokers)
+
+    # instantiate brokers
+    for broker in broker_set:
+        if broker == "swyftx":
+            api_key = (
+                ssm.get_parameter(
+                    Name="/tabot/swyftx/access_token", WithDecryption=True
+                )
+                .get("Parameter")
+                .get("Value")
+            )
+            broker_api[broker] = SwyftxAPI(api_key=api_key)
+        elif broker == "alpaca":
+            api_key = (
+                ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
+                .get("Parameter")
+                .get("Value")
+            )
+            secret_key = (
+                ssm.get_parameter(
+                    Name="/tabot/alpaca/security_key", WithDecryption=True
+                )
+                .get("Parameter")
+                .get("Value")
+            )
+            broker_api[broker] = AlpacaAPI(
+                alpaca_key_id=api_key, alpaca_secret_key=secret_key
+            )
+        else:
+            raise ValueError(f"Unknown broker specified {broker}")
+
+    # now we have instantiated the brokers, we can iterate through the jobs executing the relevant buy jobs
+    for job in jobs:
+        if job["type"] == "buy":
+            broker = job["broker"]
+            api = broker_api[broker]
+            symbol = job["symbol"]
+            current_balance = balances[broker].assets["usd"]
+
+            if current_balance > ORDER_SIZE:
+                print(f"Out of cash! Current balance USD{ORDER_SIZE} vs balance USD{current_balance}")
+                break
+
+            order_result = api.buy_order_market(symbol, ORDER_SIZE)
+            balances[broker].assets["usd"] = current_balance - ORDER_SIZE
+
+    return True
+
+
+def notify():
+    df_report.loc[symbol] = backtest.get_results()
     df_report = pd.DataFrame(
         columns=[
             "start",
@@ -411,21 +604,47 @@ def make_dataframe():
         ],
         index=symbols,
     )
-    return df_report
 
 
-symbol = "IVV.AX"
-capital = 2000
-start = "2022-02-20 15:30:00"
-interval = "5m"
+fake_buy = {
+    "type": "buy",
+    "symbol": "banana",
+    "broker": "swyftx",
+    "interval": "5m",
+    "timestamp": "2022-04",
+    "signal_strength": None,
+    "macd_value": -0.05596663025085036,
+    "signal_value": -0.1,  # bigger signal gap
+    "macd_signal_gap": -0.04403337,
+    "histogram_value": 0.005450574852315156,
+    "sma_value": 51.72239999771118,
+    "sma_recent": 48,
+    "sma_gap": 3.722399998,  # steeper climb
+    "stop_loss_price": 51.975,
+    "last_price": 51.63999938964844,
+    "current_cycle_duration": 11,
+}
 
-symbols = ["IVV.AX", "BHP.AX", "ACN", "AAPL", "MSFT", "RIO"]
-# symbols = ["IVV.AX", "BHP.AX"]
-df_report = make_dataframe()
+# returns a list of jobs
+jobs = get_jobs()
 
-for symbol in symbols:
-    backtest = BackTrade(symbol=symbol, capital=capital, start=start, interval=interval)
-    backtest.do_backtest()
-    df_report.loc[symbol] = backtest.get_results()
+# returns a list of ta results
+job_ta_results = _meta_map(jobs)
 
-df_report.to_csv("out.csv")
+# returns a dict of ta results
+job_ta_merged = _meta_map_merge(job_ta_results)
+
+# add in a fake buy
+job_ta_merged.append(fake_buy)
+
+# returns an ordered list of ta results
+job_prioritised = prioritise_buys(job_ta_merged)
+
+# returns how much cash we have to spend
+job_funds = get_funds(jobs)
+
+# returns the results of the buy orders
+execution_results = execute_orders(balances=job_funds, jobs=job_prioritised)
+
+# send me a notification of the outcome
+notify(results=execution_results)
