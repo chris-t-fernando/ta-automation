@@ -86,6 +86,9 @@ class Account(IAccount):
     def __init__(self, assets: dict):
         self.assets = assets
 
+    def __str__(self):
+        print("banana")
+
 
 class Position(IPosition):
     symbol: str
@@ -302,6 +305,8 @@ class SwyftxAPI(ITradeAPI):
 
         if type(start) == str:
             start = datetime.fromisoformat(start)
+
+        symbol = symbol + "-USD"
 
         return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False

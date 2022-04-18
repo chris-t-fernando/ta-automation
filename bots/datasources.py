@@ -40,6 +40,13 @@ class YFinanceFeeder:
         if end == None:
             end = datetime.now().astimezone()
 
+        if symbol[:4] == "-USD":
+            ...
+        elif symbol[:3] == "USD":
+            # alpaca
+            symbol = symbol[:-3] + "-USD"
+        else:
+            symbol = symbol + "-USD"
         return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False
         )
@@ -100,6 +107,7 @@ class MockDataSource:
                     new_range -= 1
                     if new_range == 0:
                         print(f"New range got to zero?!")
+                        print(symbol)
                         exit()
                     print(f"Bad start date. Trying again with range {new_range}")
 
