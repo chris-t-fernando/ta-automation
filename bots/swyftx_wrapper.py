@@ -244,7 +244,7 @@ class SwyftxAPI(ITradeAPI):
             Position: Position object representing the requested symbol
         """
         for position in self.list_positions():
-            if position.symbol == symbol:
+            if position.symbol.lower() == symbol.lower():
                 return position
         return Position(symbol=symbol, quantity=0)
 
@@ -260,7 +260,7 @@ class SwyftxAPI(ITradeAPI):
         for position in raw_positions:
             symbol = self.symbol_id_to_text(id=position["assetId"])
             return_positions.append(
-                Position(symbol=symbol, quantity=position["availableBalance"])
+                Position(symbol=symbol.lower(), quantity=position["availableBalance"])
             )
 
         return return_positions
@@ -269,9 +269,10 @@ class SwyftxAPI(ITradeAPI):
         if symbol.lower() == self.default_currency:
             return 1
         else:
-            return self.api.request(
+            close = self.api.request(
                 orders.OrdersExchangeRate(buy=symbol, sell=self.default_currency)
             )
+            return float(close["price"])
 
     def get_bars(self, symbol: str, start: str, end: str = None, interval: str = "1d"):
         intervals = [
@@ -346,7 +347,9 @@ class SwyftxAPI(ITradeAPI):
             # selling by total order value
             # first get a quote for the symbol
             exchange_rate = self.api.request(
-                orders.OrdersExchangeRate(buy=self.default_currency, sell=symbol)
+                orders.OrdersExchangeRate(
+                    buy=self.default_currency.upper(), sell=symbol.upper()
+                )
             )
             units = floor(order_value / float(exchange_rate["price"]))
 

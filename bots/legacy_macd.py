@@ -768,32 +768,72 @@ def get_positions():
     return holdings
 
 
-def check_stop_loss(rule, last_price):
+def trigger_stop_loss(rule, last_price):
     if rule["current_stop_loss"] >= last_price:
+        print(
+            f'{rule["symbol"]}: Stop loss triggered (market {last_price} vs {rule["current_stop_loss"]}'
+        )
         return True
     else:
         return False
 
 
-def check_sell_point(rule, last_price):
+def trigger_sell_point(rule, last_price):
     ...
 
 
-def check_risk_point(rule, last_price):
+def trigger_risk_point(rule, last_price):
     ...
 
 
-def apply_rules(rules, positions):
+def write_rules(symbol, action: str, new_rule=None):
+    ssm = boto3.client("ssm")
+    rules = json.loads(
+        ssm.get_parameter(Name="/tabot/rules/5m", WithDecryption=False)
+        .get("Parameter")
+        .get("Value")
+    )
+
+    if action == "delete":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+
+    elif action == "replace":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                new_rules.append(new_rule)
+    else:
+        raise Exception("write_rules: No action specified?")
+
+    result = ssm.put_parameter(
+        Name="/tabot/rules/5m",
+        Value=json.dumps(new_rules),
+        Type="String",
+        Overwrite=True,
+    )
+
+    return True
+
+
+def apply_rules(rules, positions, last_close_dict):
     stop_loss_triggered = []
     sell_point_triggered = []
     risk_point_triggered = []
+    trigger_results = []
 
     ssm = boto3.client("ssm")
+    api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
 
     for broker in positions:
         for held in positions[broker]:
             held_symbol = held.symbol.lower()
             held_quantity = held.quantity
+            last_close = last_close_dict[held_symbol]
 
             for rule in rules:
                 rule_symbol = rule["symbol"].lower()
@@ -801,13 +841,37 @@ def apply_rules(rules, positions):
 
                 if rule_symbol == held_symbol:
                     # matched a rule and a holding
-                    if check_stop_loss(rule, held):
-                        # stop loss hit!
-                        ...
-                    elif check_sell_point(rule, held):
+                    if trigger_stop_loss(rule, last_close):
+                        # stop loss hit! liquidate
+                        stop_loss_triggered.append(
+                            {
+                                "symbol": held_symbol,
+                                "last_close": last_close,
+                                "rule": rule,
+                            }
+                        )
+
+                        close_response = api_dict[broker].close_position(held_symbol)
+
+                        if close_response.success:
+                            print(
+                                f"Symbol {held_symbol} hit stop loss and was liquidated"
+                            )
+                        else:
+                            # need a better way of notifying me of this stuff
+                            print(
+                                f"CRITICAL - SYMBOL {held_symbol} HIT STOP LOSS BUT FAILED TO BE LIQUIDATED ****** DO NOT IGNORE THIS *****"
+                            )
+                            trigger_results.append(
+                                f"CRITICAL: SYMBOL {held_symbol} HIT STOP LOSS {last_close} BUT FAILED TO BE LIQUIDATED"
+                            )
+
+                        updated_rules = write_rules(action="delete", symbol=held_symbol)
+
+                    elif trigger_sell_point(rule, held):
                         # hit high watermark of target price
                         ...
-                    elif check_risk_point(rule, held):
+                    elif trigger_risk_point(rule, held):
                         # made our risk point back
                         ...
 
@@ -815,12 +879,14 @@ def apply_rules(rules, positions):
 def get_last_close(positions):
     ssm = boto3.client("ssm")
     api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
+    close_dict = {}
 
     for broker in positions:
         api = api_dict[broker]
         for position in positions[broker]:
-            last_close = api.get_last_close(position.symbol)
-            print("banana")
+            close_dict[position.symbol.lower()] = api.get_last_close(position.symbol)
+
+    return close_dict
 
 
 def sells():
@@ -829,11 +895,9 @@ def sells():
     positions = get_positions()
     last_close = get_last_close(positions)
     stopped_orders = apply_rules(
-        rules=rules, positions=positions, last_close=last_close
+        rules=rules, positions=positions, last_close_dict=last_close
     )
-    # stop_loss()
-    # update_stop_loss()
-    # do_pass()
+    # send notifications
 
 
 # buys()
