@@ -566,49 +566,68 @@ def execute_orders(balances, jobs):
             broker = job["broker"]
             api = broker_api[broker]
             symbol = job["symbol"]
-            current_balance = balances[broker].assets["usd"]
+            current_balance = balances[broker].assets[api.default_currency]
 
-            if current_balance > ORDER_SIZE:
-                print(f"Out of cash! Current balance USD{ORDER_SIZE} vs balance USD{current_balance}")
+            if current_balance < ORDER_SIZE:
+                print(
+                    f"Out of cash! Current balance {api.default_currency}{ORDER_SIZE} vs balance {api.default_currency}{current_balance}"
+                )
                 break
 
             order_result = api.buy_order_market(symbol, ORDER_SIZE)
+            if not order_result.success:
+                print(
+                    f"Failed to buy {symbol}. Status: { order_result.status_summary } - { order_result.status_text }"
+                )
+
+            job["order_result"] = order_result
+
             balances[broker].assets["usd"] = current_balance - ORDER_SIZE
 
-    return True
+    return jobs
 
 
-def notify():
-    df_report.loc[symbol] = backtest.get_results()
-    df_report = pd.DataFrame(
-        columns=[
-            "start",
-            "end",
-            "capital_start",
-            "capital_end",
-            "capital_change",
-            "capital_change_pct",
-            "intervals",
-            "trades_total",
-            "trades_won",
-            "trades_won_rate",
-            "trades_lost",
-            "trades_lost_rate",
-            "trades_skipped",
-            "hold_units",
-            "hold_start_buy",
-            "hold_end_buy",
-            "hold_change",
-            "hold_change_pct",
-            "better_strategy",
-        ],
-        index=symbols,
-    )
+def notify(results):
+    for job in results:
+        print(f"Job report")
+        print(f"====================")
+        print(f'Symbol: \t\t\t{job["symbol"]}')
+        print(f'Broker: \t\t\t{job["broker"]}')
+        print(f'Target buy price: \t{job["last_price"]}')
+        print(f'Actual buy price: \t{job["unit_price"]}')
+
+    """
+        df_report.loc[symbol] = backtest.get_results()
+        df_report = pd.DataFrame(
+            columns=[
+                "start",
+                "end",
+                "capital_start",
+                "capital_end",
+                "capital_change",
+                "capital_change_pct",
+                "intervals",
+                "trades_total",
+                "trades_won",
+                "trades_won_rate",
+                "trades_lost",
+                "trades_lost_rate",
+                "trades_skipped",
+                "hold_units",
+                "hold_start_buy",
+                "hold_end_buy",
+                "hold_change",
+                "hold_change_pct",
+                "better_strategy",
+            ],
+            index=symbols,
+        )
+    """
 
 
 fake_buy = {
     "type": "buy",
-    "symbol": "banana",
+    "symbol": "XRP",
     "broker": "swyftx",
     "interval": "5m",
     "timestamp": "2022-04",
@@ -625,26 +644,34 @@ fake_buy = {
     "current_cycle_duration": 11,
 }
 
-# returns a list of jobs
-jobs = get_jobs()
 
-# returns a list of ta results
-job_ta_results = _meta_map(jobs)
+def buys():
+    ### STATE MACHINE FLOW ###
+    # returns a list of jobs
+    jobs = get_jobs()
 
-# returns a dict of ta results
-job_ta_merged = _meta_map_merge(job_ta_results)
+    # returns a list of ta results
+    job_ta_results = _meta_map(jobs)
 
-# add in a fake buy
-job_ta_merged.append(fake_buy)
+    # returns a dict of ta results
+    job_ta_merged = _meta_map_merge(job_ta_results)
 
-# returns an ordered list of ta results
-job_prioritised = prioritise_buys(job_ta_merged)
+    # add in a fake buy                                     ##### DELETE AFTER TESTING!!
+    job_ta_merged.append(fake_buy)
+    job_ta_merged.pop(1)
 
-# returns how much cash we have to spend
-job_funds = get_funds(jobs)
+    # returns an ordered list of ta results
+    job_prioritised = prioritise_buys(job_ta_merged)
 
-# returns the results of the buy orders
-execution_results = execute_orders(balances=job_funds, jobs=job_prioritised)
+    # returns how much cash we have to spend
+    job_funds = get_funds(jobs)
 
-# send me a notification of the outcome
-notify(results=execution_results)
+    # returns the results of the buy orders
+    execution_results = execute_orders(balances=job_funds, jobs=job_prioritised)
+
+    # send me a notification of the outcome
+    notify(results=execution_results)
+
+
+def sells():
+    ...

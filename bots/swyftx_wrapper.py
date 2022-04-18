@@ -103,6 +103,7 @@ class OrderResult(IOrderResult):
     quantity: float
     quantity_symbol: str
     quantity_id: int
+    unit_price: int
     trigger: float
     status: int
     status_text: str
@@ -133,6 +134,11 @@ class OrderResult(IOrderResult):
         self.quantity = order_object["quantity"]
         self.quantity_id = order_object["quantity_asset"]
         self.quantity_symbol = asset_list_by_id[self.quantity_id]["symbol"]
+
+        self.units = order_object["amount"]
+        self.unit_price = order_object["rate"]
+        self.fees = order_object["feeAmount"]
+        self.total_value = self.units * self.unit_price
 
         self.trigger = order_object["trigger"]
         self.status = order_object["status"]
@@ -165,7 +171,7 @@ class SwyftxAPI(ITradeAPI):
             self.api = pyswyft.API(access_token=api_key, environment="demo")
 
         # set up data structures
-        self.default_currency = "USD"
+        self.default_currency = "aud"
 
     def _structure_asset_dict_by_id(self, asset_dict):
         return_dict = {}
@@ -207,19 +213,22 @@ class SwyftxAPI(ITradeAPI):
             symbol = self.symbol_id_to_text(asset["assetId"])
             symbol = symbol.lower()
 
-            # intercept aud and convert it to usd
-            if symbol == "aud":
-                # convert it to usd
-                rate = self.api.request(
-                    orders.OrdersExchangeRate(
-                        buy="USD",
-                        sell="AUD",
-                        amount=asset["availableBalance"],
-                        limit="AUD",
-                    )
-                )
-                symbol = "usd"
-                asset["availableBalance"] = rate["amount"]
+            ##########
+            ## I did this when I thought I could get swyftx to buy stuff in USD, but I can't work out how to do that
+            #            # intercept aud and convert it to usd
+            #            if symbol == "aud":
+            #                # convert it to usd
+            #                rate = self.api.request(
+            #                    orders.OrdersExchangeRate(
+            #                        buy="USD",
+            #                        sell="AUD",
+            #                        amount=asset["availableBalance"],
+            #                        limit="AUD",
+            #                    )
+            #                )
+            #                symbol = "usd"
+            #                asset["availableBalance"] = rate["amount"]
+            #########
 
             assets[symbol] = float(asset["availableBalance"])
 
@@ -366,15 +375,16 @@ class SwyftxAPI(ITradeAPI):
         order_type = type
         quantity = units
 
+        # swyftx api expects symbols in upper case....
         if "BUY" in ORDER_MAP_INVERTED[type]:
-            primary = self.default_currency
-            secondary = symbol
-            asset_quantity = symbol
+            primary = self.default_currency.upper()
+            secondary = symbol.upper()
+            asset_quantity = symbol.upper()
         else:
             # sells
-            primary = self.default_currency
-            secondary = symbol
-            asset_quantity = symbol
+            primary = self.default_currency.upper()
+            secondary = symbol.upper()
+            asset_quantity = symbol.upper()
 
         orders_create_object = orders.OrdersCreate(
             primary=primary,
