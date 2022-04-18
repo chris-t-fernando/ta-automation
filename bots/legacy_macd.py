@@ -468,6 +468,8 @@ def do_ta(job):
             "sma_recent": backtest.recent_average_sma,
             "sma_gap": backtest.sma_signal_gap,
             "stop_loss_price": backtest.stop_unit,
+            "target_price": backtest.target_price,
+            "unit_risk": backtest.original_risk_unit,
             "last_price": backtest.entry_unit,
             "current_cycle_duration": backtest.intervals_since_stop,
         }
@@ -547,7 +549,7 @@ def get_funds(jobs):
 def execute_orders(balances, jobs):
     # get order size
     ssm = boto3.client("ssm")
-    ORDER_SIZE = float(
+    order_size = float(
         ssm.get_parameter(Name="/tabot/order_size", WithDecryption=True)
         .get("Parameter")
         .get("Value")
@@ -571,13 +573,13 @@ def execute_orders(balances, jobs):
             symbol = job["symbol"]
             current_balance = balances[broker].assets[api.default_currency]
 
-            if current_balance < ORDER_SIZE:
+            if current_balance < order_size:
                 print(
-                    f"Out of cash! Current balance {api.default_currency}{ORDER_SIZE} vs balance {api.default_currency}{current_balance}"
+                    f"Out of cash! Current balance {api.default_currency}{order_size} vs balance {api.default_currency}{current_balance}"
                 )
                 break
 
-            order_result = api.buy_order_market(symbol, ORDER_SIZE)
+            order_result = api.buy_order_market(symbol, order_size)
             if not order_result.success:
                 print(
                     f"Failed to buy {symbol}. Status: { order_result.status_summary } - { order_result.status_text }"
@@ -603,7 +605,32 @@ def execute_orders(balances, jobs):
                     + ")"
                 )
 
-            balances[broker].assets["usd"] = current_balance - ORDER_SIZE
+            currency = api_dict[broker].default_currency
+            balances[broker].assets[currency] = current_balance - order_size
+
+            # generate the rule and write it to  SSM
+            new_rule = {
+                "symbol": symbol.lower(),
+                "original_stop_loss": job["stop_loss_price"],
+                "current_stop_loss": job["stop_loss_price"],
+                "original_target_price": job["target_price"],
+                "current_target_price": job["target_price"],
+                "steps": 0,
+                "original_risk": job["unit_risk"],
+                "current_risk": job["unit_risk"],
+                "purchase_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "purchase_price": job["order_result"].unit_price,
+                "units_held": job["order_result"].quantity,
+                "units_sold": 0,
+                "units_bought": job["order_result"].quantity,
+                "order_id": job["order_result"].order_id,
+                "sales": [],
+                "win_point_sell_down_pct": 0.5,
+                "win_point_new_stop_loss_pct": 0.99,
+                "risk_point_sell_down_pct": 0.25,
+                "risk_point_new_stop_loss_pct": 0.98,
+            }
+            write_rules(symbol=symbol, action="create", new_rule=new_rule)
 
     return jobs
 
@@ -623,41 +650,13 @@ def notify(results):
             print(f'Actual buy price: \t{job["unit_price"]}')
             print(f"- - - - - - -")
 
-    """
-        df_report.loc[symbol] = backtest.get_results()
-        df_report = pd.DataFrame(
-            columns=[
-                "start",
-                "end",
-                "capital_start",
-                "capital_end",
-                "capital_change",
-                "capital_change_pct",
-                "intervals",
-                "trades_total",
-                "trades_won",
-                "trades_won_rate",
-                "trades_lost",
-                "trades_lost_rate",
-                "trades_skipped",
-                "hold_units",
-                "hold_start_buy",
-                "hold_end_buy",
-                "hold_change",
-                "hold_change_pct",
-                "better_strategy",
-            ],
-            index=symbols,
-        )
-    """
-
 
 fake_buy = {
     "type": "buy",
     "symbol": "XRP",
     "broker": "swyftx",
     "interval": "5m",
-    "timestamp": "2022-04",
+    "timestamp": "2022-04-FAKEFAKEFAKE",
     "signal_strength": None,
     "macd_value": -0.05596663025085036,
     "signal_value": -0.1,  # bigger signal gap
@@ -669,6 +668,8 @@ fake_buy = {
     "stop_loss_price": 51.975,
     "last_price": 51.63999938964844,
     "current_cycle_duration": 11,
+    "target_price": 52,
+    "unit_risk": 0.15,
 }
 
 
@@ -821,6 +822,19 @@ def write_rules(symbol: str, action: str, new_rule=None):
             else:
                 new_rules.append(new_rule)
                 changed = True
+    elif action == "create":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                raise ValueError(
+                    f"Symbol already exists in SSM rules! {symbol.lower()}"
+                )
+
+        new_rules.append(new_rule)
+        changed = True
+
     else:
         raise Exception("write_rules: No action specified?")
 
@@ -857,7 +871,10 @@ def apply_rules(rules, positions, last_close_dict):
 
                 if rule_symbol == held_symbol:
                     # matched a rule and a holding
-                    if trigger_stop_loss(rule, last_close):
+                    trigger_stop = trigger_stop_loss(rule, last_close)
+                    trigger_sell = trigger_sell_point(rule, last_close)
+                    trigger_risk = trigger_risk_point(rule, last_close)
+                    if trigger_stop:
                         # stop loss hit! liquidate
                         close_response = api_dict[broker].close_position(held_symbol)
 
@@ -888,10 +905,8 @@ def apply_rules(rules, positions, last_close_dict):
                                 f"CRITICAL: SYMBOL {held_symbol} HIT STOP LOSS {last_close} BUT FAILED TO BE LIQUIDATED"
                             )
 
-                    elif trigger_sell_point(rule, last_close) or trigger_risk_point(
-                        rule, last_close
-                    ):
-                        if trigger_sell_point(rule, last_close):
+                    elif trigger_sell or trigger_risk:
+                        if trigger_sell:
                             new_target_pct = rule["win_point_sell_down_pct"]
                             # reporting
                             sell_point_triggered.append(
@@ -902,6 +917,7 @@ def apply_rules(rules, positions, last_close_dict):
                                 }
                             )
                         else:
+                            # trigger risk
                             new_target_pct = rule["risk_point_sell_down_pct"]
                             # reporting
                             risk_point_triggered.append(
@@ -969,6 +985,7 @@ def apply_rules(rules, positions, last_close_dict):
 
                     else:
                         print("do nothing")
+
     return {
         "stop_loss": stop_loss_triggered,
         "sell_point": sell_point_triggered,
@@ -1005,12 +1022,12 @@ def notify_sale(order_results):
     sell_point = order_results["sell_point"]
     risk_point = order_results["risk_point"]
 
-    report_string = "MACD BOT SUMMARY"
-    report_string += "================"
+    report_string = "MACD BOT SUMMARY\n"
+    report_string += "================\n"
 
     if len(stop_loss) + len(sell_point) + len(risk_point) == 0:
         # nothing happened
-        print("No stop loss, risk trigger or target trigger conditions met")
+        print("No stop loss, risk trigger or target trigger conditions met\n")
         exit()
     else:
         for stop in stop_loss:
@@ -1021,19 +1038,19 @@ def notify_sale(order_results):
                 deal_outcome = "loss"
 
             report_string += (
-                f'{stop["symbol"]}: trade terminated at {stop["last_close"]}'
+                f'{stop["symbol"]}: trade terminated at {stop["last_close"]}\n'
             )
-            report_string += f'Deal outcome: {deal_outcome} (purchase price {stop_rule["purchase_price"]} vs {stop["last_close"]}'
+            report_string += f'Deal outcome: {deal_outcome} (purchase price {stop_rule["purchase_price"]} vs {stop["last_close"]}\n'
 
         for sell in sell_point:
             sell_rule = sell["rule"]
-            report_string += f'{sell["symbol"]}: 50% selldown at {sell["last_close"]}'
-            report_string += f'Triggered because {sell["last_close"]} exceeds previous target price of {sell_rule["current_target_price"]}'
+            report_string += f'{sell["symbol"]}: 50% selldown at {sell["last_close"]}\n'
+            report_string += f'Triggered because {sell["last_close"]} exceeds previous target price of {sell_rule["current_target_price"]}\n'
 
         for risk in risk_point:
             risk_rule = risk["rule"]
-            report_string += f'{risk["symbol"]}: 25% selldown at {risk["last_close"]}'
-            report_string += f'Triggered because {risk["last_close"]} exceeds risk point price of {(risk_rule["current_risk"]+risk_rule["purchase_price"])}'
+            report_string += f'{risk["symbol"]}: 25% selldown at {risk["last_close"]}\n'
+            report_string += f'Triggered because {risk["last_close"]} exceeds risk point price of {(risk_rule["current_risk"]+risk_rule["purchase_price"])}\n'
 
     init(pushover_api_key)
     Client(pushover_user_key).send_message(
@@ -1054,5 +1071,5 @@ def sells():
     # send notifications
 
 
-# buys()
-sells()
+buys()
+# sells()
