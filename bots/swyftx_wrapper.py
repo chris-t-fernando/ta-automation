@@ -159,22 +159,45 @@ class OrderResult(IOrderResult):
 # concrete class
 class SwyftxAPI(ITradeAPI):
     def __init__(self, api_key: str, real_money_trading: bool = False):
-        # this is munted. there's no Markets endpoint in demo?!
-        self.api = pyswyft.API(access_token=api_key, environment="live")
-        # set up asset lists
-        self.asset_list_by_id = self._structure_asset_dict_by_id(
-            self.api.request(markets.MarketsAssets())
-        )
-        self.asset_list_by_symbol = self._structure_asset_dict_by_symbol(
-            self.api.request(markets.MarketsAssets())
-        )
+        self.api_key = api_key
+        self.assets_initialised = False
 
         if real_money_trading != True:
             # now use the environment that was actually requested. i hate this.
             self.api = pyswyft.API(access_token=api_key, environment="demo")
+        else:
+            self.api = pyswyft.API(access_token=api_key, environment="live")
 
         # set up data structures
         self.default_currency = "aud"
+
+    def get_assets(self):
+        if self.assets_initialised != True:
+            self._build_asset_list()
+        return self._asset_list_by_symbol()
+
+    def get_asset_by_id(self, id):
+        if self.assets_initialised != True:
+            self._build_asset_list()
+        return self._asset_list_by_symbol()
+
+    def get_asset_by_name(self, name: str):
+        if self.assets_initialised != True:
+            self._build_asset_list()
+        return self._asset_list_by_symbol()
+
+    def _build_asset_list(self):
+        # this is munted. there's no Markets endpoint in demo?!
+        temp_api = pyswyft.API(access_token=api_key, environment="live")
+        # set up asset lists
+        self._asset_list_by_id = self._structure_asset_dict_by_id(
+            temp_api.request(markets.MarketsAssets())
+        )
+        self._asset_list_by_symbol = self._structure_asset_dict_by_symbol(
+            temp_api.request(markets.MarketsAssets())
+        )
+
+        return True
 
     def _structure_asset_dict_by_id(self, asset_dict):
         return_dict = {}
@@ -197,10 +220,12 @@ class SwyftxAPI(ITradeAPI):
         return ORDER_MAP_INVERTED[text]
 
     def symbol_id_to_text(self, id):
-        return self.asset_list_by_id[id]["code"]
+        assets = self.get_assets()
+        return assets[id]["code"]
 
     def symbol_text_to_id(self, symbol):
-        return self.asset_list_by_symbol[symbol]["id"]
+        assets = self.get_assets()
+        return assets[symbol]["id"]
 
     def get_account(self) -> Account:
         """Retrieves data about the trading account
@@ -448,7 +473,7 @@ class SwyftxAPI(ITradeAPI):
         response = self.api.request(orders.OrdersGetOrder(orderID=order_id))
         # orders_create_object: orders.OrdersCreate):
         return OrderResult(
-            order_object=response, asset_list_by_id=self.asset_list_by_id
+            order_object=response, asset_list_by_id=self._asset_list_by_id
         )
 
     def delete_order(self, order_id: str) -> dict:
@@ -471,7 +496,7 @@ class SwyftxAPI(ITradeAPI):
             for order in request["orders"]:
                 result = OrderResult(
                     order_object=order,
-                    asset_list_by_id=self.asset_list_by_id,
+                    asset_list_by_id=self._asset_list_by_id,
                 )
                 # if no filters are applied
                 if not filled and not cancelled and not still_open:

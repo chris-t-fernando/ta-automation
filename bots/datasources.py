@@ -252,8 +252,3 @@ class MockDataSource:
         else:
             # got an unknown interval
             raise ValueError(f"Unknown interval type {interval}")
-
-
-# self.bars.index
-# self.bars.keys
-# self.bars["column"]

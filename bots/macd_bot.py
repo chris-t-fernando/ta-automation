@@ -1,8 +1,8 @@
+from alpaca_wrapper import AlpacaAPI
+from swyftx_wrapper import SwyftxAPI
 from datasources import MockDataSource, YFinanceFeeder
 from datetime import timedelta, datetime
 from purchase import Purchase
-from alpaca_wrapper import AlpacaAPI
-from swyftx_wrapper import SwyftxAPI
 from math import floor
 import pandas as pd
 import boto3
@@ -77,6 +77,7 @@ class BackTrade:
             data_source=YFinanceFeeder(),
             real_end=self.end_dt,
         )
+
         log_wp.debug(
             f"{symbol} - MockDataSource object initilised with start date of {self.start} and real end date {self.end}"
         )
@@ -438,6 +439,8 @@ def get_funds(jobs):
 
 
 def execute_orders(balances, jobs):
+    log_wp.debug(f"Executing orders {jobs}")
+
     # get order size
     ssm = boto3.client("ssm")
     order_size = float(
@@ -452,6 +455,7 @@ def execute_orders(balances, jobs):
     for job in jobs:
         if job["type"] == "buy":
             brokers.append(job["broker"])
+    log_wp.debug(f"Brokers: {brokers}")
 
     # instantiate brokers
     api_dict = setup_brokers(broker_list=brokers)
@@ -527,7 +531,8 @@ def execute_orders(balances, jobs):
 
 
 def notify(results):
-    print(f"Job report")
+    ...
+    """    print(f"Job report")
     print(f"====================")
     for job in results:
         print(f'Symbol: \t\t{job["symbol"]}')
@@ -540,6 +545,7 @@ def notify(results):
             print(f'Target buy price: \t{job["last_price"]}')
             print(f'Actual buy price: \t{job["unit_price"]}')
             print(f"- - - - - - -")
+    """
 
 
 def buys():
