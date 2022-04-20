@@ -13,7 +13,8 @@ class TestBackTrade(unittest.TestCase):
 
     @patch("datasources.get_jobs", autospec=True)
     def test_get_next(self, mock_requests):
-        mock_requests.
+        ...
+        # mock_requests.
 
 
 fake_buy = {

@@ -38,18 +38,30 @@ class YFinanceFeeder:
             )
 
         if end == None:
-            end = datetime.now().astimezone()
-
-        if symbol[:4] == "-USD":
-            ...
-        elif symbol[:3] == "USD":
-            # alpaca
-            symbol = symbol[:-3] + "-USD"
+            # end = datetime.now().astimezone()
+            end = datetime.now()
+            yfend = end
         else:
-            symbol = symbol + "-USD"
-        return yf.Ticker(symbol).history(
-            start=start, end=end, interval=interval, actions=False
+            # weird yfinance bug will return less rows than we asked for???
+            yfend = end + relativedelta(days=2)
+
+        # assumes anything with a length longer than 4 characters is a crypto stock
+        if len(symbol) > 4:
+            if symbol[:4] == "-USD":
+                ...
+            elif symbol[:3] == "USD":
+                # alpaca
+                symbol = symbol[:-3] + "-USD"
+            else:
+                symbol = symbol + "-USD"
+
+        bars = yf.Ticker(symbol).history(
+            start=start, end=yfend, interval=interval, actions=False
         )
+        bars = bars.tz_localize(None)
+        bars = bars.loc[bars.index <= end]
+
+        return bars
 
 
 class MockDataSourceException(Exception):
@@ -71,9 +83,11 @@ class MockDataSource:
         real_end: datetime = None,
     ):
         if real_end == None:
-            self.read_end = datetime.now().astimezone()
+            # self.read_end = datetime.now().astimezone()
+            self.read_end = datetime.now()
         else:
-            self.real_end = real_end.astimezone()
+            # self.real_end = real_end.astimezone()
+            self.real_end = real_end
 
         self.data_source = data_source
 
@@ -91,8 +105,6 @@ class MockDataSource:
             self.bars = self.data_source.get_bars(
                 symbol=symbol, start=start, end=self.real_end, interval=interval
             )
-
-            self.bars = self.bars.tz_localize(None)
 
             interval_delta, max_range, tick = self.get_interval_settings(
                 interval=interval

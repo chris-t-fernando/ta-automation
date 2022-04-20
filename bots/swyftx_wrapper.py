@@ -188,7 +188,7 @@ class SwyftxAPI(ITradeAPI):
 
     def _build_asset_list(self):
         # this is munted. there's no Markets endpoint in demo?!
-        temp_api = pyswyft.API(access_token=api_key, environment="live")
+        temp_api = pyswyft.API(access_token=self.api_key, environment="live")
         # set up asset lists
         self._asset_list_by_id = self._structure_asset_dict_by_id(
             temp_api.request(markets.MarketsAssets())

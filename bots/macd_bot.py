@@ -95,7 +95,48 @@ class BackTrade:
             f"{symbol} - BackTrade object initilised start {self.start_dt} end {self.end_dt}, bars start {self.bars_start} bars end {self.bars_end}"
         )
 
-    # todo: get a better signal
+    def get_last_sma(self, symbol, df):
+        return df.iloc[-1].sma_200
+
+    def get_recent_average_sma(self, symbol, df):
+        return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
+
+    def check_sma(self, last_sma: float, recent_average_sma: float, ignore_sma: bool):
+        if ignore_sma:
+            log_wp.warning(f"Returning True since ignore_sma = {ignore_sma}")
+            return True
+
+        if last_sma > recent_average_sma:
+            log_wp.debug(f"True last SMA {last_sma} > {recent_average_sma}")
+            return last_sma, recent_average_sma
+        else:
+            log_wp.debug(f"False last SMA {last_sma} > {recent_average_sma}")
+            return False
+
+    def get_blue_cycle_start(self, df: pd.DataFrame, before_date):
+        return df.loc[(df["macd_cycle"] == "blue") & (df.index < before_date)].index[-1]
+
+    def get_red_cycle_start(self, df: pd.DataFrame):
+        return df.loc[(df.macd_crossover == True) & (df.macd_macd < 0)].index[-1]
+
+    def calculate_stop_loss_unit_price(
+        self, df: pd.DataFrame, blue_cycle_start, red_cycle_start
+    ):
+        return df.loc[blue_cycle_start:red_cycle_start].Close.min()
+
+    # TODO there is 100% a better way of doing this
+    def calculate_stop_loss_date(
+        self, df: pd.DataFrame, blue_cycle_start, red_cycle_start
+    ):
+        return df.loc[blue_cycle_start:red_cycle_start].Close.idxmin()
+
+    def count_intervals(self, df: pd.DataFrame, start_date, end_date=None):
+        if end_date == None:
+            return len(df.loc[start_date:])
+        else:
+            return len(df.loc[start_date:end_date])
+
+    # TODO: get a better signal
     def get_next(self):
         if self.complete == True:
             log_wp.debug(
@@ -122,9 +163,6 @@ class BackTrade:
             )
             exit()
 
-        # need to make a copy of df, because the TA library gets pantsy if you add columns to it
-        df_output = df.copy(deep=True)
-
         # bail out if we've already taken a position
         if self.position_taken:
             log_wp.debug(
@@ -132,111 +170,108 @@ class BackTrade:
             )
             return False
 
-        # bail out if there wasn't a crossover in this cycle
-        if (
-            len(
-                df_output.loc[
-                    (df_output.macd_crossover == True)
-                    & (df_output.macd_macd < 0)
-                    & (df_output.index == self.current_dt)
-                ]
-            )
-            == 0
-        ):
+        crossover_count = len(
+            df.loc[
+                (df.macd_crossover == True)
+                & (df.macd_macd < 0)
+                & (df.index == self.current_dt)
+            ]
+        )
+
+        if crossover_count == 0:
             # no signal
             log_wp.info(f"{self.symbol} - current {self.current_dt} - no signal")
             return False
 
-        # is SMA good?
-        log_wp.debug(f"{self.symbol} - Checking SMA")
-
-        self.recent_average_sma = (
-            df_output.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
+        # check SMA
+        last_sma = self.get_last_sma(symbol=self.symbol, df=df)
+        recent_average_sma = self.get_recent_average_sma(symbol=self.symbol, df=df)
+        check_sma = self.check_sma(
+            last_sma=last_sma,
+            recent_average_sma=recent_average_sma,
+            ignore_sma=self.ignore_sma,
         )
-        self.last_sma = df_output.iloc[-1].sma_200
-        if (self.last_sma > self.recent_average_sma) or self.ignore_sma:
-            log_wp.debug(
-                f"{self.symbol} - proceeding since last SMA {self.last_sma} > {self.recent_average_sma} or ignore_sma {self.ignore_sma}"
-            )
-            # STEP 4: PREP FOR AN ORDER!
-            self.crossover_index = df_output.loc[
-                (df_output.macd_crossover == True) & (df_output.macd_macd < 0)
-            ].index[-1]
-            self.crossover_record = df_output.loc[[self.crossover_index]]
-            self.crossover_index_position = df_output.index.get_loc(
-                self.crossover_index
-            )
-
-            log_wp.debug(
-                f"{self.symbol} - SMA > signal crossover is at {self.crossover_index}"
-            )
-
-            self.entry_unit = df_output.Close.iloc[-1]
-            # first start with calculating risk and stop loss
-            # stop loss is based on the lowest unit price since this cycle began
-            # first find the beginning of this cycle, which is when the blue line crossed under the red line
-            self.blue_cycle_start = df_output.loc[
-                (df_output["macd_cycle"] == "blue")
-                & (df_output.index < self.crossover_index)
-            ].index[-1]
-            # then get the lowest close price since the cycle began
-            self.stop_unit = df_output.loc[
-                self.blue_cycle_start : self.crossover_index
-            ].Close.min()
-            self.stop_unit_date = df_output.loc[
-                self.blue_cycle_start : self.crossover_index
-            ].Close.idxmin()
-
-            self.original_stop = self.stop_unit
-
-            # and for informational/confidence purposes, hold on to the intervals since this happened
-            self.intervals_since_stop = len(df_output.loc[self.stop_unit_date :])
-
-            # calculate other order variables
-            self.trade_date = df_output.index[-1]
-            self.steps = 1
-            self.units = floor(self.capital / self.entry_unit)
-            self.risk_unit = self.entry_unit - self.stop_unit
-            self.original_risk_unit = self.risk_unit
-            self.risk_value = self.units * self.risk_unit
-            self.target_profit = self.PROFIT_TARGET * self.risk_unit
-            self.target_price = self.entry_unit + self.target_profit
-
-            self.macd_signal_gap = (
-                self.crossover_record.macd_macd.values[0]
-                - self.crossover_record.macd_signal.values[0]
-            )
-            self.sma_signal_gap = self.last_sma - self.recent_average_sma
-
-            self.leftover_capital = self.capital - (self.units * self.entry_unit)
-
-            self.order = Purchase(unit_quantity=self.units, unit_price=self.entry_unit)
-
-            # fmt: off
-            log_wp.info(f"{self.symbol} - {self.crossover_index}: Found signal")
-            log_wp.info(f"{self.symbol} - Strength:\t\tNot sure how I want to do this yet")
-            log_wp.info(f"{self.symbol} - MACD:\t\t\t{self.crossover_record.macd_macd.values[0]}")
-            log_wp.info(f"{self.symbol} - Signal:\t\t\t{self.crossover_record.macd_signal.values[0]}")
-            log_wp.info(f"{self.symbol} - Histogram:\t\t{self.crossover_record.macd_histogram.values[0]}")
-            log_wp.info(f"{self.symbol} - SMA:\t\t\t{self.last_sma} vs recent average of {self.recent_average_sma}")
-            log_wp.info(f"{self.symbol} - Capital:\t\t${clean(self.capital)}")
-            log_wp.info(f"{self.symbol} - Units to buy:\t\t{clean(self.units)} units")
-            log_wp.info(f"{self.symbol} - Entry point:\t\t${clean(self.entry_unit)}")
-            log_wp.info(f"{self.symbol} - Stop loss:\t\t${clean(self.stop_unit)}")
-            log_wp.info(f"{self.symbol} - Cycle began:\t\t{self.intervals_since_stop} intervals ago")
-            log_wp.info(f"{self.symbol} - Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit*100,1)}% of unit cost)")
-            log_wp.info(f"{self.symbol} - Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)")
-            log_wp.info(f"{self.symbol} - Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)")
-            # fmt: on
-
-            self.position_taken = True
-
-        else:
+        if not check_sma:
             log_wp.info(
-                f"{self.symbol} - {self.current_dt} - found signal but SMA is trending downward - avoiding this trade"
+                f"{self.symbol} - {self.current_dt} - macd good, SMA bad, avoiding trade"
             )
             self.skipped_trades += 1
             self.skipped_trades_sma += 1
+            return False
+
+        # SMA is good, MACD is good
+        # STEP 4: PREP FOR AN ORDER!
+        red_cycle_start = self.get_red_cycle_start(df=df)
+        crossover_record = df.loc[red_cycle_start]
+
+        log_wp.debug(f"{self.symbol} - SMA/signal crossover at {red_cycle_start}")
+
+        # first start with calculating risk and stop loss
+        # stop loss is based on the lowest unit price since this cycle began
+        # first find the beginning of this cycle, which is when the blue line crossed under the red line
+        blue_cycle_start = self.get_blue_cycle_start(df=df, before_date=red_cycle_start)
+
+        # then get the lowest close price since the cycle began
+        stop_unit = self.calculate_stop_loss_unit_price(
+            df=df,
+            blue_cycle_start=blue_cycle_start,
+            red_cycle_start=red_cycle_start,
+        )
+
+        stop_unit_date = self.calculate_stop_loss_date(
+            df=df,
+            blue_cycle_start=blue_cycle_start,
+            red_cycle_start=red_cycle_start,
+        )
+
+        original_stop = stop_unit
+
+        # and for informational/confidence purposes, hold on to the intervals since this happened
+        intervals_since_stop = self.count_intervals(df=df, start_date=stop_unit_date)
+
+        # calculate other order variables
+        entry_unit = df.Close.iloc[-1]
+        trade_date = df.index[-1]
+        steps = 1
+        units = floor(self.capital / entry_unit)
+        risk_unit = entry_unit - stop_unit
+        original_risk_unit = risk_unit
+        risk_value = units * risk_unit
+        target_profit = self.PROFIT_TARGET * risk_unit
+        target_price = entry_unit + target_profit
+
+        macd_signal_gap = (
+            # crossover_record.macd_macd.values[0]
+            crossover_record.macd_macd
+            # - crossover_record.macd_signal.values[0]
+            - crossover_record.macd_signal
+        )
+        sma_signal_gap = last_sma - recent_average_sma
+
+        self.leftover_capital = self.capital - (units * entry_unit)
+
+        self.order = Purchase(unit_quantity=units, unit_price=entry_unit)
+
+        # fmt: off
+        log_wp.info(f"{self.symbol} - {red_cycle_start}: Found signal")
+        log_wp.info(f"{self.symbol} - Strength:\t\tNot sure how I want to do this yet")
+        log_wp.info(f"{self.symbol} - MACD:\t\t\t{crossover_record.macd_macd.values[0]}")
+        log_wp.info(f"{self.symbol} - Signal:\t\t\t{crossover_record.macd_signal.values[0]}")
+        log_wp.info(f"{self.symbol} - Histogram:\t\t{crossover_record.macd_histogram.values[0]}")
+        log_wp.info(f"{self.symbol} - SMA:\t\t\t{last_sma} vs recent average of {recent_average_sma}")
+        log_wp.info(f"{self.symbol} - Capital:\t\t${clean(self.capital)}")
+        log_wp.info(f"{self.symbol} - Units to buy:\t\t{clean(units)} units")
+        log_wp.info(f"{self.symbol} - Entry point:\t\t${clean(entry_unit)}")
+        log_wp.info(f"{self.symbol} - Stop loss:\t\t${clean(stop_unit)}")
+        log_wp.info(f"{self.symbol} - Cycle began:\t\t{intervals_since_stop} intervals ago")
+        log_wp.info(f"{self.symbol} - Unit risk:\t\t${clean(risk_unit)} ({round(risk_unit/entry_unit*100,1)}% of unit cost)")
+        log_wp.info(f"{self.symbol} - Unit profit:\t\t${clean(target_profit)} ({round(target_profit/entry_unit*100,1)}% of unit cost)")
+        log_wp.info(f"{self.symbol} - Target price:\t\t${clean(target_price)} ({round(target_price/self.capital*100,1)}% of capital)")
+        # fmt: on
+
+        self.position_taken = True
+
+        return True
 
     def move_to_next_interval(self):
         # get the next interval in the data
@@ -263,14 +298,18 @@ class BackTrade:
 def get_jobs():
     capital = 2000
     # start = "2022-04-11 15:45:00"
-    start = (datetime.now() - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
-    end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # end = "2022-04-11 15:50:00"
+    # start = (datetime.now() - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+    # end = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    start = "2022-03-31 10:25:00"
+    end = "2022-03-31 10:35:00"
+
     interval = "5m"
 
     symbols = [
-        {"symbol": "AXS", "broker": "swyftx"},
-        {"symbol": "BTC", "broker": "swyftx"},
+        {"symbol": "AAPL", "broker": "swyftx"},
+        # {"symbol": "AXS", "broker": "swyftx"},
+        # {"symbol": "BTC", "broker": "swyftx"},
         # {"symbol": "ADA", "broker": "swyftx"},
         # {"symbol": "ATOM", "broker": "swyftx"},
         # {"symbol": "ETH", "broker": "swyftx"},
@@ -328,14 +367,14 @@ def do_ta(job):
 
     if backtest.position_taken:
         log_wp.warning(
-            f"{symbol} - found macd and sma signal at {backtest.crossover_index}"
+            f"{symbol} - found macd and sma signal at {backtest.red_cycle_start}"
         )
         return {
             "type": "buy",
             "symbol": symbol,
             "broker": broker,
             "interval": interval,
-            "timestamp": backtest.crossover_index,
+            "timestamp": backtest.red_cycle_start,
             "signal_strength": None,
             "macd_value": backtest.crossover_record.macd_macd.values[0],
             "signal_value": backtest.crossover_record.macd_signal.values[0],
@@ -556,20 +595,26 @@ def buys():
     # returns a list of ta results
     job_ta_results = _meta_map(jobs)
 
-    # returns a dict of ta results
-    job_ta_merged = _meta_map_merge(job_ta_results)
+    # temporary logic, aping condition in step functions
+    buys = [o for o in job_ta_results if o["type"] == "buy"]
 
-    # returns an ordered list of ta results
-    job_prioritised = prioritise_buys(job_ta_merged)
+    if len(buys) > 0:
+        # returns a dict of ta results
+        job_ta_merged = _meta_map_merge(job_ta_results)
 
-    # returns how much cash we have to spend
-    job_funds = get_funds(jobs)
+        # returns an ordered list of ta results
+        job_prioritised = prioritise_buys(job_ta_merged)
 
-    # returns the results of the buy orders
-    execution_results = execute_orders(balances=job_funds, jobs=job_prioritised)
+        # returns how much cash we have to spend
+        job_funds = get_funds(jobs)
 
-    # send me a notification of the outcome
-    notify(results=execution_results)
+        # returns the results of the buy orders
+        execution_results = execute_orders(balances=job_funds, jobs=job_prioritised)
+
+        # send me a notification of the outcome
+        notify(results=execution_results)
+    else:
+        notify(results=job_ta_results)
 
 
 def get_rules():
