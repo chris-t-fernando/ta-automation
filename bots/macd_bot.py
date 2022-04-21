@@ -372,7 +372,7 @@ def get_jobs():
         "interval": interval,
         "symbols": symbols,
         "broker": "swyftx",
-        "real_money_trading": True,
+        "real_money_trading": False,
     }
 
     return jobs

@@ -17,6 +17,7 @@ class TestBackTrade(unittest.TestCase):
         test_result = macd_bot.BackTrade.get_last_sma(None, self.test_df)
         self.assertEqual(round(test_result, 6), expected_result)
 
+    # TODO need to test for NaN SMA
     def test_get_recent_average_sma(self):
         expected_result = 177.148508
         test_result = macd_bot.BackTrade.get_recent_average_sma(None, self.test_df)

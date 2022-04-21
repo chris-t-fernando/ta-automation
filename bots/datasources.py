@@ -83,10 +83,8 @@ class MockDataSource:
         real_end: datetime = None,
     ):
         if real_end == None:
-            # self.read_end = datetime.now().astimezone()
             self.read_end = datetime.now()
         else:
-            # self.real_end = real_end.astimezone()
             self.real_end = real_end
 
         self.data_source = data_source
@@ -100,7 +98,6 @@ class MockDataSource:
         do_macd=False,
         do_sma=False,
     ):
-        # yf/pandas will drop time and timezone if interval is greater than 24 hours
         if not self.initialised:
             self.bars = self.data_source.get_bars(
                 symbol=symbol, start=start, end=self.real_end, interval=interval
@@ -110,8 +107,6 @@ class MockDataSource:
                 interval=interval
             )
 
-            # if len(self.bars) == 0:
-            #    raise ValueError("No rows. Check symbol exists and dates provided")
             if len(self.bars) == 0:
                 new_range = max_range
                 # something went wrong - usually bad symbol and search parameters
