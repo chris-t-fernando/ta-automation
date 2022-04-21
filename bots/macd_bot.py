@@ -153,10 +153,10 @@ class BackTrade:
             f"{symbol} - BackTrade object initilised start {self.start_dt} end {self.end_dt}, bars start {self.bars_start} bars end {self.bars_end}"
         )
 
-    def get_last_sma(self, symbol, df):
+    def get_last_sma(self, df):
         return df.iloc[-1].sma_200
 
-    def get_recent_average_sma(self, symbol, df):
+    def get_recent_average_sma(self, df):
         return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
 
     def check_sma(self, last_sma: float, recent_average_sma: float, ignore_sma: bool):
@@ -172,10 +172,18 @@ class BackTrade:
             return False
 
     def get_red_cycle_start(self, df: pd.DataFrame, before_date):
-        return df.loc[(df["macd_cycle"] == "blue") & (df.index < before_date)].index[-1]
+        try:
+            return df.loc[
+                (df["macd_cycle"] == "blue") & (df.index < before_date)
+            ].index[-1]
+        except IndexError as e:
+            return False
 
     def get_blue_cycle_start(self, df: pd.DataFrame):
-        return df.loc[(df.macd_crossover == True) & (df.macd_macd < 0)].index[-1]
+        try:
+            return df.loc[(df.macd_crossover == True) & (df.macd_macd < 0)].index[-1]
+        except IndexError as e:
+            return False
 
     def calculate_stop_loss_unit_price(self, df: pd.DataFrame, start_date, end_date):
         return df.loc[start_date:end_date].Close.min()
@@ -238,8 +246,8 @@ class BackTrade:
             return False
 
         # check SMA
-        last_sma = self.get_last_sma(symbol=self.symbol, df=df)
-        recent_average_sma = self.get_recent_average_sma(symbol=self.symbol, df=df)
+        last_sma = self.get_last_sma(df=df)
+        recent_average_sma = self.get_recent_average_sma(df=df)
         check_sma = self.check_sma(
             last_sma=last_sma,
             recent_average_sma=recent_average_sma,
@@ -406,10 +414,10 @@ def do_ta(job):
             "interval": interval,
             "timestamp": backtest.buy_order.red_cycle_start,
             "signal_strength": None,
-            "macd_value": backtest.buy_order.blue_cycle_start_macd,
-            "signal_value": backtest.buy_order.blue_cycle_start_signal,
+            "macd_value": backtest.buy_order.blue_cycle_macd,
+            "signal_value": backtest.buy_order.blue_cycle_signal,
             "macd_signal_gap": backtest.buy_order.macd_signal_gap,
-            "histogram_value": backtest.buy_order.blue_cycle_start_histogram,
+            "histogram_value": backtest.buy_order.blue_cycle_histogram,
             "sma_value": backtest.buy_order.last_sma,
             "sma_recent": backtest.buy_order.recent_average_sma,
             "sma_gap": backtest.buy_order.sma_signal_gap,
@@ -1017,5 +1025,6 @@ def sells():
     # send notifications
 
 
-buys()
-# sells()
+if __name__ == "__main__":
+    buys()
+    # sells()

@@ -140,7 +140,7 @@ class MockDataSource:
 
             if do_sma:
                 sma = btalib.sma(self.bars, period=200)
-                self.bars["sma_200"] = sma["sma"]
+                self.bars["sma_200"] = list(sma["sma"])
 
             # if i was smart i'd make this a separate function so i could reuse it...
             if do_macd:
