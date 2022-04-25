@@ -110,6 +110,7 @@ class OrderResult(IOrderResult):
     _raw_response: dict
     # _raw_request
 
+    # TODO add requested values too, like swyftx
     def __init__(self, response: dict, orders_create_object):
         self._raw_response = response
         self._raw_request = orders_create_object
@@ -184,7 +185,8 @@ class AlpacaAPI(ITradeAPI):
         for asset in asset_dict:
             # code
             # name
-            return_dict[asset.symbol] = asset
+            return_dict[str(asset.symbol).lower()] = asset
+        return return_dict
 
     def get_account(self) -> Account:
         request = self.api.get_account()

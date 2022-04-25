@@ -734,26 +734,6 @@ def trigger_stop_loss(rule, last_price):
         return False
 
 
-def trigger_sell_point(rule, last_price):
-    if rule["current_target_price"] < last_price:
-        print(
-            f'{rule["symbol"]}: Target price met (market {last_price} vs {rule["current_target_price"]})'
-        )
-        return True
-    else:
-        return False
-
-
-def trigger_risk_point(rule, last_price):
-    if (last_price + rule["current_risk"]) < last_price:
-        print(
-            f'{rule["symbol"]}: Risk price met (market {last_price} vs {(last_price + rule["current_risk"])}'
-        )
-        return True
-    else:
-        return False
-
-
 def write_rules(symbol: str, action: str, new_rule=None):
     ssm = boto3.client("ssm")
     old_rules = ssm.get_parameter(Name="/tabot/rules/5m").get("Parameter").get("Value")

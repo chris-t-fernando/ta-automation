@@ -3,6 +3,7 @@ from tracemalloc import start
 import boto3
 from alpaca_wrapper import AlpacaAPI
 from swyftx_wrapper import SwyftxAPI
+from back_test_wrapper import BackTestAPI
 from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 import yfinance as yf
@@ -215,6 +216,7 @@ def get_interval_settings(interval):
         raise ValueError(f"Unknown interval type {interval}")
 
 
+# symbol can be backtest naive
 class Symbol:
     def __init__(
         self, symbol, api, interval, real_money_trading, ssm, data_source, to_date
@@ -288,7 +290,7 @@ class Symbol:
 class MacdBot:
     jobs = None
 
-    def __init__(self, ssm, data_source, start_period=None):
+    def __init__(self, ssm, data_source, start_period=None, back_testing=False):
         interval = "5m"
         real_money_trading = False
         self.ssm = ssm
@@ -302,9 +304,12 @@ class MacdBot:
 
         # get brokers and then set them up
         self.api_list = []
-        for api in symbols:
-            self.api_list.append(api["api"])
-            log_wp.debug(f"Found broker {api}")
+        if back_testing:
+            self.api_list = ["back_test"]
+        else:
+            for api in symbols:
+                self.api_list.append(api["api"])
+                log_wp.debug(f"Found broker {api}")
         self.api_dict = self.setup_brokers(api_list=self.api_list, ssm=ssm)
 
         # set up individual symbols
@@ -330,7 +335,11 @@ class MacdBot:
 
         for api in api_set:
             start_time = time.time()
-            if api == "swyftx":
+            if api == "back_test":
+                api_dict[api] = BackTestAPI()
+                break
+
+            elif api == "swyftx":
                 api_key = (
                     ssm.get_parameter(
                         Name="/tabot/swyftx/access_token", WithDecryption=True
@@ -464,15 +473,208 @@ def count_intervals(df: pd.DataFrame, start_date, end_date=None):
         return len(df.loc[start_date:end_date])
 
 
+def write_rules(symbol: str, action: str, new_rule=None):
+    ssm = boto3.client("ssm")
+    old_rules = ssm.get_parameter(Name="/tabot/rules/5m").get("Parameter").get("Value")
+    rules = json.loads(old_rules)
+
+    changed = False
+    if action == "delete":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                changed = True
+
+    elif action == "replace":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                new_rules.append(new_rule)
+                changed = True
+    elif action == "create":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                raise ValueError(
+                    f"Symbol already exists in SSM rules! {symbol.lower()}"
+                )
+
+        new_rules.append(new_rule)
+        changed = True
+
+    else:
+        raise Exception("write_rules: No action specified?")
+
+    if changed == True:
+        ssm.put_parameter(
+            Name="/tabot/rules/5m",
+            Value=json.dumps(new_rules),
+            Type="String",
+            Overwrite=True,
+        )
+    else:
+        print(f"Symbol {symbol} - tried updating rules but nothing to change")
+
+    return True
+
+
+def apply_rules(rules, positions, last_close_dict):
+    stop_loss_triggered = []
+    sell_point_triggered = []
+    risk_point_triggered = []
+    trigger_results = []
+
+    ssm = boto3.client("ssm")
+    api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
+
+    for broker in positions:
+        for held in positions[broker]:
+            held_symbol = held.symbol.lower()
+            held_quantity = float(held.quantity)
+            last_close = last_close_dict[held_symbol]
+
+            for rule in rules:
+                rule_symbol = rule["symbol"].lower()
+
+                if rule_symbol == held_symbol:
+                    # matched a rule and a holding
+                    trigger_stop = trigger_stop_loss(rule, last_close)
+                    trigger_sell = trigger_sell_point(rule, last_close)
+                    trigger_risk = trigger_risk_point(rule, last_close)
+                    if trigger_stop:
+                        # stop loss hit! liquidate
+                        close_response = api_dict[broker].close_position(held_symbol)
+
+                        if close_response.success:
+                            # also need to write an updated rule to SSM for next run
+                            updated_rules = write_rules(
+                                action="delete", symbol=held_symbol
+                            )
+
+                            # hold on to this for reporting
+                            stop_loss_triggered.append(
+                                {
+                                    "symbol": held_symbol,
+                                    "last_close": last_close,
+                                    "rule": rule,
+                                }
+                            )
+
+                            print(
+                                f"Symbol {held_symbol} hit stop loss and was liquidated"
+                            )
+                        else:
+                            # need a better way of notifying me of this stuff
+                            print(
+                                f"CRITICAL - SYMBOL {held_symbol} HIT STOP LOSS BUT FAILED TO BE LIQUIDATED ****** DO NOT IGNORE THIS *****"
+                            )
+                            trigger_results.append(
+                                f"CRITICAL: SYMBOL {held_symbol} HIT STOP LOSS {last_close} BUT FAILED TO BE LIQUIDATED"
+                            )
+
+                    elif trigger_sell or trigger_risk:
+                        if trigger_sell:
+                            new_target_pct = rule["win_point_sell_down_pct"]
+                            # reporting
+                            sell_point_triggered.append(
+                                {
+                                    "symbol": held_symbol,
+                                    "last_close": last_close,
+                                    "rule": rule,
+                                }
+                            )
+                        else:
+                            # trigger risk
+                            new_target_pct = rule["risk_point_sell_down_pct"]
+                            # reporting
+                            risk_point_triggered.append(
+                                {
+                                    "symbol": held_symbol,
+                                    "last_close": last_close,
+                                    "rule": rule,
+                                }
+                            )
+
+                        # hit high watermark of target price
+                        units_to_sell = held_quantity * new_target_pct
+                        sell_response = api_dict[broker].sell_order_market(
+                            symbol=held_symbol, units=units_to_sell
+                        )
+                        sell_value = sell_response.total_value
+
+                        if sell_response.success:
+                            print(
+                                f'Symbol {held_symbol} hit target sale point. Successfully sold {round(rule["win_point_sell_down_pct"]*100,0)}% of units for total value {round(sell_value,2)}'
+                            )
+
+                            new_units_held = (
+                                api_dict[broker]
+                                .get_position(symbol=held_symbol)
+                                .quantity
+                            )
+
+                            updated_ssm_rule = rule.copy()
+
+                            new_units_sold = rule["units_sold"] + sell_response.units
+                            new_sales_obj = {
+                                "units": new_units_sold,
+                                "sale_price": sell_response.unit_price,
+                            }
+                            new_steps = updated_ssm_rule["steps"] + 1
+                            new_risk = rule["original_risk"] * new_steps
+                            new_stop_loss = sell_response.unit_price + new_risk
+
+                            updated_ssm_rule["current_stop_loss"] = new_stop_loss
+                            updated_ssm_rule["current_risk"] = new_risk
+                            updated_ssm_rule["sales"].append(new_sales_obj)
+                            updated_ssm_rule["units_held"] = new_units_held
+                            updated_ssm_rule["units_sold"] = new_units_sold
+                            updated_ssm_rule["steps"] += new_steps
+                            updated_ssm_rule["current_target_price"] = (
+                                updated_ssm_rule["current_target_price"]
+                                + updated_ssm_rule["original_risk"]
+                            )
+
+                            updated_rules = write_rules(
+                                action="replace",
+                                symbol=held_symbol,
+                                new_rule=updated_ssm_rule,
+                            )
+
+                        else:
+                            # need a better way of notifying me of this stuff
+                            print(
+                                f"CRITICAL - SYMBOL {held_symbol} FAILED TO TAKE PROFIT ****** DO NOT IGNORE THIS *****"
+                            )
+                            trigger_results.append(
+                                f"CRITICAL: SYMBOL {held_symbol} FAILED TO TAKE PROFIT"
+                            )
+
+                    else:
+                        print("do nothing")
+
+    return {
+        "stop_loss": stop_loss_triggered,
+        "sell_point": sell_point_triggered,
+        "risk_point": risk_point_triggered,
+    }
+
+
 def do_back_testing(bot_handler, rules):
     buy_position_taken = False
-    log_wp.debug(f"Starting backtesting...")
+    log_wp.debug(f"Starting back testing...")
     for symbol in bot_handler.symbols:
         # shorthand for this bot's bars, to make this code more legible
         bars = bot_handler.symbols["AAPL"].bars
         # start at the first row that doesn't have na for sma_200
         backtest_start = bars.loc[bars.sma_200.notnull()].index[0]
-        log_wp.debug(f"{symbol} Backtesting starts at {backtest_start}")
+        log_wp.debug(f"{symbol} Back testing starts at {backtest_start}")
         bars = bars.loc[backtest_start:]
         for index in bars.index:
             current_bars = bars.loc[:index]
@@ -481,7 +683,7 @@ def do_back_testing(bot_handler, rules):
                     buy_order = BuyOrder(symbol, current_bars)
                     buy_position_taken = True
                     log_wp.debug(f"{symbol} Found buy at {index}")
-            else:  # need to rbing in rules for sale, and they need to be the same as you'd use in real life
+            else:  # need to bring in rules for sale, and they need to be the same as you'd use in real life
                 # in sales
                 ...
 
@@ -497,7 +699,7 @@ def main():
 
     rules = get_rules()
     validate_rules(rules)
-    bot_handler = MacdBot(ssm, data_source)
+    bot_handler = MacdBot(ssm, data_source, back_testing=back_testing)
 
     if back_testing:
         do_back_testing(bot_handle=bot_handler, rules=rules)

@@ -11,14 +11,15 @@ from itradeapi import (
 from math import floor
 import yfinance as yf
 from datetime import datetime, timedelta
-
-# from pandas import DataFrame as df
+#from order_result import OrderResult
 
 
 class OrderRequiresPriceOrUnitsException(Exception):
     ...
 
 
+# these are repeated in order_result.py because i am just taking these statuses 1:1
+# the alpaca wrapper will have to normalise to these statuses
 # CONSTANTS
 MARKET_BUY = 1
 MARKET_SELL = 2
@@ -69,6 +70,83 @@ ORDER_MAP = {
 
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
 
+class OrderResult(IOrderResult):
+    order_id: str
+    sold_symbol: str
+    bought_symbol: str
+    quantity: float
+    quantity_symbol: str
+    quantity_id: int
+    unit_price: int
+    trigger: float
+    status: int
+    status_text: str
+    status_summary: str
+    order_type: int
+    order_type_text: str
+    created_time: int
+    updated_time: int
+    success: bool
+    _raw_response: dict
+    _raw_request = None
+
+    def __init__(self, order_object, asset_list_by_id: dict):
+        self._raw_response = order_object
+
+        order_type = order_object["order_type"]
+        order_type_text = ORDER_MAP_INVERTED[order_type]
+
+        self.order_id = order_object["orderUuid"]
+        if "BUY" in order_type_text:
+            self.bought_id = order_object["secondary_asset"]
+            self.bought_symbol = asset_list_by_id[self.bought_id]["symbol"]
+        else:
+            # sells
+            self.sold_id = order_object["primary_asset"]
+            self.sold_symbol = asset_list_by_id[self.sold_id]["symbol"]
+
+        self.quantity = order_object["quantity"]
+        self.quantity_id = order_object["quantity_asset"]
+        self.quantity_symbol = asset_list_by_id[self.quantity_id]["symbol"]
+
+        if order_type == MARKET_BUY or order_type == MARKET_SELL:
+            # immediate sell, so we can fill in all
+            self.units = order_object["amount"]
+            self.unit_price = order_object["rate"]
+            self.fees = order_object["feeAmount"]
+            self.total_value = self.units * self.unit_price
+
+            # self.requested_units = order_object["amount"]
+            # self.requested_unit_price = order_object["rate"]
+            # self.requested_total_value = self.units * self.unit_price
+
+        elif order_type == LIMIT_BUY or order_type == LIMIT_SELL:
+            self.requested_units = order_object["quantity"]
+            self.requested_unit_price = order_object["trigger"]
+            self.fees = 0
+            self.requested_total_value = (
+                self.requested_units * self.requested_unit_price
+            )
+
+        if order_object["status"] == 3 or order_object["status"] == 4:
+            self.units = order_object["amount"]
+            self.unit_price = order_object["rate"]
+            self.fees = order_object["feeAmount"]
+            self.total_value = self.units * self.unit_price
+
+        self.trigger = order_object["trigger"]
+        self.status = order_object["status"]
+        self.status_text = ORDER_STATUS_TEXT[self.status]
+        self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
+        self.success = (
+            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
+            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+        )
+
+        created_time = order_object["created_time"]
+        updated_time = order_object["updated_time"]
+
+
 
 # return objects
 class Asset(IAsset):
@@ -99,63 +177,6 @@ class Position(IPosition):
         self.quantity = quantity
 
 
-class OrderResult(IOrderResult):
-    order_id: str
-    sold_symbol: str
-    bought_symbol: str
-    quantity: float
-    quantity_symbol: str
-    quantity_id: int
-    unit_price: int
-    trigger: float
-    status: int
-    status_text: str
-    status_summary: str
-    order_type: int
-    order_type_text: str
-    created_time: int
-    updated_time: int
-    success: bool
-    _raw_response: dict
-    _raw_request: orders.OrdersCreate
-
-    def __init__(self, order_object: orders.OrdersGetOrder, asset_list_by_id: dict):
-        self._raw_response = order_object
-
-        order_type = order_object["order_type"]
-        order_type_text = ORDER_MAP_INVERTED[order_type]
-
-        self.order_id = order_object["orderUuid"]
-        if "BUY" in order_type_text:
-            self.bought_id = order_object["secondary_asset"]
-            self.bought_symbol = asset_list_by_id[self.bought_id]["symbol"]
-        else:
-            # sells
-            self.sold_id = order_object["primary_asset"]
-            self.sold_symbol = asset_list_by_id[self.sold_id]["symbol"]
-
-        self.quantity = order_object["quantity"]
-        self.quantity_id = order_object["quantity_asset"]
-        self.quantity_symbol = asset_list_by_id[self.quantity_id]["symbol"]
-
-        self.units = order_object["amount"]
-        self.unit_price = order_object["rate"]
-        self.fees = order_object["feeAmount"]
-        self.total_value = self.units * self.unit_price
-
-        self.trigger = order_object["trigger"]
-        self.status = order_object["status"]
-        self.status_text = ORDER_STATUS_TEXT[self.status]
-        self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
-        self.success = (
-            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
-            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
-        )
-
-        created_time = order_object["created_time"]
-        updated_time = order_object["updated_time"]
-
-
 # concrete class
 class SwyftxAPI(ITradeAPI):
     def __init__(self, api_key: str, real_money_trading: bool = False):
@@ -174,17 +195,17 @@ class SwyftxAPI(ITradeAPI):
     def get_assets(self):
         if self.assets_initialised != True:
             self._build_asset_list()
-        return self._asset_list_by_symbol()
+        return self._asset_list_by_symbol
 
     def get_asset_by_id(self, id):
         if self.assets_initialised != True:
             self._build_asset_list()
-        return self._asset_list_by_symbol()
+        return self._asset_list_by_symbol
 
     def get_asset_by_name(self, name: str):
         if self.assets_initialised != True:
             self._build_asset_list()
-        return self._asset_list_by_symbol()
+        return self._asset_list_by_symbol
 
     def _build_asset_list(self):
         # this is munted. there's no Markets endpoint in demo?!
@@ -209,7 +230,7 @@ class SwyftxAPI(ITradeAPI):
     def _structure_asset_dict_by_symbol(self, asset_dict):
         return_dict = {}
         for asset in asset_dict:
-            asset["symbol"] = asset["code"]
+            asset["symbol"] = str(asset["code"]).lower()
             return_dict[asset["code"]] = asset
         return return_dict
 
@@ -221,6 +242,7 @@ class SwyftxAPI(ITradeAPI):
 
     def symbol_id_to_text(self, id):
         assets = self.get_assets()
+        return [b.lower() for b in assets if assets[b]["id"] == id][0]
         return assets[id]["code"]
 
     def symbol_text_to_id(self, symbol):
@@ -553,7 +575,7 @@ if __name__ == "__main__":
     api.get_account()
     buy_market_value = api.buy_order_market(symbol="XRP", order_value=100)
     buy_market_units = api.buy_order_market(symbol="XRP", units=75)
-    buy_limit = api.buy_order_limit(symbol="XRP", units=52, unit_price=1)
+    buy_limit = api.buy_order_limit(symbol="XRP", units=52, unit_price=195)
     sell_market_value = api.sell_order_market(symbol="XRP", order_value=100)
     sell_market_units = api.sell_order_market(symbol="XRP", units=10)
     sell_limit = api.sell_order_limit(symbol="XRP", units=52, unit_price=0.95)
