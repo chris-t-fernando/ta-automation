@@ -11,7 +11,8 @@ from itradeapi import (
 from math import floor
 import yfinance as yf
 from datetime import datetime, timedelta
-#from order_result import OrderResult
+
+# from order_result import OrderResult
 
 
 class OrderRequiresPriceOrUnitsException(Exception):
@@ -28,19 +29,20 @@ LIMIT_SELL = 4
 STOP_LIMIT_BUY = 5
 STOP_LIMIT_SELL = 6
 
+
 ORDER_STATUS_SUMMARY_TO_ID = {
     "cancelled": {2, 7, 8, 9, 10},
     "open": {1, 3, 5},
+    "pending": {6},
     "filled": {4},
-    "pending": {5},
 }
 ORDER_STATUS_ID_TO_SUMMARY = {
     1: "open",
     2: "cancelled",
     3: "open",
     4: "filled",
-    5: "pending",
-    6: "cancelled",
+    5: "open",
+    6: "pending",
     7: "cancelled",
     8: "cancelled",
     9: "cancelled",
@@ -69,6 +71,7 @@ ORDER_MAP = {
 }
 
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
+
 
 class OrderResult(IOrderResult):
     order_id: str
@@ -145,7 +148,6 @@ class OrderResult(IOrderResult):
 
         created_time = order_object["created_time"]
         updated_time = order_object["updated_time"]
-
 
 
 # return objects

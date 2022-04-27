@@ -1,22 +1,21 @@
 import logging
-from tracemalloc import start
 import boto3
 from alpaca_wrapper import AlpacaAPI
 from swyftx_wrapper import SwyftxAPI
 from back_test_wrapper import BackTestAPI
-from datetime import datetime, timedelta, timezone
-from dateutil.relativedelta import relativedelta
 import yfinance as yf
-import pytz
 import pandas as pd
-import btalib
 import time
-import math
 import json
+from stock_symbol import Symbol
+from buyplan import BuyPlan
+from utils import get_pause, check_buy_signal
+
+global_back_testing = True
 
 log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-fhdlr = logging.FileHandler("macd_bot.log")
+fhdlr = logging.FileHandler("macd.log")
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)12s - %(message)s"
 )
@@ -24,278 +23,6 @@ hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
 log_wp.setLevel(logging.DEBUG)
-
-
-def clean(number):
-    number = round(number, 2)
-    return "{:,}".format(number)
-
-
-class BuyOrder:
-    def __init__(
-        self,
-        symbol,
-        df,
-        profit_target: float = 1.5,
-    ):
-        self.symbol = symbol
-        self.capital = 2000
-
-        self.blue_cycle_start = get_blue_cycle_start(df=df)
-        self.red_cycle_start = get_red_cycle_start(
-            df=df, before_date=self.blue_cycle_start
-        )
-        self.blue_cycle_record = df.loc[self.blue_cycle_start]
-
-        self.blue_cycle_macd = self.blue_cycle_record.macd_macd
-        self.blue_cycle_signal = self.blue_cycle_record.macd_signal
-        self.blue_cycle_histogram = self.blue_cycle_record.macd_histogram
-        self.macd_signal_gap = self.blue_cycle_macd - self.blue_cycle_signal
-
-        # then get the lowest close price since the cycle began
-        stop_unit = calculate_stop_loss_unit_price(
-            df=df,
-            start_date=self.red_cycle_start,
-            end_date=self.blue_cycle_start,
-        )
-
-        stop_unit_date = calculate_stop_loss_date(
-            df=df,
-            start_date=self.red_cycle_start,
-            end_date=self.blue_cycle_start,
-        )
-
-        # and for informational/confidence purposes, hold on to the intervals since this happened
-        self.intervals_since_stop = count_intervals(df=df, start_date=stop_unit_date)
-
-        # calculate other order variables
-        self.entry_unit = df.Close.iloc[-1]
-        self.stop_unit = stop_unit
-
-        self.units = math.floor(self.capital / self.entry_unit)
-        self.steps = 0
-        self.risk_unit = self.entry_unit - self.stop_unit
-        self.risk_value = self.units * self.risk_unit
-        self.target_profit = profit_target * self.risk_unit
-        self.original_risk_unit = self.risk_unit
-        self.original_stop = stop_unit
-
-        self.entry_unit = self.entry_unit
-        self.entry_unit = self.entry_unit
-        self.target_price = self.entry_unit + self.target_profit
-
-        # fmt: off
-        log_wp.info(f"{self.symbol} - {self.red_cycle_start}: Found signal")
-        log_wp.info(f"{self.symbol} - Strength:\t\tNot sure how I want to do this yet")
-        log_wp.info(f"{self.symbol} - MACD:\t\t\t{self.blue_cycle_macd}")
-        log_wp.info(f"{self.symbol} - Signal:\t\t{self.blue_cycle_signal}")
-        log_wp.info(f"{self.symbol} - Histogram:\t\t{self.blue_cycle_histogram}")
-        log_wp.info(f"{self.symbol} - Capital:\t\t${clean(self.capital)}")
-        log_wp.info(f"{self.symbol} - Units to buy:\t\t{clean(self.units)} units")
-        log_wp.info(f"{self.symbol} - Entry point:\t\t${clean(self.entry_unit)}")
-        log_wp.info(f"{self.symbol} - Stop loss:\t\t${clean(stop_unit)}")
-        log_wp.info(f"{self.symbol} - Cycle began:\t\t{self.intervals_since_stop} intervals ago")
-        log_wp.info(f"{self.symbol} - Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit*100,1)}% of unit cost)")
-        log_wp.info(f"{self.symbol} - Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)")
-        log_wp.info(f"{self.symbol} - Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)")
-        # fmt: on
-
-
-def merge_bars(bars, new_bars):
-    return pd.concat([bars, new_bars[~new_bars.index.isin(bars.index)]])
-    # return pd.concat([bars, new_bars])
-
-
-def add_signals(bars, interval):
-    interval_delta, max_range = get_interval_settings(interval)
-
-    start_time = time.time()
-    macd = btalib.macd(bars)
-    bars["macd_macd"] = macd["macd"]
-    bars["macd_signal"] = macd["signal"]
-    bars["macd_histogram"] = macd["histogram"]
-
-    bars["macd_crossover"] = False
-    bars["macd_signal_crossover"] = False
-    bars["macd_above_signal"] = False
-    bars["macd_cycle"] = None
-
-    # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
-    cycle = None
-
-    for d in bars.index:
-        # start with crossover search
-        # convert index to a datetime so we can do a delta against it                           ****************
-        previous_key = d - interval_delta
-        # previous key had macd less than or equal to signal
-        if bars["macd_macd"].loc[d] > bars["macd_signal"].loc[d]:
-            # macd is greater than signal - crossover
-            bars.at[d, "macd_above_signal"] = True
-            try:
-                if (
-                    bars["macd_macd"].loc[previous_key]
-                    <= bars["macd_signal"].loc[previous_key]
-                ):
-                    cycle = "blue"
-                    bars.at[d, "macd_crossover"] = True
-
-            except KeyError as e:
-                # ellipsis because i don't care if i'm missing data (maybe i should...)
-                ...
-
-        if bars["macd_macd"].loc[d] < bars["macd_signal"].loc[d]:
-            # macd is less than signal
-            try:
-                if (
-                    bars["macd_macd"].loc[previous_key]
-                    >= bars["macd_signal"].loc[previous_key]
-                ):
-                    cycle = "red"
-                    bars.at[d, "macd_signal_crossover"] = True
-
-            except KeyError as e:
-                # ellipsis because i don't care if i'm missing data (maybe i should...)
-                ...
-
-        bars.at[d, "macd_cycle"] = cycle
-    log_wp.debug(f"MACD complete in {round(time.time() - start_time,1)}s")
-
-    start_time = time.time()
-    sma = btalib.sma(bars, period=200)
-    bars["sma_200"] = list(sma["sma"])
-    log_wp.debug(f"SMA complete in {round(time.time() - start_time,1)}s")
-
-    return bars
-
-
-def get_interval_settings(interval):
-    minutes_intervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m"]
-    max_period = {
-        "1m": 6,
-        "2m": 59,
-        "5m": 59,
-        "15m": 59,
-        "30m": 59,
-        "60m": 500,
-        "90m": 59,
-        "1h": 500,
-        "1d": 2000,
-        "5d": 500,
-        "1wk": 500,
-        "1mo": 500,
-        "3mo": 500,
-    }
-
-    if interval in minutes_intervals:
-        return (
-            relativedelta(minutes=int(interval[:-1])),
-            relativedelta(days=max_period[interval]),
-        )
-    elif interval == "1h":
-        return (
-            relativedelta(hours=int(interval[:-1])),
-            relativedelta(days=max_period[interval]),
-        )
-    elif interval == "1d" or interval == "5d":
-        return (
-            relativedelta(days=int(interval[:-1])),
-            relativedelta(days=max_period[interval]),
-        )
-    elif interval == "1wk":
-        return (
-            relativedelta(weeks=int(interval[:-2])),
-            relativedelta(days=max_period[interval]),
-        )
-    elif interval == "1mo" or interval == "3mo":
-        raise ValueError("I can't be bothered implementing month intervals")
-        return (
-            relativedelta(months=int(interval[:-2])),
-            relativedelta(days=max_period[interval]),
-        )
-    else:
-        # got an unknown interval
-        raise ValueError(f"Unknown interval type {interval}")
-
-
-# symbol can be backtest naive
-class Symbol:
-    def __init__(
-        self, symbol, api, interval, real_money_trading, ssm, data_source, to_date
-    ):
-        self.symbol = symbol
-        self.api = api
-        self.interval = interval
-        self.real_money_trading = real_money_trading
-        self.ssm = ssm
-        self.data_source = data_source
-        self.initialised = False
-        self.last_date_processed = None
-
-        bars = self.get_bars(
-            symbol=self.symbol,
-            interval=interval,
-            to_date=to_date,
-            initialised=False,
-        )
-        self.bars = add_signals(bars, interval)
-
-    def get_bars(
-        self, symbol, interval, from_date=None, to_date=None, initialised=True
-    ):
-        tz = pytz.timezone("America/New_York")
-        interval_delta, max_range = get_interval_settings(interval)
-        if initialised == False:
-            # we actually need to grab everything
-            yf_start = datetime.now(tz) - max_range
-        else:
-            # if we've specified a date, we're probably refreshing our dataset over time
-            if from_date:
-                # widen the window out, just to make sure we don't miss any data in the refresh
-                yf_start = from_date.replace(tzinfo=tz) - (interval_delta * 2)
-            else:
-                # we're refreshing but didn't specify a date, so assume its in the last x minutes/hours
-                yf_start = datetime.now(tz) - (interval_delta * 2)
-
-        # didn't specify an end date so go up til now
-        if to_date == None:
-            yf_end = datetime.now(tz)
-        else:
-            # specified an end date so use it
-            yf_end = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=tz)
-
-        bars = yf.Ticker(symbol).history(
-            start=yf_start, end=yf_end, interval=interval, actions=False
-        )
-
-        if len(bars) == 0:
-            # something went wrong - usually bad symbol and search parameters
-            log_wp.debug(f"{symbol}: No new data start {yf_start} end {yf_end}")
-
-        bars = bars.loc[bars.index <= yf_end]
-        bars = bars.tz_localize(None)
-        return bars
-
-    def update_bars(self, from_date=None, to_date=None):
-        if from_date == None:
-            from_date = self.bars.index[-1]
-
-        new_bars = self.get_bars(
-            symbol=self.symbol,
-            interval=self.interval,
-            from_date=from_date,
-            to_date=to_date,
-        )
-
-        if len(new_bars) > 0:
-            # pad new bars to 200 rows so that macd and sma200 work
-            if len(new_bars) < 200:
-                new_bars = merge_bars(new_bars, self.bars.iloc[-200:])
-
-            new_bars = add_signals(new_bars, interval=self.interval)
-            self.bars = merge_bars(self.bars, new_bars)
-
-        else:
-            log_wp.debug(f"{self.symbol}: No new data since {from_date}")
 
 
 class MacdBot:
@@ -339,7 +66,7 @@ class MacdBot:
                 ssm=ssm,
                 data_source=data_source,
                 # TODO remove hard coded end date, which I guess was for testing
-                to_date="2022-04-01 09:00:00",
+                # to_date="2022-04-01 09:00:00",
             )
             log_wp.debug(
                 f'Set up {s["symbol"]} in {round(time.time() - start_time,1)}s'
@@ -394,8 +121,8 @@ class MacdBot:
                 this_symbol = self.symbols[s]
                 # get new data
                 if self.back_testing:
-                    # if we're backtesting, start at the very first record
-                    current_record_index = 0
+                    # if we're backtesting, start at the very first record that includes SMA200 plus some buffer to work out direction of market
+                    current_record_index = 250
 
                 else:
                     # if we are not backtesting, get the most recent record
@@ -405,13 +132,14 @@ class MacdBot:
 
                 records_to_process = len(this_symbol.bars.iloc[current_record_index:])
 
-                # check we aren't doubling up
+                # check we aren't doubling up (only really relevant for backtrading)
                 if this_symbol.bars.index[-1] != this_symbol.last_date_processed:
-                    # if records_to_process > 1:
                     log_wp.debug(
                         f"{s}: Starting to process {records_to_process} new record(s) (back_test={self.back_testing})"
                     )
+                    # SELL
 
+                    # BUY
                     # while there is data to be processed
                     while current_record_index <= this_symbol.bars.index.get_loc(
                         this_symbol.bars.index[-1]
@@ -423,21 +151,39 @@ class MacdBot:
                             f"{s}: Processing {current_record} (back_test={self.back_testing})"
                         )
 
+                        # check if we have a buy signal
+                        buffer = current_record_index - 200
+                        # need the +1 otherwise it does not include the record at this index, it gets trimmed
+                        bars_slice = this_symbol.bars.iloc[
+                            buffer : (current_record_index + 1)
+                        ]
+                        buy_signal_found = check_buy_signal(bars_slice, symbol=s)
+
+                        if buy_signal_found:
+
+                            # how much can we spend?
+                            balance = this_symbol.api.get_account().assets[
+                                this_symbol.api.default_currency
+                            ]
+                            buy_plan = BuyPlan(symbol=s, df=bars_slice)
+
+                            order_result = this_symbol.api.buy_order_limit(
+                                symbol=s,
+                                units=buy_plan.units,
+                                unit_price=buy_plan.entry_unit,
+                            )
+
+                            print("banana")
+
                         # move on to the next one
                         current_record_index += 1
                 else:
                     log_wp.debug(
                         f"{s}: No new records to process. Last record was {this_symbol.bars.index[-1]} (back_test={self.back_testing})"
                     )
-                # dont need to do this per symbol because if we miss an interval on a given symbol, i don't want to process it - moment has passed
-                this_symbol.last_date_processed = this_symbol.bars.index[-1]
 
-                # last_processed = current_record
-                # else:
-                #    log_wp.debug(
-                #        f"{s}: No new records to process. Last record was {current_record} (back_test={self.back_testing})"
-                #    )
-                # once we get here, we've finished processing the records we got for this symbol
+                # hold on to last processed record so we can make sure we don't re-process it
+                this_symbol.last_date_processed = this_symbol.bars.index[-1]
 
             # we've processed all data for all symbols
             if self.back_testing:
@@ -448,171 +194,9 @@ class MacdBot:
                 pause = get_pause()
                 log_wp.debug(f"Sleeping for {round(pause,0)}s")
                 time.sleep(pause)
-                # TODO get new data - i guess loop through?
+
                 for s in self.symbols:
                     self.symbols[s].update_bars()
-
-
-"""
-
-
-            last_processed = None
-
-            # get first record to read from
-            this_symbol = self.symbols[s]
-            if self.back_testing:
-                # if we're backtesting, get the very first record
-                record_index = 0
-                current_record = this_symbol.bars.index[record_index]
-                log_wp.debug(f"{s}: Backtesting starting at {current_record}")
-            else:
-                # if we are not backtesting, get the most recent record
-                current_record = this_symbol.bars.index[-1]
-
-            # apply sell rules
-
-            # apply buy rules
-
-            # get next
-            if self.back_testing:
-                # if we're backtesting, get the very first record
-                record_index += 1
-                if record_index < len(this_symbol.bars.index):
-                    # after processing, update this so that we can check we aren't re-reading old stuff due to sleep
-                    last_processed = current_record
-                    current_record = this_symbol.bars.index[record_index]
-                    log_wp.debug(f"{s}: Backtesting now at {current_record}")
-                else:
-                    # all done
-                    log_wp.debug(f"{s}: Backtesting complete")
-            else:
-                # if we are not backtesting, get the most recent record
-                last_processed = current_record
-                log_wp.debug(
-                    f"{s}: Running on live ohlc data, complete {last_processed}"
-                )
-                # sleep
-                # get next record
-                current_record = this_symbol.bars.index[-1]
-
-
-
-
-        if self.back_testing:
-            do_back_testing(bot_handle=bot_handler, rules=rules)
-
-        else:
-            while True:
-                start_time = time.time()
-                for symbol in bot_handler.symbols:
-                    bot_handler.symbols[symbol].update_bars()
-                log_wp.debug(
-                    f"{round(time.time() - start_time,1)}s to update all symbols"
-                )
-
-                pause = get_pause()
-                log_wp.debug(f"Sleeping for {round(pause,1)}s")
-                time.sleep(pause)
-"""
-
-# simple function to check if a pandas series contains a macd buy signal
-def check_buy_signal(df):
-    crossover = False
-    macd_negative = False
-    sma_trending_up = False
-
-    row = df.iloc[-1]
-    if row.macd_crossover == True:
-        crossover = True
-        log_wp.debug(f"MACD crossover found")
-
-    if row.macd_macd < 0:
-        macd_negative = True
-        log_wp.debug(f"MACD is less than 0: {row.macd_macd}")
-
-    last_sma = get_last_sma(df=df)
-    recent_average_sma = get_recent_average_sma(df=df)
-    sma_trending_up = check_sma(
-        last_sma=last_sma, recent_average_sma=recent_average_sma
-    )
-    if sma_trending_up:
-        log_wp.debug(
-            f"SMA trending up: last {last_sma}, recent average {recent_average_sma}"
-        )
-
-    if crossover and macd_negative and sma_trending_up:
-        # all conditions met for a buy
-        log_wp.debug(
-            f"BUY found - crossover, macd_negative and sma_trending_up all met"
-        )
-        return True
-
-    return False
-
-
-def get_pause():
-    # get current time
-    now = datetime.now()
-    # convert it to seconds
-    now_ts = now.timestamp()
-    # how many seconds into the current 5 minute increment are we
-    mod = now_ts % 300
-    # 5 minutes minus that = seconds til next 5 minute mark
-    pause = 300 - mod
-    # just another couple seconds to make sure the stock data is available when we run
-    pause += 2
-    return pause
-
-
-def get_last_sma(df):
-    return df.iloc[-1].sma_200
-
-
-def get_recent_average_sma(df):
-    return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
-
-
-def check_sma(last_sma: float, recent_average_sma: float, ignore_sma: bool = False):
-    if ignore_sma:
-        log_wp.warning(f"Returning True since ignore_sma = {ignore_sma}")
-        return True
-
-    if last_sma > recent_average_sma:
-        log_wp.debug(f"True last SMA {last_sma} > {recent_average_sma}")
-        return True
-    else:
-        log_wp.debug(f"False last SMA {last_sma} > {recent_average_sma}")
-        return False
-
-
-def get_red_cycle_start(df: pd.DataFrame, before_date):
-    try:
-        return df.loc[(df["macd_cycle"] == "blue") & (df.index < before_date)].index[-1]
-    except IndexError as e:
-        return False
-
-
-def get_blue_cycle_start(df: pd.DataFrame):
-    try:
-        return df.loc[(df.macd_crossover == True) & (df.macd_macd < 0)].index[-1]
-    except IndexError as e:
-        return False
-
-
-def calculate_stop_loss_unit_price(df: pd.DataFrame, start_date, end_date):
-    return df.loc[start_date:end_date].Close.min()
-
-
-# TODO there is 100% a better way of doing this
-def calculate_stop_loss_date(df: pd.DataFrame, start_date, end_date):
-    return df.loc[start_date:end_date].Close.idxmin()
-
-
-def count_intervals(df: pd.DataFrame, start_date, end_date=None):
-    if end_date == None:
-        return len(df.loc[start_date:])
-    else:
-        return len(df.loc[start_date:end_date])
 
 
 def write_rules(symbol: str, action: str, new_rule=None):
@@ -808,30 +392,8 @@ def apply_rules(rules, positions, last_close_dict):
     }
 
 
-def do_back_testing(bot_handler, rules):
-    buy_position_taken = False
-    log_wp.debug(f"Starting back testing...")
-    for symbol in bot_handler.symbols:
-        # shorthand for this bot's bars, to make this code more legible
-        bars = bot_handler.symbols["AAPL"].bars
-        # start at the first row that doesn't have na for sma_200
-        backtest_start = bars.loc[bars.sma_200.notnull()].index[0]
-        log_wp.debug(f"{symbol} Back testing starts at {backtest_start}")
-        bars = bars.loc[backtest_start:]
-        for index in bars.index:
-            current_bars = bars.loc[:index]
-            if not buy_position_taken:
-                if check_buy_signal(current_bars):
-                    buy_order = BuyOrder(symbol, current_bars)
-                    buy_position_taken = True
-                    log_wp.debug(f"{symbol} Found buy at {index}")
-            else:  # need to bring in rules for sale, and they need to be the same as you'd use in real life
-                # in sales
-                ...
-
-
 def main():
-    back_testing = False
+    back_testing = global_back_testing
     poll_time = 5
     log_wp.debug(
         f"Starting up, poll time is {poll_time}m, back testing is {back_testing}"

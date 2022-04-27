@@ -18,14 +18,15 @@ STOP_LIMIT_SELL = 6
 
 ORDER_STATUS_SUMMARY_TO_ID = {
     "cancelled": {2, 7, 8, 9, 10},
-    "open": {1, 3, 4, 5},
+    "open": {1, 3, 5},
     "pending": {6},
+    "filled": {4},
 }
 ORDER_STATUS_ID_TO_SUMMARY = {
     1: "open",
     2: "cancelled",
     3: "open",
-    4: "open",
+    4: "filled",
     5: "open",
     6: "pending",
     7: "cancelled",
@@ -173,7 +174,7 @@ class BackTestAPI(ITradeAPI):
         )
 
     def get_account(self) -> Account:
-        account = Account({"usd": 1000})
+        account = Account({"usd": self.balance})
         return account
 
     def get_position(self, symbol):
@@ -204,7 +205,6 @@ class BackTestAPI(ITradeAPI):
     def get_bars(self, symbol: str, start: str, end: str, interval: str):
         raise NotImplementedException("Back Trade API does not query for bars")
 
-    # todo: basically everything after this!
     def _translate_order_types(self, order_type):
         raise NotImplementedException
 
