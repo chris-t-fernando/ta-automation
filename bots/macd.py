@@ -102,7 +102,8 @@ class BuyOrder:
 
 
 def merge_bars(bars, new_bars):
-    return pd.concat([bars, new_bars])
+    return pd.concat([bars, new_bars[~new_bars.index.isin(bars.index)]])
+    # return pd.concat([bars, new_bars])
 
 
 def add_signals(bars, interval):
@@ -228,6 +229,7 @@ class Symbol:
         self.ssm = ssm
         self.data_source = data_source
         self.initialised = False
+        self.last_date_processed = None
 
         bars = self.get_bars(
             symbol=self.symbol,
@@ -267,7 +269,7 @@ class Symbol:
 
         if len(bars) == 0:
             # something went wrong - usually bad symbol and search parameters
-            print("error! no data")
+            log_wp.debug(f"{symbol}: No new data start {yf_start} end {yf_end}")
 
         bars = bars.loc[bars.index <= yf_end]
         bars = bars.tz_localize(None)
@@ -283,8 +285,17 @@ class Symbol:
             from_date=from_date,
             to_date=to_date,
         )
-        new_bars = add_signals(new_bars, interval=self.interval)
-        self.bars = merge_bars(self.bars, new_bars)
+
+        if len(new_bars) > 0:
+            # pad new bars to 200 rows so that macd and sma200 work
+            if len(new_bars) < 200:
+                new_bars = merge_bars(new_bars, self.bars.iloc[-200:])
+
+            new_bars = add_signals(new_bars, interval=self.interval)
+            self.bars = merge_bars(self.bars, new_bars)
+
+        else:
+            log_wp.debug(f"{self.symbol}: No new data since {from_date}")
 
 
 class MacdBot:
@@ -295,21 +306,25 @@ class MacdBot:
         real_money_trading = False
         self.ssm = ssm
         self.data_source = data_source
+        self.back_testing = back_testing
 
         # get jobs
         symbols = [
             {"symbol": "AAPL", "api": "swyftx"},
             {"symbol": "AXS", "api": "swyftx"},
+            {"symbol": "BHP.AX", "api": "swyftx"},
         ]
+
+        if back_testing:
+            for s in symbols:
+                s["api"] = "back_test"
 
         # get brokers and then set them up
         self.api_list = []
-        if back_testing:
-            self.api_list = ["back_test"]
-        else:
-            for api in symbols:
-                self.api_list.append(api["api"])
-                log_wp.debug(f"Found broker {api}")
+        for api in symbols:
+            self.api_list.append(api["api"])
+            log_wp.debug(f"Found broker {api}")
+        self.api_list = list(set(self.api_list))
         self.api_dict = self.setup_brokers(api_list=self.api_list, ssm=ssm)
 
         # set up individual symbols
@@ -323,6 +338,7 @@ class MacdBot:
                 api=self.api_dict[s["api"]],
                 ssm=ssm,
                 data_source=data_source,
+                # TODO remove hard coded end date, which I guess was for testing
                 to_date="2022-04-01 09:00:00",
             )
             log_wp.debug(
@@ -372,6 +388,132 @@ class MacdBot:
 
         return api_dict
 
+    def start(self):
+        while True:
+            for s in self.symbols:
+                this_symbol = self.symbols[s]
+                # get new data
+                if self.back_testing:
+                    # if we're backtesting, start at the very first record
+                    current_record_index = 0
+
+                else:
+                    # if we are not backtesting, get the most recent record
+                    current_record_index = this_symbol.bars.index.get_loc(
+                        this_symbol.bars.index[-1]
+                    )
+
+                records_to_process = len(this_symbol.bars.iloc[current_record_index:])
+
+                # check we aren't doubling up
+                if this_symbol.bars.index[-1] != this_symbol.last_date_processed:
+                    # if records_to_process > 1:
+                    log_wp.debug(
+                        f"{s}: Starting to process {records_to_process} new record(s) (back_test={self.back_testing})"
+                    )
+
+                    # while there is data to be processed
+                    while current_record_index <= this_symbol.bars.index.get_loc(
+                        this_symbol.bars.index[-1]
+                    ):
+                        # process the records
+                        # get the current record
+                        current_record = this_symbol.bars.index[current_record_index]
+                        log_wp.debug(
+                            f"{s}: Processing {current_record} (back_test={self.back_testing})"
+                        )
+
+                        # move on to the next one
+                        current_record_index += 1
+                else:
+                    log_wp.debug(
+                        f"{s}: No new records to process. Last record was {this_symbol.bars.index[-1]} (back_test={self.back_testing})"
+                    )
+                # dont need to do this per symbol because if we miss an interval on a given symbol, i don't want to process it - moment has passed
+                this_symbol.last_date_processed = this_symbol.bars.index[-1]
+
+                # last_processed = current_record
+                # else:
+                #    log_wp.debug(
+                #        f"{s}: No new records to process. Last record was {current_record} (back_test={self.back_testing})"
+                #    )
+                # once we get here, we've finished processing the records we got for this symbol
+
+            # we've processed all data for all symbols
+            if self.back_testing:
+                # if we get here, we've finished processing
+                break
+            else:
+                # if we get here, we need to sleep til we can get more data
+                pause = get_pause()
+                log_wp.debug(f"Sleeping for {round(pause,0)}s")
+                time.sleep(pause)
+                # TODO get new data - i guess loop through?
+                for s in self.symbols:
+                    self.symbols[s].update_bars()
+
+
+"""
+
+
+            last_processed = None
+
+            # get first record to read from
+            this_symbol = self.symbols[s]
+            if self.back_testing:
+                # if we're backtesting, get the very first record
+                record_index = 0
+                current_record = this_symbol.bars.index[record_index]
+                log_wp.debug(f"{s}: Backtesting starting at {current_record}")
+            else:
+                # if we are not backtesting, get the most recent record
+                current_record = this_symbol.bars.index[-1]
+
+            # apply sell rules
+
+            # apply buy rules
+
+            # get next
+            if self.back_testing:
+                # if we're backtesting, get the very first record
+                record_index += 1
+                if record_index < len(this_symbol.bars.index):
+                    # after processing, update this so that we can check we aren't re-reading old stuff due to sleep
+                    last_processed = current_record
+                    current_record = this_symbol.bars.index[record_index]
+                    log_wp.debug(f"{s}: Backtesting now at {current_record}")
+                else:
+                    # all done
+                    log_wp.debug(f"{s}: Backtesting complete")
+            else:
+                # if we are not backtesting, get the most recent record
+                last_processed = current_record
+                log_wp.debug(
+                    f"{s}: Running on live ohlc data, complete {last_processed}"
+                )
+                # sleep
+                # get next record
+                current_record = this_symbol.bars.index[-1]
+
+
+
+
+        if self.back_testing:
+            do_back_testing(bot_handle=bot_handler, rules=rules)
+
+        else:
+            while True:
+                start_time = time.time()
+                for symbol in bot_handler.symbols:
+                    bot_handler.symbols[symbol].update_bars()
+                log_wp.debug(
+                    f"{round(time.time() - start_time,1)}s to update all symbols"
+                )
+
+                pause = get_pause()
+                log_wp.debug(f"Sleeping for {round(pause,1)}s")
+                time.sleep(pause)
+"""
 
 # simple function to check if a pandas series contains a macd buy signal
 def check_buy_signal(df):
@@ -689,7 +831,7 @@ def do_back_testing(bot_handler, rules):
 
 
 def main():
-    back_testing = True
+    back_testing = False
     poll_time = 5
     log_wp.debug(
         f"Starting up, poll time is {poll_time}m, back testing is {back_testing}"
@@ -697,23 +839,10 @@ def main():
     ssm = boto3.client("ssm")
     data_source = yf
 
-    rules = get_rules()
-    validate_rules(rules)
+    # rules = get_rules()
+    # validate_rules(rules)
     bot_handler = MacdBot(ssm, data_source, back_testing=back_testing)
-
-    if back_testing:
-        do_back_testing(bot_handle=bot_handler, rules=rules)
-
-    else:
-        while True:
-            start_time = time.time()
-            for symbol in bot_handler.symbols:
-                bot_handler.symbols[symbol].update_bars()
-            log_wp.debug(f"{round(time.time() - start_time,1)}s to update all symbols")
-
-            pause = get_pause()
-            log_wp.debug(f"Sleeping for {round(pause,1)}s")
-            time.sleep(pause)
+    bot_handler.start()
 
 
 def trigger_sell_point(rule, last_price):
