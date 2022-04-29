@@ -4,8 +4,18 @@ import btalib
 import pandas as pd
 import logging
 from datetime import datetime
+import warnings
 
-log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
+log_wp = logging.getLogger("utils")  # or pass an explicit name here, e.g. "mylogger"
+hdlr = logging.StreamHandler()
+log_wp.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+)
+hdlr.setFormatter(formatter)
+log_wp.addHandler(hdlr)
 
 
 def get_interval_settings(interval):
@@ -113,14 +123,18 @@ def add_signals(bars, interval):
                 ...
 
         bars.at[d, "macd_cycle"] = cycle
-    log_wp.debug(f"MACD complete in {round(time.time() - start_time,1)}s")
+    # log_wp.debug(f"MACD complete in {round(time.time() - start_time,1)}s")
 
     start_time = time.time()
-    sma = btalib.sma(bars, period=200)
-    bars["sma_200"] = list(sma["sma"])
-    log_wp.debug(f"SMA complete in {round(time.time() - start_time,1)}s")
+    # changed to use EMA instead of SMA
+    # TODO update column name - pretty shonky doing it this way
+    # sma = btalib.sma(bars, period=200)
+    sma = btalib.ema(bars, period=200)
+    bars["sma_200"] = list(sma["ema"])
+    # log_wp.debug(f"SMA complete in {round(time.time() - start_time,1)}s")
 
     return bars
+
 
 def get_red_cycle_start(df: pd.DataFrame, before_date):
     try:
@@ -151,9 +165,11 @@ def count_intervals(df: pd.DataFrame, start_date, end_date=None):
     else:
         return len(df.loc[start_date:end_date])
 
+
 def clean(number):
     number = round(number, 2)
     return "{:,}".format(number)
+
 
 # simple function to check if a pandas series contains a macd buy signal
 def check_buy_signal(df, symbol):
@@ -183,10 +199,13 @@ def check_buy_signal(df, symbol):
     if crossover and macd_negative and sma_trending_up:
         # all conditions met for a buy
         log_wp.warning(
-            f"{symbol}: Found buy signal at {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)})"
+            f"{symbol}: FOUND BUY SIGNAL AT {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)})"
         )
         return True
 
+    log_wp.debug(
+        f"{symbol}: No buy signal at {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)}"
+    )
     return False
 
 

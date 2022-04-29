@@ -3,8 +3,19 @@ from itradeapi import ITradeAPI
 from utils import get_interval_settings, add_signals, merge_bars
 import yfinance as yf
 import logging
+import warnings
 
-log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
+log_wp = logging.getLogger("stock_symbol")  # or pass an explicit name here, e.g. "mylogger"
+hdlr = logging.StreamHandler()
+log_wp.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+)
+hdlr.setFormatter(formatter)
+log_wp.addHandler(hdlr)
+
 
 # symbol can be backtest naive
 class Symbol:
@@ -53,7 +64,8 @@ class Symbol:
 
         # didn't specify an end date so go up til now
         if to_date == None:
-            yf_end = datetime.now()
+            # yf_end = datetime.now()
+            yf_end = None
         else:
             # specified an end date so use it
             yf_end = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
@@ -72,7 +84,7 @@ class Symbol:
             )
 
         bars = bars.tz_localize(None)
-        bars = bars.loc[bars.index <= yf_end]
+        # bars = bars.loc[bars.index <= yf_end]
 
         return bars
 
@@ -90,7 +102,7 @@ class Symbol:
         if len(new_bars) > 0:
             # pad new bars to 200 rows so that macd and sma200 work
             if len(new_bars) < 200:
-                new_bars = merge_bars(new_bars, self.bars.iloc[-200:])
+                new_bars = merge_bars(new_bars=new_bars, bars=self.bars.iloc[-200:])
 
             new_bars = add_signals(new_bars, interval=self.interval)
             self.bars = merge_bars(self.bars, new_bars)

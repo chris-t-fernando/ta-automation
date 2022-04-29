@@ -10,14 +10,18 @@ import json
 from stock_symbol import Symbol
 from buyplan import BuyPlan
 from utils import get_pause, check_buy_signal
+import warnings
 
-global_back_testing = True
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
-log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
+global_back_testing = False
+
+# log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("macd.log")
 formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)12s - %(message)s"
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
@@ -39,8 +43,32 @@ class MacdBot:
         symbols = [
             {"symbol": "AAPL", "api": "swyftx"},
             {"symbol": "AXS", "api": "swyftx"},
-            {"symbol": "BHP.AX", "api": "swyftx"},
+            {"symbol": "TSLA", "api": "swyftx"},
+            {"symbol": "FB", "api": "swyftx"},
+            {"symbol": "GOOG", "api": "swyftx"},
+            {"symbol": "MSFT", "api": "swyftx"},
+            {"symbol": "NVDA", "api": "swyftx"},
+            {"symbol": "NVAX", "api": "swyftx"},
+            {"symbol": "BUD", "api": "swyftx"},
+            {"symbol": "AMZN", "api": "swyftx"},
+            {"symbol": "INFY", "api": "swyftx"},
+            {"symbol": "RTX", "api": "swyftx"},
+            {"symbol": "ADA-AUD", "api": "swyftx"},
+            {"symbol": "BTC-AUD", "api": "swyftx"},
+            {"symbol": "ETH-AUD", "api": "swyftx"},
+            {"symbol": "SOL-AUD", "api": "swyftx"},
+            {"symbol": "XRP-AUD", "api": "swyftx"},
+            {"symbol": "DOGE-AUD", "api": "swyftx"},
+            {"symbol": "SHIB-AUD", "api": "swyftx"},
+            {"symbol": "MATIC-AUD", "api": "swyftx"},
+            {"symbol": "ATOM-AUD", "api": "swyftx"},
+            {"symbol": "FTT-AUD", "api": "swyftx"},
+            {"symbol": "BNB-AUD", "api": "swyftx"},
         ]
+
+        # symbols = [
+        #    {"symbol": "AAPL", "api": "swyftx"},
+        # ]
 
         if back_testing:
             for s in symbols:
@@ -65,8 +93,6 @@ class MacdBot:
                 api=self.api_dict[s["api"]],
                 ssm=ssm,
                 data_source=data_source,
-                # TODO remove hard coded end date, which I guess was for testing
-                # to_date="2022-04-01 09:00:00",
             )
             log_wp.debug(
                 f'Set up {s["symbol"]} in {round(time.time() - start_time,1)}s'
@@ -134,9 +160,9 @@ class MacdBot:
 
                 # check we aren't doubling up (only really relevant for backtrading)
                 if this_symbol.bars.index[-1] != this_symbol.last_date_processed:
-                    log_wp.debug(
-                        f"{s}: Starting to process {records_to_process} new record(s) (back_test={self.back_testing})"
-                    )
+                    # log_wp.debug(
+                    #    f"{s}: Starting to process {records_to_process} new record(s) (back_test={self.back_testing})"
+                    # )
                     # SELL
 
                     # BUY
@@ -173,7 +199,8 @@ class MacdBot:
                                 unit_price=buy_plan.entry_unit,
                             )
 
-                            print("banana")
+                            print(f"{order_result}")
+                            exit()
 
                         # move on to the next one
                         current_record_index += 1

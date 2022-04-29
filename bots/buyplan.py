@@ -8,8 +8,17 @@ from utils import (
 )
 from math import floor
 import logging
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
-log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.getLogger("buyplan")  # or pass an explicit name here, e.g. "mylogger"
+hdlr = logging.StreamHandler()
+log_wp.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+)
+hdlr.setFormatter(formatter)
+log_wp.addHandler(hdlr)
 
 ORDER_SIZE = 2000
 
