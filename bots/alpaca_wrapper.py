@@ -10,6 +10,20 @@ import yfinance as yf
 from datetime import datetime
 from alpaca_trade_api import REST
 import pandas as pd
+import boto3
+import logging
+import math
+
+log_wp = logging.getLogger("alpaca")  # or pass an explicit name here, e.g. "mylogger"
+hdlr = logging.StreamHandler()
+fhdlr = logging.FileHandler("macd.log")
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+)
+hdlr.setFormatter(formatter)
+log_wp.addHandler(hdlr)
+log_wp.addHandler(fhdlr)
+log_wp.setLevel(logging.DEBUG)
 
 # CONSTANTS
 MARKET_BUY = 1
@@ -231,7 +245,7 @@ class AlpacaAPI(ITradeAPI):
             raise NotImplementedException
 
     def order_create_by_value(self, *args, **kwargs):
-        # todo - normalise this!
+        # TODO - normalise this!
         if kwargs.get("order_type") != None:
             side = kwargs.get("order_type")
             del kwargs["order_type"]
@@ -245,8 +259,25 @@ class AlpacaAPI(ITradeAPI):
 
         return self.api.submit_order(*args, **kwargs)
 
-    def buy_order_limit(self):
-        ...
+    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
+        return self.api.submit_order(
+            symbol=symbol,
+            qty=units,
+            side="sell",
+            type="limit",
+            limit_price=str(unit_price),
+            time_in_force="day",
+        )
+
+    def buy_order_limit(self, symbol: str, units: float, unit_price: float):
+        return self.api.submit_order(
+            symbol=symbol,
+            qty=math.floor(units),
+            side="buy",
+            type="limit",
+            limit_price=str(round(unit_price, 2)),
+            time_in_force="day",
+        )
 
     def buy_order_market(self):
         ...
@@ -294,4 +325,5 @@ if __name__ == "__main__":
     api = AlpacaAPI(alpaca_key_id=api_key, alpaca_secret_key=secret_key)
     api.get_account()
     api.list_positions()
+    api.buy_order_limit(symbol="AAPL", units=5, unit_price=163.64)
     print("banana")

@@ -5,6 +5,7 @@ import pandas as pd
 import logging
 from datetime import datetime
 import warnings
+import json
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -242,3 +243,129 @@ def check_sma(last_sma: float, recent_average_sma: float, ignore_sma: bool = Fal
     else:
         # log_wp.debug(f"False last SMA {last_sma} > {recent_average_sma}")
         return False
+
+
+def validate_rule(rule):
+    required_keys = [
+        "symbol",
+        "original_stop_loss",
+        "current_stop_loss",
+        "original_target_price",
+        "current_target_price",
+        "steps",
+        "original_risk",
+        "purchase_date",
+        "units_held",
+        "units_sold",
+        "units_bought",
+        "win_point_sell_down_pct",
+        "win_point_new_stop_loss_pct",
+        "risk_point_sell_down_pct",
+        "risk_point_new_stop_loss_pct",
+    ]
+
+    rule_keys = rule.keys()
+
+    # duplicate key
+    duplicate_keys = len(set(rule_keys)) - len(rule_keys)
+    if duplicate_keys != 0:
+        raise ValueError(
+            f'Duplicate rules found for symbol {rule["symbol"]}: {str(set(required_keys) ^ set(rule_keys))}'
+        )
+
+    for req_key in required_keys:
+        if req_key not in rule_keys:
+            raise ValueError(
+                f'Invalid rule found for symbol {rule["symbol"]}: {req_key}'
+            )
+
+
+def validate_rules(rules):
+    if rules == []:
+        log_wp.debug(f"No rules found")
+        return True
+
+    found_symbols = []
+    for rule in rules:
+        validate_rule(rule)
+        if rule["symbol"] in found_symbols:
+            raise ValueError(f'More than 1 rule found for {rule["symbol"]}')
+
+        log_wp.debug(f'Found valid rule for {rule["symbol"]}')
+        found_symbols.append(rule["symbol"])
+
+    log_wp.debug(f"Rules are valid")
+    return True
+
+
+def get_rules(ssm, back_testing):
+    if back_testing:
+        path = "/backtest"
+    else:
+        path = ""
+
+    try:
+        return json.loads(
+            ssm.get_parameter(Name=f"/tabot/rules{path}/5m", WithDecryption=False)
+            .get("Parameter")
+            .get("Value")
+        )
+    except ssm.exceptions.ParameterNotFound as e:
+        return []
+
+
+def write_rules(ssm, symbol: str, action: str, new_rule=None):
+    if back_testing:
+        path = "/backtest"
+    else:
+        path = ""
+
+    old_rules = (
+        ssm.get_parameter(Name=f"/tabot/rules{path}/5m").get("Parameter").get("Value")
+    )
+    rules = json.loads(old_rules)
+
+    changed = False
+    if action == "delete":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                changed = True
+
+    elif action == "replace":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                new_rules.append(new_rule)
+                changed = True
+    elif action == "create":
+        new_rules = []
+        for rule in rules:
+            if rule["symbol"].lower() != symbol.lower():
+                new_rules.append(rule)
+            else:
+                raise ValueError(
+                    f"Symbol already exists in SSM rules! {symbol.lower()}"
+                )
+
+        new_rules.append(new_rule)
+        changed = True
+
+    else:
+        raise Exception("write_rules: No action specified?")
+
+    if changed == True:
+        ssm.put_parameter(
+            Name="/tabot/rules/5m",
+            Value=json.dumps(new_rules),
+            Type="String",
+            Overwrite=True,
+        )
+    else:
+        print(f"Symbol {symbol} - tried updating rules but nothing to change")
+
+    return True

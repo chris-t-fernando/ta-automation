@@ -386,8 +386,6 @@ class SwyftxAPI(ITradeAPI):
 
     def buy_order_limit(self, symbol: str, units: float, unit_price: float):
         # buying by total order value
-        # first get a quote for the symbol
-
         return self._submit_order(
             symbol=symbol,
             units=units,

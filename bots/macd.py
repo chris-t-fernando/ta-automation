@@ -7,16 +7,17 @@ import yfinance as yf
 import pandas as pd
 import time
 import json
+from datetime import datetime
 from stock_symbol import Symbol
 from buyplan import BuyPlan
-from utils import get_pause, check_buy_signal
+from utils import get_pause, check_buy_signal, validate_rules, get_rules, write_rules
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-global_back_testing = False
+global_back_testing = True
+global_override_broker = False
 
-# log_wp = logging.getLogger(__name__)  # or pass an explicit name here, e.g. "mylogger"
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("macd.log")
@@ -41,36 +42,36 @@ class MacdBot:
 
         # get jobs
         symbols = [
-            {"symbol": "AAPL", "api": "swyftx"},
-            {"symbol": "AXS", "api": "swyftx"},
-            {"symbol": "TSLA", "api": "swyftx"},
-            {"symbol": "FB", "api": "swyftx"},
-            {"symbol": "GOOG", "api": "swyftx"},
-            {"symbol": "MSFT", "api": "swyftx"},
-            {"symbol": "NVDA", "api": "swyftx"},
-            {"symbol": "NVAX", "api": "swyftx"},
-            {"symbol": "BUD", "api": "swyftx"},
-            {"symbol": "AMZN", "api": "swyftx"},
-            {"symbol": "INFY", "api": "swyftx"},
-            {"symbol": "RTX", "api": "swyftx"},
-            {"symbol": "ADA-AUD", "api": "swyftx"},
-            {"symbol": "BTC-AUD", "api": "swyftx"},
-            {"symbol": "ETH-AUD", "api": "swyftx"},
-            {"symbol": "SOL-AUD", "api": "swyftx"},
-            {"symbol": "XRP-AUD", "api": "swyftx"},
-            {"symbol": "DOGE-AUD", "api": "swyftx"},
-            {"symbol": "SHIB-AUD", "api": "swyftx"},
-            {"symbol": "MATIC-AUD", "api": "swyftx"},
-            {"symbol": "ATOM-AUD", "api": "swyftx"},
-            {"symbol": "FTT-AUD", "api": "swyftx"},
-            {"symbol": "BNB-AUD", "api": "swyftx"},
+            {"symbol": "AAPL", "api": "alpaca"},
+            {"symbol": "AXS", "api": "alpaca"},
+            {"symbol": "TSLA", "api": "alpaca"},
+            {"symbol": "FB", "api": "alpaca"},
+            {"symbol": "GOOG", "api": "alpaca"},
+            {"symbol": "MSFT", "api": "alpaca"},
+            {"symbol": "NVDA", "api": "alpaca"},
+            {"symbol": "NVAX", "api": "alpaca"},
+            {"symbol": "BUD", "api": "alpaca"},
+            {"symbol": "AMZN", "api": "alpaca"},
+            {"symbol": "INFY", "api": "alpaca"},
+            {"symbol": "RTX", "api": "alpaca"},
+            {"symbol": "ADA-USD", "api": "alpaca"},
+            {"symbol": "BTC-USD", "api": "alpaca"},
+            {"symbol": "ETH-USD", "api": "alpaca"},
+            {"symbol": "SOL-USD", "api": "alpaca"},
+            {"symbol": "XRP-USD", "api": "alpaca"},
+            {"symbol": "DOGE-USD", "api": "alpaca"},
+            {"symbol": "SHIB-USD", "api": "alpaca"},
+            {"symbol": "MATIC-USD", "api": "alpaca"},
+            {"symbol": "ATOM-USD", "api": "alpaca"},
+            {"symbol": "FTT-USD", "api": "alpaca"},
+            {"symbol": "BNB-USD", "api": "alpaca"},
         ]
 
-        # symbols = [
-        #    {"symbol": "AAPL", "api": "swyftx"},
-        # ]
+        symbols = [
+            {"symbol": "AAPL", "api": "alpaca"},
+        ]
 
-        if back_testing:
+        if back_testing and global_override_broker:
             for s in symbols:
                 s["api"] = "back_test"
 
@@ -142,6 +143,9 @@ class MacdBot:
         return api_dict
 
     def start(self):
+        rules = get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        validate_rules(rules)
+
         while True:
             for s in self.symbols:
                 this_symbol = self.symbols[s]
@@ -199,8 +203,35 @@ class MacdBot:
                                 unit_price=buy_plan.entry_unit,
                             )
 
-                            print(f"{order_result}")
-                            exit()
+                            new_rule = {
+                                "symbol": buy_plan.symbol,
+                                "original_stop_loss": buy_plan.stop_unit,
+                                "current_stop_loss": buy_plan.stop_unit,
+                                "original_target_price": buy_plan.target_price,
+                                "current_target_price": buy_plan.target_price,
+                                "steps": 0,
+                                "original_risk": buy_plan.risk_unit,
+                                "current_risk": buy_plan.risk_unit,
+                                "purchase_date": datetime.now().strftime(
+                                    "%Y-%m-%d %H:%M:%S"
+                                ),
+                                "purchase_price": buy_plan.entry_unit,
+                                "units_held": buy_plan.units,  # TODO
+                                "units_sold": 0,
+                                "units_bought": buy_plan.units,
+                                "order_id": 0,  # TODO
+                                "sales": [],
+                                "win_point_sell_down_pct": 0.5,
+                                "win_point_new_stop_loss_pct": 0.99,
+                                "risk_point_sell_down_pct": 0.25,
+                                "risk_point_new_stop_loss_pct": 0.98,
+                            }
+                            write_rules(
+                                ssm=self.ssm,
+                                symbol=s,
+                                action="create",
+                                new_rule=new_rule,
+                            )
 
                         # move on to the next one
                         current_record_index += 1
@@ -226,57 +257,6 @@ class MacdBot:
                     self.symbols[s].update_bars()
 
 
-def write_rules(symbol: str, action: str, new_rule=None):
-    ssm = boto3.client("ssm")
-    old_rules = ssm.get_parameter(Name="/tabot/rules/5m").get("Parameter").get("Value")
-    rules = json.loads(old_rules)
-
-    changed = False
-    if action == "delete":
-        new_rules = []
-        for rule in rules:
-            if rule["symbol"].lower() != symbol.lower():
-                new_rules.append(rule)
-            else:
-                changed = True
-
-    elif action == "replace":
-        new_rules = []
-        for rule in rules:
-            if rule["symbol"].lower() != symbol.lower():
-                new_rules.append(rule)
-            else:
-                new_rules.append(new_rule)
-                changed = True
-    elif action == "create":
-        new_rules = []
-        for rule in rules:
-            if rule["symbol"].lower() != symbol.lower():
-                new_rules.append(rule)
-            else:
-                raise ValueError(
-                    f"Symbol already exists in SSM rules! {symbol.lower()}"
-                )
-
-        new_rules.append(new_rule)
-        changed = True
-
-    else:
-        raise Exception("write_rules: No action specified?")
-
-    if changed == True:
-        ssm.put_parameter(
-            Name="/tabot/rules/5m",
-            Value=json.dumps(new_rules),
-            Type="String",
-            Overwrite=True,
-        )
-    else:
-        print(f"Symbol {symbol} - tried updating rules but nothing to change")
-
-    return True
-
-
 def apply_rules(rules, positions, last_close_dict):
     stop_loss_triggered = []
     sell_point_triggered = []
@@ -284,7 +264,7 @@ def apply_rules(rules, positions, last_close_dict):
     trigger_results = []
 
     ssm = boto3.client("ssm")
-    api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
+    # api_dict = setup_brokers(broker_list=["alpaca", "swyftx"], ssm=ssm)
 
     for broker in positions:
         for held in positions[broker]:
@@ -462,61 +442,6 @@ def trigger_stop_loss(rule, last_price):
         return True
     else:
         return False
-
-
-def get_rules(ssm):
-    return json.loads(
-        ssm.get_parameter(Name="/tabot/rules/5m", WithDecryption=False)
-        .get("Parameter")
-        .get("Value")
-    )
-
-
-def validate_rule(rule):
-    required_keys = [
-        "symbol",
-        "original_stop_loss",
-        "current_stop_loss",
-        "original_target_price",
-        "current_target_price",
-        "steps",
-        "original_risk",
-        "purchase_date",
-        "units_held",
-        "units_sold",
-        "units_bought",
-        "win_point_sell_down_pct",
-        "win_point_new_stop_loss_pct",
-        "risk_point_sell_down_pct",
-        "risk_point_new_stop_loss_pct",
-    ]
-
-    rule_keys = rule.keys()
-
-    # duplicate key
-    duplicate_keys = len(set(rule_keys)) - len(rule_keys)
-    if duplicate_keys != 0:
-        raise ValueError(
-            f'Duplicate rules found for symbol {rule["symbol"]}: {str(set(required_keys) ^ set(rule_keys))}'
-        )
-
-    for req_key in required_keys:
-        if req_key not in rule_keys:
-            raise ValueError(
-                f'Invalid rule found for symbol {rule["symbol"]}: {req_key}'
-            )
-
-
-def validate_rules(rules):
-    found_symbols = []
-    for rule in rules:
-        validate_rule(rule)
-        if rule["symbol"] in found_symbols:
-            raise ValueError(f'More than 1 rule found for {rule["symbol"]}')
-
-        found_symbols.append(rule["symbol"])
-
-    return True
 
 
 if __name__ == "__main__":
