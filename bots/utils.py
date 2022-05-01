@@ -11,7 +11,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger("utils")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-log_wp.setLevel(logging.DEBUG)
+log_wp.setLevel(logging.INFO)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )
@@ -314,22 +314,29 @@ def get_rules(ssm, back_testing):
         return []
 
 
-def write_rules(ssm, symbol: str, action: str, new_rule=None):
+def merge_rules(
+    ssm, symbol: str, action: str, new_rule=None, back_testing: bool = False
+):
     if back_testing:
         path = "/backtest"
     else:
         path = ""
 
-    old_rules = (
-        ssm.get_parameter(Name=f"/tabot/rules{path}/5m").get("Parameter").get("Value")
-    )
-    rules = json.loads(old_rules)
+    try:
+        old_rules = (
+            ssm.get_parameter(Name=f"/tabot/rules{path}/5m")
+            .get("Parameter")
+            .get("Value")
+        )
+        rules = json.loads(old_rules)
+    except ssm.exceptions.ParameterNotFound:
+        rules = []
 
     changed = False
     if action == "delete":
         new_rules = []
         for rule in rules:
-            if rule["symbol"].lower() != symbol.lower():
+            if rule["symbol"] != symbol:
                 new_rules.append(rule)
             else:
                 changed = True
@@ -337,7 +344,7 @@ def write_rules(ssm, symbol: str, action: str, new_rule=None):
     elif action == "replace":
         new_rules = []
         for rule in rules:
-            if rule["symbol"].lower() != symbol.lower():
+            if rule["symbol"] != symbol:
                 new_rules.append(rule)
             else:
                 new_rules.append(new_rule)
@@ -345,27 +352,70 @@ def write_rules(ssm, symbol: str, action: str, new_rule=None):
     elif action == "create":
         new_rules = []
         for rule in rules:
-            if rule["symbol"].lower() != symbol.lower():
+            if rule["symbol"] != symbol:
                 new_rules.append(rule)
             else:
                 raise ValueError(
-                    f"Symbol already exists in SSM rules! {symbol.lower()}"
+                    f"Cannot create {symbol} - symbol already exists in SSM rules!"
                 )
 
         new_rules.append(new_rule)
         changed = True
 
     else:
-        raise Exception("write_rules: No action specified?")
+        log_wp.debug(f"{symbol}: No action specified")
+        raise Exception("No action specified")
 
     if changed == True:
-        ssm.put_parameter(
-            Name="/tabot/rules/5m",
-            Value=json.dumps(new_rules),
-            Type="String",
-            Overwrite=True,
-        )
+        log_wp.debug(f"{symbol}: Merged rules successfully")
+        return new_rules
     else:
-        print(f"Symbol {symbol} - tried updating rules but nothing to change")
+        log_wp.debug(f"{symbol}: No rules changed!")
+        return False
+
+
+def write_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
+    if back_testing:
+        path = "/backtest"
+    else:
+        path = ""
+
+    ssm.put_parameter(
+        Name=f"/tabot/rules{path}/5m",
+        Value=json.dumps(new_rules),
+        Type="String",
+        Overwrite=True,
+    )
+    log_wp.info(f"{symbol}: Wrote rule: {json.dumps(new_rules)}")
 
     return True
+
+
+def trigger_sell_point(rule, last_price, period):
+    if rule["current_target_price"] < last_price:
+        log_wp.warning(
+            f'{rule["symbol"]}: Target price met at {period} (market {last_price} vs rule {rule["current_target_price"]})'
+        )
+        return True
+    else:
+        return False
+
+
+def trigger_risk_point(rule, last_price, period):
+    if (last_price + rule["current_risk"]) < last_price:
+        log_wp.warning(
+            f'{rule["symbol"]}: Risk price met at {period} (market {last_price} vs rule {(last_price + rule["current_risk"])}'
+        )
+        return True
+    else:
+        return False
+
+
+def trigger_stop_loss(rule, last_price, period):
+    if rule["current_stop_loss"] >= last_price:
+        log_wp.warning(
+            f'{rule["symbol"]}: Stop loss triggered at {period} (market {last_price} vs rule {rule["current_stop_loss"]})'
+        )
+        return True
+    else:
+        return False

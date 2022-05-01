@@ -785,7 +785,7 @@ def write_rules(symbol: str, action: str, new_rule=None):
     return True
 
 
-def apply_rules(rules, positions, last_close_dict):
+def apply_rules(rules, positions, last_close_dict, back_testing:bool=False):
     stop_loss_triggered = []
     sell_point_triggered = []
     risk_point_triggered = []
@@ -815,7 +815,7 @@ def apply_rules(rules, positions, last_close_dict):
                         if close_response.success:
                             # also need to write an updated rule to SSM for next run
                             updated_rules = write_rules(
-                                action="delete", symbol=held_symbol
+                                action="delete", symbol=held_symbol, back_testing=back_testing
                             )
 
                             # hold on to this for reporting

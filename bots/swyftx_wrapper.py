@@ -11,9 +11,18 @@ from itradeapi import (
 from math import floor
 import yfinance as yf
 from datetime import datetime, timedelta
+import logging
 
-# from order_result import OrderResult
-
+log_wp = logging.getLogger("swyftx")  # or pass an explicit name here, e.g. "mylogger"
+hdlr = logging.StreamHandler()
+fhdlr = logging.FileHandler("macd.log")
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+)
+hdlr.setFormatter(formatter)
+log_wp.addHandler(hdlr)
+log_wp.addHandler(fhdlr)
+log_wp.setLevel(logging.DEBUG)
 
 class OrderRequiresPriceOrUnitsException(Exception):
     ...
@@ -89,6 +98,10 @@ class OrderResult(IOrderResult):
     order_type_text: str
     created_time: int
     updated_time: int
+    total_value:float
+    requested_units:float
+    requested_unit_price:float
+    requested_total_value:float
     success: bool
     _raw_response: dict
     _raw_request = None
@@ -119,9 +132,9 @@ class OrderResult(IOrderResult):
             self.fees = order_object["feeAmount"]
             self.total_value = self.units * self.unit_price
 
-            # self.requested_units = order_object["amount"]
-            # self.requested_unit_price = order_object["rate"]
-            # self.requested_total_value = self.units * self.unit_price
+            self.requested_units = order_object["amount"]
+            self.requested_unit_price = order_object["rate"]
+            self.requested_total_value = self.units * self.unit_price
 
         elif order_type == LIMIT_BUY or order_type == LIMIT_SELL:
             self.requested_units = order_object["quantity"]
@@ -146,8 +159,8 @@ class OrderResult(IOrderResult):
             or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
 
-        created_time = order_object["created_time"]
-        updated_time = order_object["updated_time"]
+        self.created_time = order_object["created_time"]
+        self.updated_time = order_object["updated_time"]
 
 
 # return objects
@@ -181,9 +194,10 @@ class Position(IPosition):
 
 # concrete class
 class SwyftxAPI(ITradeAPI):
-    def __init__(self, api_key: str, real_money_trading: bool = False):
+    def __init__(self, api_key: str, real_money_trading: bool = False, back_testing:bool=False):
         self.api_key = api_key
         self.assets_initialised = False
+        self.back_testing=back_testing
 
         if real_money_trading != True:
             # now use the environment that was actually requested. i hate this.
@@ -232,7 +246,7 @@ class SwyftxAPI(ITradeAPI):
     def _structure_asset_dict_by_symbol(self, asset_dict):
         return_dict = {}
         for asset in asset_dict:
-            asset["symbol"] = str(asset["code"]).lower()
+            asset["symbol"] = str(asset["code"])
             return_dict[asset["code"]] = asset
         return return_dict
 
@@ -244,7 +258,7 @@ class SwyftxAPI(ITradeAPI):
 
     def symbol_id_to_text(self, id):
         assets = self.get_assets()
-        return [b.lower() for b in assets if assets[b]["id"] == id][0]
+        return [b for b in assets if assets[b]["id"] == id][0]
         return assets[id]["code"]
 
     def symbol_text_to_id(self, symbol):
@@ -263,7 +277,7 @@ class SwyftxAPI(ITradeAPI):
 
         for asset in request:
             symbol = self.symbol_id_to_text(asset["assetId"])
-            symbol = symbol.lower()
+            symbol = symbol
 
             ##########
             ## I did this when I thought I could get swyftx to buy stuff in USD, but I can't work out how to do that
@@ -296,7 +310,7 @@ class SwyftxAPI(ITradeAPI):
             Position: Position object representing the requested symbol
         """
         for position in self.list_positions():
-            if position.symbol.lower() == symbol.lower():
+            if position.symbol == symbol:
                 return position
         return Position(symbol=symbol, quantity=0)
 
@@ -314,15 +328,13 @@ class SwyftxAPI(ITradeAPI):
             if float(position["availableBalance"]) > 100:
                 symbol = self.symbol_id_to_text(id=position["assetId"])
                 return_positions.append(
-                    Position(
-                        symbol=symbol.lower(), quantity=position["availableBalance"]
-                    )
+                    Position(symbol=symbol, quantity=position["availableBalance"])
                 )
 
         return return_positions
 
     def get_last_close(self, symbol: str):
-        if symbol.lower() == self.default_currency:
+        if symbol == self.default_currency:
             return 1
         else:
             close = self.api.request(

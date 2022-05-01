@@ -7,6 +7,21 @@ from itradeapi import (
     NotImplementedException,
 )
 from datetime import datetime
+import logging
+
+log_wp = logging.getLogger(
+    "backtest_api"
+)  # or pass an explicit name here, e.g. "mylogger"
+hdlr = logging.StreamHandler()
+fhdlr = logging.FileHandler("macd.log")
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+)
+hdlr.setFormatter(formatter)
+log_wp.addHandler(hdlr)
+log_wp.addHandler(fhdlr)
+log_wp.setLevel(logging.INFO)
+
 
 # CONSTANTS
 MARKET_BUY = 1
@@ -105,10 +120,13 @@ class OrderResult(IOrderResult):
     order_type_text: str
     created_time: int
     updated_time: int
+    success: bool
+    requested_units: float
+    requested_unit_price: float
+    requested_total_value: float
     _raw_response: dict
     # _raw_request
 
-    # TODO add requested like swyftx
     def __init__(self, order_object: dict):
         self._raw_response = order_object
 
@@ -129,16 +147,29 @@ class OrderResult(IOrderResult):
         self.status = order_object["status"]
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
+        self.success = (
+            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
+            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+        )
 
-        created_time = order_object["created_time"]
-        updated_time = order_object["updated_time"]
+        self.units = order_object["amount"]
+        self.unit_price = order_object["rate"]
+        self.fees = order_object["feeAmount"]
+        self.total_value = self.units * self.unit_price
+
+        self.requested_units = order_object["amount"]
+        self.requested_unit_price = order_object["rate"]
+        self.requested_total_value = self.units * self.unit_price
+
+        self.created_time = order_object["created_time"]
+        self.updated_time = order_object["updated_time"]
 
 
 # concrete implementation of trade api for alpaca
 class BackTestAPI(ITradeAPI):
     supported_crypto_symbols = []
 
-    def __init__(self, real_money_trading=False):
+    def __init__(self, real_money_trading=False, back_testing: bool = False):
         # set up asset lists
         self.assets = {
             "btc": None,
@@ -148,6 +179,7 @@ class BackTestAPI(ITradeAPI):
             "aapl": None,
             "bhp": None,
         }
+        self.back_testing = back_testing
         self.asset_list_by_symbol = self.assets
 
         self.supported_crypto_symbols = self._get_crypto_symbols()
@@ -192,7 +224,7 @@ class BackTestAPI(ITradeAPI):
             for order in self.assets_held[symbol]:
                 quantity += order["units"]
 
-            positions.append({"symbol": symbol, "quantity": quantity})
+            positions.append(Position(symbol=symbol, quantity=quantity))
 
         return positions
 
@@ -219,11 +251,12 @@ class BackTestAPI(ITradeAPI):
             "primary_asset": symbol,
             "quantity": units,
             "quantity_asset": symbol,
-            "amount": None,
-            "rate": None,
+            "amount": units,
+            "rate": unit_price,
             "trigger": unit_price,
             "fees": 0,
             "status": 4,
+            "feeAmount": 0,
             "created_time": datetime.fromisoformat("2022-04-04 10:00:00"),
             "updated_time": datetime.fromisoformat("2022-04-04 11:00:00"),
         }
@@ -249,7 +282,6 @@ class BackTestAPI(ITradeAPI):
         raise NotImplementedException
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float):
-
         # how many of this symbol do we own? is it >= than the requested amount to sell?
         unit_count = 0
         paid = 0
@@ -263,15 +295,18 @@ class BackTestAPI(ITradeAPI):
             )
 
         # now start popping units from held
+        # self.assets_held[symbol] is a list of objects that represent buy orders. when we sell, we need to pop/update these buy orders to remove them
         unit_counter = units
         for order in self.assets_held[symbol]:
-            # if unit_counter > order["units"]:
             if unit_counter - order["units"] >= 0:
                 unit_counter -= order["units"]
                 order["units"] = 0
             else:
                 order["units"] -= unit_counter
                 unit_counter = 0
+
+        if unit_counter == 0:
+            self.active_order = None
 
         self.balance += unit_price * units
 
@@ -282,21 +317,61 @@ class BackTestAPI(ITradeAPI):
             "primary_asset": self.default_currency,
             "quantity": units,
             "quantity_asset": self.default_currency,
-            "amount": None,
-            "rate": None,
+            "amount": units,
+            "rate": unit_price,
             "trigger": unit_price,
             "fees": 0,
+            "feeAmount": 0,
             "status": 4,
             "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
             "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
         }
 
-        self.active_order = None
-
         return OrderResult(order_object=response)
 
-    def sell_order_market(self):
-        raise NotImplementedException
+    def sell_order_market(
+        self, symbol: str, units: float, back_testing_unit_price: float
+    ):
+        held_position = self.get_position(symbol)
+        if held_position.quantity < units:
+            raise ValueError(
+                f"{symbol}: requested to sell {units} but only hold {held_position.quantity}"
+            )
+
+        unit_counter = units
+
+        for order in self.assets_held[symbol]:
+            if unit_counter - order["units"] >= 0:
+                unit_counter -= order["units"]
+                order["units"] = 0
+            else:
+                order["units"] -= unit_counter
+                unit_counter = 0
+
+        if unit_counter == 0:
+            self.active_order = None
+        self.balance += back_testing_unit_price * units
+
+        response = {
+            "order_type": 4,
+            "orderUuid": "sell-abcdef",
+            "secondary_asset": symbol,
+            "primary_asset": self.default_currency,
+            "quantity": units,
+            "quantity_asset": self.default_currency,
+            "amount": units,
+            "rate": back_testing_unit_price,
+            "trigger": back_testing_unit_price,
+            "fees": 0,
+            "feeAmount": 0,
+            "status": 4,
+            "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
+            "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
+        }
+        log_wp.warning(
+            f"{symbol}: Sold {units}  at market value of {back_testing_unit_price} (total value {back_testing_unit_price * units}) (back_testing={self.back_testing})"
+        )
+        return OrderResult(order_object=response)
 
     def order_create_by_units(self):
         raise NotImplementedException
@@ -307,8 +382,13 @@ class BackTestAPI(ITradeAPI):
     def order_list(self):
         raise NotImplementedException
 
-    def close_position(self, *args, **kwargs):
-        raise NotImplementedException
+    def close_position(self, symbol: str, back_testing_unit_price: float):
+        held_position = self.get_position(symbol)
+        return self.sell_order_market(
+            symbol=symbol,
+            units=held_position.quantity,
+            back_testing_unit_price=back_testing_unit_price,
+        )
 
 
 if __name__ == "__main__":

@@ -121,28 +121,33 @@ class OrderResult(IOrderResult):
     order_type_text: str
     created_time: int
     updated_time: int
+    total_value: float
+    requested_units: float
+    requested_unit_price: float
+    requested_total_value: float
+    success: bool
     _raw_response: dict
     # _raw_request
 
     # TODO add requested values too, like swyftx
-    def __init__(self, response: dict, orders_create_object):
+    def __init__(self, response: dict, order_object):
         self._raw_response = response
-        self._raw_request = orders_create_object
+        self._raw_request = order_object
 
         order_type = response["order"]["order_type"]
         order_type_text = ORDER_MAP_INVERTED[order_type]
 
         self.order_id = response["orderUuid"]
         if "BUY" in order_type_text:
-            self.bought_symbol = orders_create_object.data["secondary"]
+            self.bought_symbol = order_object.data["secondary"]
             self.bought_id = response["order"]["secondary_asset"]
         else:
             # sells
-            self.sold_symbol = orders_create_object.data["primary"]
+            self.sold_symbol = order_object.data["primary"]
             self.sold_id = response["order"]["primary_asset"]
 
         self.quantity = response["order"]["quantity"]
-        self.quantity_symbol = orders_create_object.data["assetQuantity"]
+        self.quantity_symbol = order_object.data["assetQuantity"]
         self.quantity_id = response["order"]["quantity_asset"]
 
         self.trigger = response["order"]["trigger"]
@@ -150,8 +155,13 @@ class OrderResult(IOrderResult):
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
 
-        created_time = response["order"]["created_time"]
-        updated_time = response["order"]["updated_time"]
+        self.success = (
+            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
+            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+        )
+
+        self.created_time = response["order"]["created_time"]
+        self.updated_time = response["order"]["updated_time"]
 
 
 # concrete implementation of trade api for alpaca
@@ -159,13 +169,19 @@ class AlpacaAPI(ITradeAPI):
     supported_crypto_symbols = []
 
     def __init__(
-        self, alpaca_key_id: str, alpaca_secret_key: str, real_money_trading=False
+        self,
+        alpaca_key_id: str,
+        alpaca_secret_key: str,
+        real_money_trading=False,
+        back_testing: bool = False,
     ):
         # self.order_types = ORDER_TYPES
         if real_money_trading:
             base_url = "https://api.alpaca.markets"
         else:
             base_url = "https://paper-api.alpaca.markets"
+
+        self.back_testing = back_testing
 
         self.api = REST(
             key_id=alpaca_key_id,
@@ -199,13 +215,13 @@ class AlpacaAPI(ITradeAPI):
         for asset in asset_dict:
             # code
             # name
-            return_dict[str(asset.symbol).lower()] = asset
+            return_dict[str(asset.symbol)] = asset
         return return_dict
 
     def get_account(self) -> Account:
         request = self.api.get_account()
         currency = request.currency
-        currency = currency.lower()
+        currency = currency
         account = Account({currency: float(request.cash)})
         # account.USD = account.cash
         return account
@@ -303,8 +319,8 @@ class AlpacaAPI(ITradeAPI):
     def order_list(self):
         ...
 
-    def close_position(self, *args, **kwargs):
-        return self.api.close_position(self, *args, **kwargs)
+    def close_position(self, symbol: str) -> OrderResult:
+        return self.api.close_position(symbol=symbol)
 
 
 if __name__ == "__main__":
