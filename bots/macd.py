@@ -78,9 +78,9 @@ class MacdBot:
             {"symbol": "BNB-USD", "api": "alpaca"},
         ]
 
-        symbols = [
-            {"symbol": "AAPL", "api": "alpaca"},
-        ]
+        # symbols = [
+        #    {"symbol": "AAPL", "api": "alpaca"},
+        # ]
 
         if back_testing and global_override_broker:
             for s in symbols:
@@ -447,7 +447,9 @@ def apply_sell_rules(
                     }
                     new_steps = updated_ssm_rule["steps"] + 1
                     new_risk = rule["original_risk"] * new_steps
-                    new_stop_loss = sell_response.unit_price + new_risk
+                    new_stop_loss = (
+                        sell_response.unit_price
+                    )  # TODO you messed with this!
 
                     updated_ssm_rule["current_stop_loss"] = new_stop_loss
                     updated_ssm_rule["current_risk"] = new_risk

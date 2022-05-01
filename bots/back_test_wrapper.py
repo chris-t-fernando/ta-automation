@@ -23,6 +23,16 @@ log_wp.addHandler(fhdlr)
 log_wp.setLevel(logging.INFO)
 
 
+csv_wp = logging.getLogger(
+    "backtest_api_csv"
+)  # or pass an explicit name here, e.g. "mylogger"
+csv_hdlr = logging.StreamHandler()
+csv_fhdlr = logging.FileHandler("macd.csv")
+csv_wp.addHandler(csv_hdlr)
+csv_wp.addHandler(csv_fhdlr)
+csv_wp.setLevel(logging.DEBUG)
+
+
 # CONSTANTS
 MARKET_BUY = 1
 MARKET_SELL = 2
@@ -270,6 +280,8 @@ class BackTestAPI(ITradeAPI):
 
         self.active_order = response
 
+        csv_wp.debug(f"BUY,LIMIT,{symbol},{units}, {unit_price}")
+
         return OrderResult(order_object=response)
 
     def buy_order_market():
@@ -327,6 +339,8 @@ class BackTestAPI(ITradeAPI):
             "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
         }
 
+        csv_wp.debug(f"SELL,LIMIT,{symbol},{units},{unit_price}")
+
         return OrderResult(order_object=response)
 
     def sell_order_market(
@@ -371,6 +385,7 @@ class BackTestAPI(ITradeAPI):
         log_wp.warning(
             f"{symbol}: Sold {units}  at market value of {back_testing_unit_price} (total value {back_testing_unit_price * units}) (back_testing={self.back_testing})"
         )
+        csv_wp.debug(f"SELL,MARKET,{symbol},{units},{back_testing_unit_price}")
         return OrderResult(order_object=response)
 
     def order_create_by_units(self):
