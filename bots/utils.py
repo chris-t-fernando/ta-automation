@@ -130,6 +130,7 @@ def add_signals(bars, interval):
     # changed to use EMA instead of SMA
     # TODO update column name - pretty shonky doing it this way
     # sma = btalib.sma(bars, period=200)
+    # bars["sma_200"] = list(sma["sma"])
     sma = btalib.ema(bars, period=200)
     bars["sma_200"] = list(sma["ema"])
     # log_wp.debug(f"SMA complete in {round(time.time() - start_time,1)}s")
@@ -355,9 +356,11 @@ def merge_rules(
             if rule["symbol"] != symbol:
                 new_rules.append(rule)
             else:
-                raise ValueError(
-                    f"Cannot create {symbol} - symbol already exists in SSM rules!"
-                )
+                # TODO this can actually happen - then what happens?!
+                # raise ValueError(
+                #    f"Cannot create {symbol} - symbol already exists in SSM rules!"
+                # )
+                ...
 
         new_rules.append(new_rule)
         changed = True
@@ -375,6 +378,7 @@ def merge_rules(
 
 
 def write_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
+    # return True
     if back_testing:
         path = "/backtest"
     else:
@@ -386,7 +390,7 @@ def write_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
         Type="String",
         Overwrite=True,
     )
-    log_wp.info(f"{symbol}: Wrote rule: {json.dumps(new_rules)}")
+    log_wp.debug(f"{symbol}: Wrote rule: {json.dumps(new_rules)}")
 
     return True
 

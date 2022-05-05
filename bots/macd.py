@@ -26,8 +26,8 @@ import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-global_back_testing = True
-global_override_broker = True
+global_back_testing = False
+global_override_broker = False
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -38,13 +38,48 @@ formatter = logging.Formatter(
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
-log_wp.setLevel(logging.INFO)
+log_wp.setLevel(logging.DEBUG)
+
+df_report = pd.DataFrame()
+df_report_columns = [
+    "start",
+    "end",
+    "capital_start",
+    "capital_end",
+    "capital_change",
+    "capital_change_pct",
+    "intervals",
+    "trades_total",
+    "trades_won",
+    "trades_won_rate",
+    "trades_lost",
+    "trades_lost_rate",
+    "trades_skipped",
+    "hold_units",
+    "hold_start_buy",
+    "hold_end_buy",
+    "hold_change",
+    "hold_change_pct",
+    "better_strategy",
+]
+
+
+df_trade_report_columns = [
+    "date",
+    "symbol",
+    "side",
+    "order_type",
+    "units",
+    "unit_price",
+    "total_value",
+]
+df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 
 
 class MacdBot:
     jobs = None
 
-    def __init__(self, ssm, data_source, start_period=None, back_testing=False):
+    def __init__(self, ssm, data_source, back_testing=False):
         interval = "5m"
         real_money_trading = False
         self.ssm = ssm
@@ -78,9 +113,13 @@ class MacdBot:
             {"symbol": "BNB-USD", "api": "alpaca"},
         ]
 
-        # symbols = [
-        #    {"symbol": "AAPL", "api": "alpaca"},
-        # ]
+        symbols = [
+            {"symbol": "AAPL", "api": "alpaca"},
+        ]
+
+        df_report = pd.DataFrame(
+            columns=df_report_columns, index=[x["symbol"] for x in symbols]
+        )
 
         if back_testing and global_override_broker:
             for s in symbols:
@@ -278,6 +317,16 @@ class MacdBot:
                                     "risk_point_sell_down_pct": 0.25,
                                     "risk_point_new_stop_loss_pct": 0.98,
                                 }
+                                global df_trade_report
+                                df_trade_report.loc[df_trade_report.shape[0]] = [
+                                    current_record,
+                                    s,
+                                    "BUY",
+                                    "LIMIT",
+                                    buy_plan.units,
+                                    buy_plan.entry_unit,
+                                    buy_plan.units * buy_plan.entry_unit,
+                                ]
 
                                 rules_result = merge_rules(
                                     ssm=self.ssm,
@@ -298,7 +347,7 @@ class MacdBot:
                                 else:
                                     # returns False if the rule already existed - this should not happen because it should raise a Value exception in that case...
                                     ...
-                                print("banana")
+
                         else:
                             log_wp.debug(
                                 f"{s}: Position held so skipped buy analysis (back_test={self.back_testing})"
@@ -320,6 +369,7 @@ class MacdBot:
                 break
             else:
                 # if we get here, we need to sleep til we can get more data
+                df_trade_report.to_csv("trade_report.csv")
                 pause = get_pause()
                 log_wp.debug(f"Sleeping for {round(pause,0)}s")
                 time.sleep(pause)
@@ -347,6 +397,7 @@ def apply_sell_rules(
     back_testing: bool = False,
     back_testing_unit_price: float = None,
 ):
+    global df_trade_report
     stop_loss_triggered = []
     sell_point_triggered = []
     risk_point_triggered = []
@@ -391,6 +442,16 @@ def apply_sell_rules(
                             new_rules=rules_result,
                             back_testing=back_testing,
                         )
+                    df_trade_report.loc[df_trade_report.shape[0]] = [
+                        period,
+                        symbol,
+                        "SELL",
+                        "STOP",
+                        position.quantity,
+                        back_testing_unit_price,
+                        position.quantity * back_testing_unit_price,
+                    ]
+
                     return rules
                 else:
                     # need a better way of notifying me of this stuff
@@ -421,6 +482,7 @@ def apply_sell_rules(
                             "rule": rule,
                         }
                     )
+                    new_target_pct = 0
 
                 # hit high watermark of target price
                 units_to_sell = position.quantity * new_target_pct
@@ -429,12 +491,30 @@ def apply_sell_rules(
                     units=units_to_sell,
                     back_testing_unit_price=back_testing_unit_price,
                 )
-                sell_value = sell_response.total_value
 
-                if sell_response.success:
+                if not sell_response.success:
+                    # need a better way of notifying me of this stuff
                     log_wp.critical(
-                        f'{symbol}: Hit target sale point at {period}. Successfully sold {round(rule["win_point_sell_down_pct"]*100,0)}% of units for total value {round(sell_value,2)}'
+                        f"{symbol}: FAILED TO TAKE PROFIT AT {period} ****** DO NOT IGNORE THIS *****"
                     )
+                    raise RuntimeError()
+
+                # order accepted but not filled
+                if sell_response.status_summary == "cancelled":
+                    raise RuntimeError(
+                        f"Order was cancelled immediately by broker {str(sell_response)}"
+                    )
+                else:
+                    if sell_response.status_summary == "open":
+                        log_wp.critical(
+                            f'{symbol}: Hit target sale point at {period}. Submitted sell market order for {round(rule["win_point_sell_down_pct"]*100,0)}% of units'
+                        )
+                    elif sell_response.status_summary == "filled":
+                        # order filled
+                        sell_value = sell_response.total_value
+                        log_wp.critical(
+                            f'{symbol}: Hit target sale point at {period}. Successfully sold {round(rule["win_point_sell_down_pct"]*100,0)}% of units for total value {round(sell_value,2)}'
+                        )
 
                     new_units_held = api.get_position(symbol=symbol).quantity
 
@@ -478,14 +558,17 @@ def apply_sell_rules(
                             back_testing=back_testing,
                         )
 
-                    return rules
+                    df_trade_report.loc[df_trade_report.shape[0]] = [
+                        period,
+                        symbol,
+                        "SELL",
+                        "PROFIT",
+                        sell_response.units,
+                        back_testing_unit_price,
+                        position.quantity * back_testing_unit_price,
+                    ]
 
-                else:
-                    # need a better way of notifying me of this stuff
-                    log_wp.critical(
-                        f"{symbol}: FAILED TO TAKE PROFIT AT {period} ****** DO NOT IGNORE THIS *****"
-                    )
-                    raise RuntimeError()
+                    return rules
 
             else:
                 log_wp.debug(f"{symbol}: Not ready to sell")
@@ -511,9 +594,10 @@ def main():
             Overwrite=True,
         )
 
-    bot_handler = MacdBot(ssm, data_source, back_testing=back_testing)
+    bot_handler = MacdBot(ssm=ssm, data_source=data_source, back_testing=back_testing)
     bot_handler.start()
-    print("banan")
+    global df_trade_report
+    df_trade_report.to_csv("trade_report.csv")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from itradeapi import (
 )
 import yfinance as yf
 from datetime import datetime
-from alpaca_trade_api import REST
+from alpaca_trade_api import REST, entity
 import pandas as pd
 import boto3
 import logging
@@ -34,34 +34,50 @@ STOP_LIMIT_BUY = 5
 STOP_LIMIT_SELL = 6
 
 ORDER_STATUS_SUMMARY_TO_ID = {
-    "cancelled": {2, 7, 8, 9, 10},
-    "open": {1, 3, 4, 5},
-    "pending": {6},
+    "cancelled": {6, 11, 8, 12, 13, 18, 19},
+    "open": {1, 3, 5, 14, 15, 16},
+    "pending": {},
+    "filled": {4},
 }
+
 ORDER_STATUS_ID_TO_SUMMARY = {
     1: "open",
-    2: "cancelled",
     3: "open",
-    4: "open",
+    4: "filled",
     5: "open",
-    6: "pending",
-    7: "cancelled",
+    6: "cancelled",
+    11: "cancelled",
     8: "cancelled",
-    9: "cancelled",
-    10: "cancelled",
+    12: "cancelled",
+    13: "cancelled",
+    14: "open",
+    15: "open",
+    16: "open",
+    17: "filled",
+    18: "cancelled",
+    19: "cancelled",
+    20: "filled",
 }
+
 ORDER_STATUS_TEXT = {
-    1: "Open",
-    2: "Insufficient balance",
-    3: "Partially filled",
-    4: "Filled",
-    5: "Pending",
-    6: "User cancelled",
-    7: "Unknown error",
-    8: "Cancelled by system",
-    9: "Failed - below minimum trading amount",
-    10: "Refunded",
+    1: "new",
+    3: "partially_filled",
+    4: "filled",
+    5: "done_for_day",
+    6: "canceled",
+    11: "expired",
+    8: "replaced",
+    12: "pending_cancel",
+    13: "pending_replace",
+    14: "accepted",
+    15: "pending_new",
+    16: "accepted_for_bidding",
+    17: "stopped",
+    18: "rejected",
+    19: "suspended",
+    20: "calculated",
 }
+ORDER_STATUS_TEXT_INVERTED = {y: x for x, y in ORDER_STATUS_TEXT.items()}
 
 ORDER_MAP = {
     "MARKET_BUY": MARKET_BUY,
@@ -103,7 +119,7 @@ class Position(IPosition):
 
     def __init__(self, symbol, quantity):
         self.symbol = symbol
-        self.quantity = quantity
+        self.quantity = float(quantity)
 
 
 class OrderResult(IOrderResult):
@@ -130,38 +146,64 @@ class OrderResult(IOrderResult):
     # _raw_request
 
     # TODO add requested values too, like swyftx
-    def __init__(self, response: dict, order_object):
+    def __init__(self, response: entity.Order):
         self._raw_response = response
-        self._raw_request = order_object
 
-        order_type = response["order"]["order_type"]
+        # convert side and type combination into one of my static
+        order_type = self._convert_order_type_to_constant(
+            order_side=response.side, order_type=response.type
+        )
         order_type_text = ORDER_MAP_INVERTED[order_type]
 
-        self.order_id = response["orderUuid"]
-        if "BUY" in order_type_text:
-            self.bought_symbol = order_object.data["secondary"]
-            self.bought_id = response["order"]["secondary_asset"]
+        self.order_id = response.client_order_id
+
+        if response.side == "buy":
+            self.bought_symbol = response.symbol
+            self.bought_id = response.asset_id
         else:
-            # sells
-            self.sold_symbol = order_object.data["primary"]
-            self.sold_id = response["order"]["primary_asset"]
+            self.sold_symbol = response.symbol
+            self.sold_id = response.asset_id
 
-        self.quantity = response["order"]["quantity"]
-        self.quantity_symbol = order_object.data["assetQuantity"]
-        self.quantity_id = response["order"]["quantity_asset"]
+        # quantity is what you're paying with - only known if its a limit order
+        if response.type == "limit":
+            self.quantity = float(response.limit_price) * float(response.qty)
+            self.trigger = float(response.limit_price)
+        else:
+            self.quantity = None
+            self.trigger = None
 
-        self.trigger = response["order"]["trigger"]
-        self.status = response["order"]["status"]
-        self.status_text = ORDER_STATUS_TEXT[self.status]
+        self.quantity_symbol = "USD"
+        self.quantity_id = None
+
+        self.status = ORDER_STATUS_TEXT_INVERTED[response.status]
+        self.status_text = response.status
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
 
         self.success = (
-            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
-            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+            self.status in ORDER_STATUS_SUMMARY_TO_ID["open"]
+            or self.status in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
 
-        self.created_time = response["order"]["created_time"]
-        self.updated_time = response["order"]["updated_time"]
+        self.created_time = response.submitted_at
+        self.updated_time = response.updated_at
+
+    def _convert_order_type_to_constant(self, order_side, order_type):
+        if order_side == "buy":
+            if order_type == "limit":
+                return LIMIT_BUY
+            elif order_type == "market":
+                return MARKET_BUY
+            else:
+                raise ValueError(f"Unknown order type: {order_type}")
+        elif order_side == "sell":
+            if order_type == "limit":
+                return LIMIT_SELL
+            elif order_type == "market":
+                return MARKET_SELL
+            else:
+                raise ValueError(f"Unknown order type: {order_type}")
+        else:
+            raise ValueError(f"Unknown market side: {order_side}")
 
 
 # concrete implementation of trade api for alpaca
@@ -251,6 +293,49 @@ class AlpacaAPI(ITradeAPI):
             start=start, end=end, interval=interval, actions=False
         )
 
+    def _submit_order(
+        self, symbol: str, units: int, order_type: int, trigger: bool = None
+    ) -> OrderResult:
+        if order_type > 4:
+            raise NotImplementedException(
+                f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
+            )
+
+        if "BUY" in ORDER_MAP_INVERTED[order_type]:
+            side = "buy"
+        else:
+            side = "sell"
+
+        if "MARKET" in ORDER_MAP_INVERTED[order_type]:
+            alpaca_type = "market"
+            limit_price = None
+        else:
+            alpaca_type = "limit"
+            limit_price = round(trigger, 2)
+
+        # do the order
+        response = self.api.submit_order(
+            symbol=symbol,
+            qty=math.floor(units),
+            side=side,
+            type=alpaca_type,
+            limit_price=limit_price,
+            time_in_force="day",
+        )
+
+        # get the order so we have all the info about it
+        return self.get_order(order_id=response.client_order_id)
+
+    def get_order(self, order_id: str):
+        all_orders = self.api.list_orders()
+        for o in all_orders:
+            if o.client_order_id == order_id:
+                return OrderResult(response=o)
+
+        # return OrderResult(
+        #    order_object=response, asset_list_by_id=self._asset_list_by_id
+        # )
+
     # todo: basically everything after this!
     def _translate_order_types(self, order_type):
         if order_type == "MARKET_BUY":
@@ -276,27 +361,34 @@ class AlpacaAPI(ITradeAPI):
         return self.api.submit_order(*args, **kwargs)
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float):
+        return self._submit_order(
+            symbol=symbol, units=units, order_type=LIMIT_SELL, trigger=unit_price
+        )
+
         return self.api.submit_order(
             symbol=symbol,
             qty=units,
             side="sell",
-            type="limit",
+            order_type="limit",
             limit_price=str(unit_price),
             time_in_force="day",
         )
 
     def buy_order_limit(self, symbol: str, units: float, unit_price: float):
+        return self._submit_order(
+            symbol=symbol, units=units, order_type=LIMIT_BUY, trigger=unit_price
+        )
         return self.api.submit_order(
             symbol=symbol,
             qty=math.floor(units),
             side="buy",
-            type="limit",
+            order_type="limit",
             limit_price=str(round(unit_price, 2)),
             time_in_force="day",
         )
 
-    def buy_order_market(self):
-        ...
+    def buy_order_market(self, symbol, units):
+        return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
     def delete_order(self):
         ...
@@ -307,8 +399,23 @@ class AlpacaAPI(ITradeAPI):
     def sell_order_limit(self):
         ...
 
-    def sell_order_market(self):
-        ...
+    def sell_order_market(
+        self, symbol: str, units: float, back_testing_unit_price: None
+    ):
+        if back_testing_unit_price != None:
+            raise NotImplementedError(
+                "back_testing_unit_price is not available in real implementation of ITradeAPI"
+            )
+
+        return self._submit_order(symbol=symbol, units=units, order_type=MARKET_SELL)
+
+        return self.api.submit_order(
+            symbol=symbol,
+            qty=units,
+            side="sell",
+            order_type="market",
+            time_in_force="day",
+        )
 
     def order_create_by_units(self):
         ...

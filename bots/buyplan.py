@@ -9,7 +9,8 @@ from utils import (
 from math import floor
 import logging
 import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger("buyplan")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -24,7 +25,7 @@ ORDER_SIZE = 2000
 
 
 class BuyPlan:
-    def __init__(self, symbol, df, profit_target: float = 1.5, notional_units=True):
+    def __init__(self, symbol, df, profit_target: float = 1.5, notional_units=False):
         self.symbol = symbol
         self.capital = ORDER_SIZE
 
@@ -71,8 +72,7 @@ class BuyPlan:
         self.original_risk_unit = self.risk_unit
         self.original_stop = stop_unit
 
-        self.entry_unit = self.entry_unit
-        self.entry_unit = self.entry_unit
+        self.entry_unit = round(self.entry_unit, 2)
         self.target_price = self.entry_unit + self.target_profit
 
         # fmt: off

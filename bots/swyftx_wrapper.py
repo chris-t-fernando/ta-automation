@@ -24,6 +24,7 @@ log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
 log_wp.setLevel(logging.DEBUG)
 
+
 class OrderRequiresPriceOrUnitsException(Exception):
     ...
 
@@ -98,10 +99,10 @@ class OrderResult(IOrderResult):
     order_type_text: str
     created_time: int
     updated_time: int
-    total_value:float
-    requested_units:float
-    requested_unit_price:float
-    requested_total_value:float
+    total_value: float
+    requested_units: float
+    requested_unit_price: float
+    requested_total_value: float
     success: bool
     _raw_response: dict
     _raw_request = None
@@ -189,15 +190,17 @@ class Position(IPosition):
 
     def __init__(self, symbol, quantity):
         self.symbol = symbol
-        self.quantity = quantity
+        self.quantity = float(quantity)
 
 
 # concrete class
 class SwyftxAPI(ITradeAPI):
-    def __init__(self, api_key: str, real_money_trading: bool = False, back_testing:bool=False):
+    def __init__(
+        self, api_key: str, real_money_trading: bool = False, back_testing: bool = False
+    ):
         self.api_key = api_key
         self.assets_initialised = False
-        self.back_testing=back_testing
+        self.back_testing = back_testing
 
         if real_money_trading != True:
             # now use the environment that was actually requested. i hate this.
@@ -393,7 +396,7 @@ class SwyftxAPI(ITradeAPI):
         # no need for an else, units was already specified in the call
 
         return self._submit_order(
-            symbol=symbol, units=units, type=MARKET_BUY, trigger=None
+            symbol=symbol, units=units, order_type=MARKET_BUY, trigger=None
         )
 
     def buy_order_limit(self, symbol: str, units: float, unit_price: float):
@@ -401,7 +404,7 @@ class SwyftxAPI(ITradeAPI):
         return self._submit_order(
             symbol=symbol,
             units=units,
-            type=LIMIT_BUY,
+            order_type=LIMIT_BUY,
             trigger=unit_price,
         )
 
@@ -424,17 +427,17 @@ class SwyftxAPI(ITradeAPI):
         # no need for an else, units was already specified in the call
 
         return self._submit_order(
-            symbol=symbol, units=units, type=MARKET_SELL, trigger=None
+            symbol=symbol, units=units, order_type=MARKET_SELL, trigger=None
         )
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float):
         trigger = 1 / unit_price
         return self._submit_order(
-            symbol=symbol, units=units, type=LIMIT_SELL, trigger=trigger
+            symbol=symbol, units=units, order_type=LIMIT_SELL, trigger=trigger
         )
 
     def _submit_order(
-        self, symbol: str, units: int, type: int, trigger: bool = None
+        self, symbol: str, units: int, order_type: int, trigger: bool = None
     ) -> OrderResult:
         """Submits an order (either buy or sell) based on value.  Note that this should not be called directly
 
@@ -447,11 +450,11 @@ class SwyftxAPI(ITradeAPI):
         Returns:
             OrderResult: output from the API endpoint
         """
-        if type > 4:
+        if order_type > 4:
             raise NotImplementedException(
                 f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
             )
-        order_type = type
+
         quantity = units
 
         # swyftx api expects symbols in upper case....
