@@ -3,6 +3,7 @@ import time
 import btalib
 import pandas as pd
 import logging
+import jsonpickle
 from datetime import datetime
 import warnings
 import json
@@ -377,7 +378,7 @@ def merge_rules(
         return False
 
 
-def write_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
+def put_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
     # return True
     if back_testing:
         path = "/backtest"
@@ -393,6 +394,39 @@ def write_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
     log_wp.debug(f"{symbol}: Wrote rule: {json.dumps(new_rules)}")
 
     return True
+
+
+def get_stored_state(ssm, back_testing: bool = False):
+    if back_testing:
+        back_testing_path = "/back_testing"
+    else:
+        back_testing_path = ""
+
+    try:
+        json_stored_state = (
+            ssm.get_parameter(
+                Name=f"/tabot{back_testing_path}/state", WithDecryption=False
+            )
+            .get("Parameter")
+            .get("Value")
+        )
+        return json.loads(json_stored_state)
+    except ssm.exceptions.ParameterNotFound as e:
+        return []
+
+
+def put_stored_state(ssm, new_state=list, back_testing: bool = False):
+    if back_testing:
+        back_testing_path = "/back_testing"
+    else:
+        back_testing_path = ""
+
+    ssm.put_parameter(
+        Name=f"/tabot{back_testing_path}/state",
+        Value=json.dumps(new_state),
+        Type="String",
+        Overwrite=True,
+    )
 
 
 def trigger_sell_point(rule, last_price, period):
@@ -423,3 +457,11 @@ def trigger_stop_loss(rule, last_price, period):
         return True
     else:
         return False
+
+
+def pickle(object):
+    return jsonpickle.encode(object)
+
+
+def unpickle(object):
+    return jsonpickle.decode(object)

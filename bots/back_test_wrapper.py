@@ -23,14 +23,14 @@ log_wp.addHandler(fhdlr)
 log_wp.setLevel(logging.INFO)
 
 
-#csv_wp = logging.getLogger(
+# csv_wp = logging.getLogger(
 #    "backtest_api_csv"
-#)  # or pass an explicit name here, e.g. "mylogger"
-#csv_hdlr = logging.StreamHandler()
-#csv_fhdlr = logging.FileHandler("macd.csv")
-#csv_wp.addHandler(csv_hdlr)
-#csv_wp.addHandler(csv_fhdlr)
-#csv_wp.setLevel(logging.DEBUG)
+# )  # or pass an explicit name here, e.g. "mylogger"
+# csv_hdlr = logging.StreamHandler()
+# csv_fhdlr = logging.FileHandler("macd.csv")
+# csv_wp.addHandler(csv_hdlr)
+# csv_wp.addHandler(csv_fhdlr)
+# csv_wp.setLevel(logging.DEBUG)
 
 
 # CONSTANTS
@@ -137,42 +137,42 @@ class OrderResult(IOrderResult):
     _raw_response: dict
     # _raw_request
 
-    def __init__(self, order_object: dict):
-        self._raw_response = order_object
+    def __init__(self, response: dict):
+        self._raw_response = response
 
-        order_type = order_object["order_type"]
+        order_type = response["order_type"]
         order_type_text = ORDER_MAP_INVERTED[order_type]
 
-        self.order_id = order_object["orderUuid"]
+        self.order_id = response["orderUuid"]
         if "BUY" in order_type_text:
-            self.bought_symbol = order_object["secondary_asset"]
+            self.bought_symbol = response["secondary_asset"]
         else:
             # sells
-            self.sold_symbol = order_object["primary_asset"]
+            self.sold_symbol = response["primary_asset"]
 
-        self.quantity = order_object["quantity"]
-        self.quantity_symbol = order_object["quantity_asset"]
+        self.quantity = response["quantity"]
+        self.quantity_symbol = response["quantity_asset"]
 
-        self.trigger = order_object["trigger"]
-        self.status = order_object["status"]
+        self.trigger = response["trigger"]
+        self.status = response["status"]
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
         self.success = (
-            order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
-            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+            response["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
+            or response["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
 
-        self.units = order_object["amount"]
-        self.unit_price = order_object["rate"]
-        self.fees = order_object["feeAmount"]
+        self.units = response["amount"]
+        self.unit_price = response["rate"]
+        self.fees = response["feeAmount"]
         self.total_value = self.units * self.unit_price
 
-        self.requested_units = order_object["amount"]
-        self.requested_unit_price = order_object["rate"]
+        self.requested_units = response["amount"]
+        self.requested_unit_price = response["rate"]
         self.requested_total_value = self.units * self.unit_price
 
-        self.created_time = order_object["created_time"]
-        self.updated_time = order_object["updated_time"]
+        self.create_time = response["created_time"]
+        self.update_time = response["updated_time"]
 
 
 # concrete implementation of trade api for alpaca
@@ -204,6 +204,9 @@ class BackTestAPI(ITradeAPI):
         self.position = 0
 
         self.assets_held = {}
+
+    def get_broker_name(self):
+        return "back_test"
 
     def _get_crypto_symbols(self):
         crypto_symbols = ["btc", "sol", "ada", "shib"]
@@ -289,7 +292,42 @@ class BackTestAPI(ITradeAPI):
         raise NotImplementedException
 
     def list_orders(self):
-        raise NotImplementedException
+        response = {
+            "order_type": 4,
+            "orderUuid": "sell-abcdef",
+            "secondary_asset": "AAPL",
+            "primary_asset": self.default_currency,
+            "quantity": 10,
+            "quantity_asset": self.default_currency,
+            "amount": 10,
+            "rate": 5999,
+            "trigger": 5999,
+            "fees": 0,
+            "feeAmount": 0,
+            "status": 4,
+            "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
+            "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
+        }
+        return [OrderResult(response=response)]
+
+    def get_order(self, order_id: str):
+        response = {
+            "order_type": 4,
+            "orderUuid": "sell-abcdef",
+            "secondary_asset": "AAPL",
+            "primary_asset": self.default_currency,
+            "quantity": 10,
+            "quantity_asset": self.default_currency,
+            "amount": 10,
+            "rate": 5999,
+            "trigger": 5999,
+            "fees": 0,
+            "feeAmount": 0,
+            "status": 4,
+            "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
+            "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
+        }
+        return OrderResult(response=response)
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float):
         # how many of this symbol do we own? is it >= than the requested amount to sell?
@@ -337,7 +375,7 @@ class BackTestAPI(ITradeAPI):
             "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
         }
 
-        #csv_wp.debug(f"SELL,LIMIT,{symbol},{units},{unit_price}")
+        # csv_wp.debug(f"SELL,LIMIT,{symbol},{units},{unit_price}")
 
         return OrderResult(order_object=response)
 
@@ -383,13 +421,10 @@ class BackTestAPI(ITradeAPI):
         log_wp.warning(
             f"{symbol}: Sold {units}  at market value of {back_testing_unit_price} (total value {back_testing_unit_price * units}) (back_testing={self.back_testing})"
         )
-        #csv_wp.debug(f"SELL,MARKET,{symbol},{units},{back_testing_unit_price}")
+        # csv_wp.debug(f"SELL,MARKET,{symbol},{units},{back_testing_unit_price}")
         return OrderResult(order_object=response)
 
     def order_create_by_units(self):
-        raise NotImplementedException
-
-    def order_delete(self):
         raise NotImplementedException
 
     def order_list(self):

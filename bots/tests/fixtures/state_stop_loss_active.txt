@@ -1,0 +1,1 @@
+{"symbol": "AAPL", "order_id": "sell_stop_loss_active", "broker": "alpaca", "state": "STOP_LOSS_ACTIVE"}

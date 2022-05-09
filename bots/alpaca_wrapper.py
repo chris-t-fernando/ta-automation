@@ -12,7 +12,9 @@ from alpaca_trade_api import REST, entity
 import pandas as pd
 import boto3
 import logging
+import json
 import math
+from dateutil.relativedelta import relativedelta
 
 log_wp = logging.getLogger("alpaca")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -126,17 +128,17 @@ class OrderResult(IOrderResult):
     order_id: str
     sold_symbol: str
     bought_symbol: str
-    quantity: float
-    quantity_symbol: str
-    quantity_id: int
-    trigger: float
+    order_value: float
+    order_currency: str
+    order_currency_id: int
+    limit_price: float
     status: int
     status_text: str
     status_summary: str
     order_type: int
     order_type_text: str
-    created_time: int
-    updated_time: int
+    create_time: int
+    update_time: int
     total_value: float
     requested_units: float
     requested_unit_price: float
@@ -150,12 +152,12 @@ class OrderResult(IOrderResult):
         self._raw_response = response
 
         # convert side and type combination into one of my static
-        order_type = self._convert_order_type_to_constant(
+        self.order_type = self._convert_order_type_to_constant(
             order_side=response.side, order_type=response.type
         )
-        order_type_text = ORDER_MAP_INVERTED[order_type]
+        self.order_type_text = ORDER_MAP_INVERTED[self.order_type]
 
-        self.order_id = response.client_order_id
+        self.order_id = response.id
 
         if response.side == "buy":
             self.bought_symbol = response.symbol
@@ -164,16 +166,19 @@ class OrderResult(IOrderResult):
             self.sold_symbol = response.symbol
             self.sold_id = response.asset_id
 
+        self.unit_quantity = float(response.qty)
+
         # quantity is what you're paying with - only known if its a limit order
         if response.type == "limit":
-            self.quantity = float(response.limit_price) * float(response.qty)
-            self.trigger = float(response.limit_price)
-        else:
-            self.quantity = None
-            self.trigger = None
+            self.order_value = float(response.limit_price) * float(response.qty)
+            self.limit_price = float(response.limit_price)
 
-        self.quantity_symbol = "USD"
-        self.quantity_id = None
+        else:
+            self.order_value = None
+            self.limit_price = None
+
+        self.order_currency = "USD"
+        self.order_currency_id = None
 
         self.status = ORDER_STATUS_TEXT_INVERTED[response.status]
         self.status_text = response.status
@@ -184,8 +189,8 @@ class OrderResult(IOrderResult):
             or self.status in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
 
-        self.created_time = response.submitted_at
-        self.updated_time = response.updated_at
+        self.create_time = response.submitted_at
+        self.update_time = response.updated_at
 
     def _convert_order_type_to_constant(self, order_side, order_type):
         if order_side == "buy":
@@ -239,6 +244,9 @@ class AlpacaAPI(ITradeAPI):
         self.supported_crypto_symbols = self._get_crypto_symbols()
 
         self.default_currency = "usd"
+
+    def get_broker_name(self):
+        return "alpaca"
 
     def _get_crypto_symbols(self):
         crypto_symbols = []
@@ -324,13 +332,13 @@ class AlpacaAPI(ITradeAPI):
         )
 
         # get the order so we have all the info about it
-        return self.get_order(order_id=response.client_order_id)
+        return self.get_order(order_id=response.id)
 
     def get_order(self, order_id: str):
-        all_orders = self.api.list_orders()
+        all_orders = self.list_orders()
         for o in all_orders:
-            if o.client_order_id == order_id:
-                return OrderResult(response=o)
+            if o.order_id == order_id:
+                return o
 
         # return OrderResult(
         #    order_object=response, asset_list_by_id=self._asset_list_by_id
@@ -390,11 +398,34 @@ class AlpacaAPI(ITradeAPI):
     def buy_order_market(self, symbol, units):
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
-    def delete_order(self):
-        ...
+    def delete_order(self, order_id):
+        return self.api.cancel_order(order_id=order_id)
 
-    def list_orders(self):
-        ...
+    # TODO signature needs to match swyftx
+    # also need the return to match swyftx - currently returns empty list if no active orders
+    def list_orders(self, symbol: str = None, symbols: list = None, after: str = None):
+        if symbol and symbols:
+            raise ValueError("Can't specify both 'symbol' and 'symbols' - choose one")
+
+        # API expects symbols, rather than just symbol, so wrap the symbol in a list
+        if symbol:
+            symbols = [symbol]
+
+        # after defaults to last 7 days
+        if after:
+            try:
+                pd.Timestamp(after)
+            except:
+                raise (f"Invalid timestamp provided for 'after' parameter: {after}")
+        else:
+            after = datetime.now() - relativedelta(days=7)
+
+        # all done validating, now do the thing
+        orders = []
+        all_orders = self.api.list_orders(status="all", symbols=symbol, after=after)
+        for o in all_orders:
+            orders.append(OrderResult(response=o))
+        return orders
 
     def sell_order_limit(self):
         ...
@@ -418,9 +449,6 @@ class AlpacaAPI(ITradeAPI):
         )
 
     def order_create_by_units(self):
-        ...
-
-    def order_delete(self):
         ...
 
     def order_list(self):
@@ -448,5 +476,6 @@ if __name__ == "__main__":
     api = AlpacaAPI(alpaca_key_id=api_key, alpaca_secret_key=secret_key)
     api.get_account()
     api.list_positions()
-    api.buy_order_limit(symbol="AAPL", units=5, unit_price=163.64)
+    api.buy_order_limit(symbol="AAPL", units=5, unit_price=201)
+    api.buy_order_market(symbol="AAPL", units=10)
     print("banana")

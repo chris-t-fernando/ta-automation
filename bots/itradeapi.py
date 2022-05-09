@@ -1,5 +1,12 @@
 from abc import ABC, abstractmethod
 
+MARKET_BUY = 1
+MARKET_SELL = 2
+LIMIT_BUY = 3
+LIMIT_SELL = 4
+STOP_LIMIT_BUY = 5
+STOP_LIMIT_SELL = 6
+
 
 class NotImplementedException(Exception):
     ...
@@ -60,6 +67,10 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
+    def get_broker_name(self):
+        ...
+
+    @abstractmethod
     def get_account(self):
         ...
 
@@ -93,6 +104,10 @@ class ITradeAPI(ABC):
 
     @abstractmethod
     def list_orders(self):
+        ...
+
+    @abstractmethod
+    def get_order(self):
         ...
 
     @abstractmethod

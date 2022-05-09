@@ -97,8 +97,8 @@ class OrderResult(IOrderResult):
     status_summary: str
     order_type: int
     order_type_text: str
-    created_time: int
-    updated_time: int
+    create_time: int
+    update_time: int
     total_value: float
     requested_units: float
     requested_unit_price: float
@@ -160,8 +160,8 @@ class OrderResult(IOrderResult):
             or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
 
-        self.created_time = order_object["created_time"]
-        self.updated_time = order_object["updated_time"]
+        self.create_time = order_object["created_time"]
+        self.update_time = order_object["updated_time"]
 
 
 # return objects
@@ -210,6 +210,9 @@ class SwyftxAPI(ITradeAPI):
 
         # set up data structures
         self.default_currency = "aud"
+
+    def get_broker_name(self):
+        return "swyftx"
 
     def get_assets(self):
         if self.assets_initialised != True:
@@ -497,8 +500,8 @@ class SwyftxAPI(ITradeAPI):
                     "quantity_asset": asset_quantity,
                     "trigger": trigger,
                     "status": 2,  # order cancelled
-                    "created_time": None,  # never got created
-                    "updated_time": None,  # never got modified
+                    "create_time": None,  # never got created
+                    "update_time": None,  # never got modified
                 }
             else:
                 # but maybe it could happen in other cases too?
