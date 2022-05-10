@@ -10,15 +10,7 @@ from itradeapi import (
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
 )
-from utils import (
-    get_interval_settings,
-    add_signals,
-    merge_bars,
-    get_stored_state,
-    put_stored_state,
-    get_rules,
-    put_rules,
-)
+import utils
 import yfinance as yf
 import logging
 import warnings
@@ -75,34 +67,32 @@ class Symbol:
         self.data_source = data_source
         self.initialised = False
         self.last_date_processed = None
-        self.interval_delta, self.max_range = get_interval_settings(self.interval)
+        self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
         bars = self._get_bars(
             to_date=to_date,
             initialised=False,
         )
-        self.bars = add_signals(bars, interval)
+        self.bars = utils.add_signals(bars, interval)
         self.back_testing = back_testing
 
         # when raising an initial buy order, how long should we wait for it to be filled til killing it?
         self.enter_position_timeout = self.interval_delta
-        # TODO REMOVE AFTER TESTING
-        self.enter_position_timeout = relativedelta(days=14)
 
         # pointer to current record to assess
         self.current_record = None
 
     # returns True/False depending on whether an OrderResult order has passed the configured timeout window
     def enter_position_timed_out(self, now, order):
-        cutoff_date = now - self.enter_position_timeout
+        cutoff_date = now.astimezone(pytz.utc) - self.enter_position_timeout
         cutoff_date = cutoff_date.astimezone(pytz.utc)
         if order.create_time < cutoff_date:
             return True
         return False
 
-    # adds the symbol to state
-    def _add_to_state(self, order):
-        stored_state = get_stored_state(ssm=self.ssm, back_testing=self.back_testing)
+    # writes the symbol to state
+    def _write_to_state(self, order):
+        stored_state = utils.get_stored_state(ssm=self.ssm, back_testing=self.back_testing)
         broker_name = self.api.get_broker_name()
 
         new_state = []
@@ -128,7 +118,7 @@ class Symbol:
                 "state": STATE_MAP_INVERTED[order.status],
             }
         )
-        put_stored_state(
+        utils.put_stored_state(
             ssm=self.ssm, new_state=new_state, back_testing=self.back_testing
         )
 
@@ -136,7 +126,7 @@ class Symbol:
 
     # removes this symbol from the state
     def _remove_from_state(self):
-        stored_state = get_stored_state(ssm=self.ssm, back_testing=self.back_testing)
+        stored_state = utils.get_stored_state(ssm=self.ssm, back_testing=self.back_testing)
         broker_name = self.api.get_broker_name()
         found_in_state = False
 
@@ -152,20 +142,46 @@ class Symbol:
                 # it's not the state we're looking for so keep it
                 new_state.append(this_state)
 
-        put_stored_state(
+        utils.put_stored_state(
             ssm=self.ssm, new_state=new_state, back_testing=self.back_testing
         )
 
         if found_in_state:
             log_wp.debug(f"{self.symbol}: Successfully wrote updated state")
+            return True
         else:
             log_wp.warning(
                 f"{self.symbol}: Tried to remove symbol from state but did not find it"
             )
+            return False
+
+    def _write_to_rules(self, buy_plan, order_result):
+        new_rule = {
+            "symbol": buy_plan.symbol,
+            "original_stop_loss": buy_plan.stop_unit,
+            "current_stop_loss": buy_plan.stop_unit,
+            "original_target_price": buy_plan.target_price,
+            "current_target_price": buy_plan.target_price,
+            "steps": 0,
+            "original_risk": buy_plan.risk_unit,
+            "current_risk": buy_plan.risk_unit,
+            "purchase_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "purchase_price": buy_plan.entry_unit,
+            "units_held": buy_plan.units,  # TODO
+            "units_sold": 0,
+            "units_bought": buy_plan.units,
+            "order_id": 0,  # TODO
+            "sales": [],
+            "win_point_sell_down_pct": 0.5,
+            "win_point_new_stop_loss_pct": 0.99,
+            "risk_point_sell_down_pct": 0.25,
+            "risk_point_new_stop_loss_pct": 0.98,
+        }
+        raise ValueError()
 
     # removes the symbol from the buy rules in SSM
     def _remove_from_rules(self):
-        stored_state = get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        stored_state = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
         found_in_rules = False
 
         new_rules = []
@@ -177,7 +193,7 @@ class Symbol:
                 # not the rule we're looking to remove, so retain it
                 new_rules.append(this_rule)
 
-        put_rules(ssm=self.ssm, new_state=new_rules, back_testing=self.back_testing)
+        utils.put_rules(ssm=self.ssm, new_state=new_rules, back_testing=self.back_testing)
 
         if found_in_rules:
             log_wp.debug(f"{self.symbol}: Successfully wrote updated rules")
@@ -215,30 +231,6 @@ class Symbol:
 
         ...
 
-    def _add_to_rules(self, buy_plan, order_result):
-        new_rule = {
-            "symbol": buy_plan.symbol,
-            "original_stop_loss": buy_plan.stop_unit,
-            "current_stop_loss": buy_plan.stop_unit,
-            "original_target_price": buy_plan.target_price,
-            "current_target_price": buy_plan.target_price,
-            "steps": 0,
-            "original_risk": buy_plan.risk_unit,
-            "current_risk": buy_plan.risk_unit,
-            "purchase_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "purchase_price": buy_plan.entry_unit,
-            "units_held": buy_plan.units,  # TODO
-            "units_sold": 0,
-            "units_bought": buy_plan.units,
-            "order_id": 0,  # TODO
-            "sales": [],
-            "win_point_sell_down_pct": 0.5,
-            "win_point_new_stop_loss_pct": 0.99,
-            "risk_point_sell_down_pct": 0.25,
-            "risk_point_new_stop_loss_pct": 0.98,
-        }
-        raise ValueError()
-
     # when we have found a signal and raise a buy order
     def trans_buy_limit_order_active(self, buy_plan):
         # buy_plan should tell us everything we need to know about the play
@@ -254,7 +246,7 @@ class Symbol:
             raise RuntimeError(f"Buy order was rejected: {order_result.status_text}")
 
         # add the buy order to state
-        self._add_to_state()
+        self._write_to_state()
 
         # was it filled already?
         if order_result.status_summary == "filled":
@@ -325,9 +317,7 @@ class Symbol:
 
         print("banana")
 
-    def _get_bars(
-        self, from_date=None, to_date=None, initialised: bool = True
-    ):
+    def _get_bars(self, from_date=None, to_date=None, initialised: bool = True):
 
         if initialised == False:
             # we actually need to grab everything
@@ -379,10 +369,10 @@ class Symbol:
         if len(new_bars) > 0:
             # pad new bars to 200 rows so that macd and sma200 work
             if len(new_bars) < 200:
-                new_bars = merge_bars(new_bars=new_bars, bars=self.bars.iloc[-200:])
+                new_bars = utils.merge_bars(new_bars=new_bars, bars=self.bars.iloc[-200:])
 
-            new_bars = add_signals(new_bars, interval=self.interval)
-            self.bars = merge_bars(self.bars, new_bars)
+            new_bars = utils.add_signals(new_bars, interval=self.interval)
+            self.bars = utils.merge_bars(self.bars, new_bars)
 
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
