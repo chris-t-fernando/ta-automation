@@ -3,7 +3,8 @@
         "cloudformation://schema/cloudformation": "file:///c%3A/Users/chris.fernando/projects/ta-automation/job-scan/template.yaml"
     },
     "python.testing.pytestArgs": [
-        "bots"
+        "bots",
+        "--profile-svg"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,

@@ -1,1 +1,1 @@
-[{"symbol": "AAPL", "order_id": "sell_taking_profit_active", "broker": "alpaca", "state": "TAKING_PROFIT"}]
+[{"symbol": "CHRIS", "order_id": "sell_taking_profit_active", "broker": "back_test", "state": "TAKING_PROFIT"}]

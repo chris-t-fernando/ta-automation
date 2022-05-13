@@ -91,15 +91,15 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def sell_order_market(self):
+    def sell_order_market(self, symbol: str, units: float, back_testing_unit_price: None):
         ...
 
     @abstractmethod
-    def sell_order_limit(self):
+    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
         ...
 
     @abstractmethod
-    def delete_order(self):
+    def delete_order(self, order_id: str):
         ...
 
     @abstractmethod
@@ -112,4 +112,8 @@ class ITradeAPI(ABC):
 
     @abstractmethod
     def close_position(self):
+        ...
+
+    @abstractmethod
+    def get_position(self, symbol):
         ...

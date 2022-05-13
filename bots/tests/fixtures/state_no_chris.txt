@@ -1,0 +1,1 @@
+[{"symbol": "BANANA", "order_id": "sell_taking_profit_active", "broker": "back_test", "state": "TAKING_PROFIT"}]

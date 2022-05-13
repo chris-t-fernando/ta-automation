@@ -1,1 +1,0 @@
-[{"symbol": "AXS", "order_id": "sell_taking_profit_active", "broker": "alpaca", "state": "TAKING_PROFIT"}]
