@@ -76,7 +76,7 @@ class BuyPlan:
         self.target_price = self.entry_unit + self.target_profit
 
         # fmt: off
-        log_wp.info(f"{self.symbol} - {self.red_cycle_start}: Found signal")
+        log_wp.info(f"{self.symbol} - BUY PLAN REPORT")
         log_wp.info(f"{self.symbol} - Strength:\t\tNot sure how I want to do this yet")
         log_wp.info(f"{self.symbol} - MACD:\t\t\t{self.blue_cycle_macd}")
         log_wp.info(f"{self.symbol} - Signal:\t\t{self.blue_cycle_signal}")
@@ -85,7 +85,7 @@ class BuyPlan:
         log_wp.info(f"{self.symbol} - Units to buy:\t\t{clean(self.units)} units")
         log_wp.info(f"{self.symbol} - Entry point:\t\t${clean(self.entry_unit)}")
         log_wp.info(f"{self.symbol} - Stop loss:\t\t${clean(stop_unit)}")
-        log_wp.info(f"{self.symbol} - Cycle began:\t\t{self.intervals_since_stop} intervals ago")
+        log_wp.info(f"{self.symbol} - Cycle began:\t\t{self.intervals_since_stop} intervals ago on {stop_unit_date}")
         log_wp.info(f"{self.symbol} - Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit*100,1)}% of unit cost)")
         log_wp.info(f"{self.symbol} - Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)")
         log_wp.info(f"{self.symbol} - Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)")

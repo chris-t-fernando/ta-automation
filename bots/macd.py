@@ -1,5 +1,6 @@
 import logging
 import boto3
+import parameter_stores
 from alpaca_wrapper import AlpacaAPI
 from swyftx_wrapper import SwyftxAPI
 from back_test_wrapper import BackTestAPI, Position
@@ -36,8 +37,8 @@ import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-global_back_testing = False
-global_override_broker = False
+global_back_testing = True
+global_override_broker = True
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -152,7 +153,7 @@ class MacdBot:
                 interval=self.interval,
                 real_money_trading=self.real_money_trading,
                 api=self.api_dict[s["api"]],
-                ssm=ssm,
+                store=ssm,
                 data_source=data_source,
                 back_testing=back_testing,
             )
@@ -208,17 +209,30 @@ class MacdBot:
     def get_date_range(self):
         start_date = None
         end_date = None
+        latest_start = None
         for s in self.symbols:
             # if this is the first symbol we're assessing
             if not start_date:
                 start_date = self.symbols[s].bars.index.min()
                 end_date = self.symbols[s].bars.index.max()
+                latest_start = start_date
             else:
                 if start_date > self.symbols[s].bars.index.min():
                     start_date = self.symbols[s].bars.index.min()
 
                 if end_date < self.symbols[s].bars.index.max():
                     end_date = self.symbols[s].bars.index.max()
+
+                # used when back testing to make sure we don't try sampling index -200
+                if latest_start < start_date:
+                    latest_start = start_date
+
+        if self.back_testing:
+
+            latest_start_position = self.symbols[s].bars.index.get_loc(latest_start)
+            back_test_start_position = latest_start_position + 200
+
+            start_date = self.symbols[s].bars.index[back_test_start_position]
 
         return start_date, end_date
 
@@ -257,61 +271,17 @@ class MacdBot:
             current_record = data_end_date
 
         # initialise state for each symbol - check which state each symbol is in, read open order numbers etc
-        self.set_state()
+        # self.set_state()
 
         # iterate through the data until we reach the end
-        while True:
-            # for each symbol, query it for state changes
+        while current_record <= data_end_date:
+            log_wp.debug(f"Started processing {current_record}")
             for s in self.symbols:
                 this_symbol = self.symbols[s]
-                this_symbol.current_record = current_record
-                if this_symbol.state == NO_POSITION_TAKEN:
-                    # look for a signal
-                    if this_symbol.get_buy_signal(current_record):
-                        # act on it
-                        this_symbol.enter_position()
-
-                elif this_symbol.state == BUY_LIMIT_ORDER_ACTIVE:
-                    # check to see if the buy order was even partially filled
-                    if this_symbol.check_enter_position_filled():
-                        # now need to do the same stuff as POSITION_TAKEN
-                        if this_symbol.check_stop_loss_triggered():
-                            this_symbol.exit_position()
-                        elif this_symbol.check_take_profit_triggered():
-                            this_symbol.take_profit()
-                        continue
-
-                    # buy order is still active
-                    # check to see if the buy order has timed out
-                    timed_out = this_symbol.enter_position_timed_out()
-                    # check to see if the play has gone bad since we logged the buy order
-                    invalidated_position = this_symbol.invalid_enter_position()
-                    if timed_out or invalidated_position:
-                        # kill the order
-                        this_symbol.abort_enter_position()
-
-                elif this_symbol.state == POSITION_TAKEN:
-                    # check to see if we need to put in a take profit/stop loss order
-                    if this_symbol.check_stop_loss_triggered():
-                        this_symbol.exit_position()
-                    elif this_symbol.check_take_profit_triggered():
-                        this_symbol.take_profit()
-                    continue
-                elif this_symbol.state == SELL_LIMIT_ORDER_ACTIVE:
-                    # check to see if we have a limit order active
-                    if this_symbol.check_take_profit_filled():
-                        this_symbol.clear_profit_order()
-
-                elif this_symbol.state == STOP_LOSS_ORDER_ACTIVE:
-                    # check to see if we need to put in a take profit/stop loss order
-                    if this_symbol.check_stop_loss_filled():
-                        this_symbol.exit_position()
-
+                this_symbol.process(current_record)
             current_record = current_record + interval_delta
 
-            # if we've processed the last record
-            if current_record >= data_end_date:
-                break
+        log_wp.debug(f"Finished processing all records")
 
     def start(self):
         rules = get_rules(ssm=self.ssm, back_testing=self.back_testing)
@@ -692,12 +662,15 @@ def main():
 
     # reset back testing rules before we start the run
     if back_testing:
-        ssm.put_parameter(
+        store = parameter_stores.back_test_store()
+        store.put_parameter(
             Name=f"/tabot/rules/backtest/5m",
             Value=json.dumps([]),
             Type="String",
             Overwrite=True,
         )
+    else:
+        store = ssm
 
     # TODO delete later!
     api_key = (
@@ -711,38 +684,17 @@ def main():
         .get("Value")
     )
 
-    temp_api = AlpacaAPI(
-        alpaca_key_id=api_key,
-        alpaca_secret_key=secret_key,
-        back_testing=back_testing,
+    store.put_parameter(
+        Name=f"/tabot/alpaca/api_key",
+        Value=api_key,
     )
-    a = temp_api.buy_order_limit("AAPL", units=2, unit_price=2000)
-    a.order_id
-    state = [
-        {
-            "symbol": "AAPL",
-            "order_id": a.order_id,
-            "broker": "alpaca",
-            "state": "BUY_LIMIT_ORDER_ACTIVE",
-        },
-        # timed out order
-        {
-            "symbol": "AXS",
-            "order_id": "c2c9d491-3905-4828-9372-6ce7ad4edf9a",
-            "broker": "alpaca",
-            "state": "BUY_LIMIT_ORDER_ACTIVE",
-        },
-    ]
-
-    ssm.put_parameter(
-        Name=f"/tabot/state",
-        Value=json.dumps(state),
-        Type="String",
-        Overwrite=True,
+    store.put_parameter(
+        Name=f"/tabot/alpaca/security_key",
+        Value=secret_key,
     )
     ## FINISH DELETE LATER
 
-    bot_handler = MacdBot(ssm=ssm, data_source=data_source, back_testing=back_testing)
+    bot_handler = MacdBot(ssm=store, data_source=data_source, back_testing=back_testing)
     bot_handler.new_start()
 
     global df_trade_report

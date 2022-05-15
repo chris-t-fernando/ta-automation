@@ -300,7 +300,7 @@ def validate_rules(rules):
     return True
 
 
-def get_rules(ssm, back_testing):
+def get_rules(store, back_testing):
     if back_testing:
         path = "/backtest"
     else:
@@ -308,16 +308,16 @@ def get_rules(ssm, back_testing):
 
     try:
         return json.loads(
-            ssm.get_parameter(Name=f"/tabot/rules{path}/5m", WithDecryption=False)
+            store.get_parameter(Name=f"/tabot/rules{path}/5m", WithDecryption=False)
             .get("Parameter")
             .get("Value")
         )
-    except ssm.exceptions.ParameterNotFound as e:
+    except store.exceptions.ParameterNotFound as e:
         return []
 
 
 def merge_rules(
-    ssm, symbol: str, action: str, new_rule=None, back_testing: bool = False
+    store, symbol: str, action: str, new_rule=None, back_testing: bool = False
 ):
     if back_testing:
         path = "/backtest"
@@ -326,12 +326,12 @@ def merge_rules(
 
     try:
         old_rules = (
-            ssm.get_parameter(Name=f"/tabot/rules{path}/5m")
+            store.get_parameter(Name=f"/tabot/rules{path}/5m")
             .get("Parameter")
             .get("Value")
         )
         rules = json.loads(old_rules)
-    except ssm.exceptions.ParameterNotFound:
+    except store.exceptions.ParameterNotFound:
         rules = []
 
     changed = False
@@ -359,7 +359,7 @@ def merge_rules(
             else:
                 # TODO this can actually happen - then what happens?!
                 # raise ValueError(
-                #    f"Cannot create {symbol} - symbol already exists in SSM rules!"
+                #    f"Cannot create {symbol} - symbol already exists in store rules!"
                 # )
                 ...
 
@@ -378,14 +378,14 @@ def merge_rules(
         return False
 
 
-def put_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
+def put_rules(store, symbol: str, new_rules: list, back_testing: bool = False):
     # return True
     if back_testing:
         path = "/backtest"
     else:
         path = ""
 
-    ssm.put_parameter(
+    store.put_parameter(
         Name=f"/tabot/rules{path}/5m",
         Value=json.dumps(new_rules),
         Type="String",
@@ -396,7 +396,7 @@ def put_rules(ssm, symbol: str, new_rules: list, back_testing: bool = False):
     return True
 
 
-def get_stored_state(ssm, back_testing: bool = False):
+def get_stored_state(store, back_testing: bool = False):
     if back_testing:
         back_testing_path = "/back_testing"
     else:
@@ -404,24 +404,24 @@ def get_stored_state(ssm, back_testing: bool = False):
 
     try:
         json_stored_state = (
-            ssm.get_parameter(
+            store.get_parameter(
                 Name=f"/tabot{back_testing_path}/state", WithDecryption=False
             )
             .get("Parameter")
             .get("Value")
         )
         return json.loads(json_stored_state)
-    except ssm.exceptions.ParameterNotFound as e:
+    except store.exceptions.ParameterNotFound as e:
         return []
 
 
-def put_stored_state(ssm, new_state=list, back_testing: bool = False):
+def put_stored_state(store, new_state=list, back_testing: bool = False):
     if back_testing:
         back_testing_path = "/back_testing"
     else:
         back_testing_path = ""
 
-    ssm.put_parameter(
+    store.put_parameter(
         Name=f"/tabot{back_testing_path}/state",
         Value=json.dumps(new_state),
         Type="String",

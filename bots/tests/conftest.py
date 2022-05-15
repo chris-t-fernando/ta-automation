@@ -6,6 +6,7 @@ from stock_symbol import Symbol
 from alpaca_wrapper import AlpacaAPI
 from back_test_wrapper import BackTestAPI
 import boto3
+import parameter_stores
 import yfinance as yf
 from dateutil.relativedelta import relativedelta
 import pytz
@@ -64,7 +65,7 @@ def f_chris_symbol(monkeypatch):
         api=api,
         interval="5m",
         real_money_trading=False,
-        ssm=ssm,
+        store=parameter_stores.back_test_store,
         data_source=yf,
     )
 

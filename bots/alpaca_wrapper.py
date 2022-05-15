@@ -448,12 +448,7 @@ class AlpacaAPI(ITradeAPI):
             time_in_force="day",
         )
 
-    def order_create_by_units(self):
-        ...
-
-    def order_list(self):
-        ...
-
+    # TODO i don't think this actually returns an orderresult
     def close_position(self, symbol: str) -> OrderResult:
         return self.api.close_position(symbol=symbol)
 

@@ -150,6 +150,15 @@ class OrderResult(IOrderResult):
             # sells
             self.sold_symbol = response["primary_asset"]
 
+        # quantity is what you're paying with - only known if its a limit order
+        if order_type == LIMIT_BUY or order_type == LIMIT_SELL:
+            self.order_value = float(response["limit_price"]) * float(response["qty"])
+            self.limit_price = float(response["limit_price"])
+
+        else:
+            self.order_value = None
+            self.limit_price = None
+
         self.quantity = response["quantity"]
         self.quantity_symbol = response["quantity_asset"]
 
@@ -182,19 +191,19 @@ class BackTestAPI(ITradeAPI):
     def __init__(self, real_money_trading=False, back_testing: bool = False):
         # set up asset lists
         self.assets = {
-            "btc": None,
-            "sol": None,
-            "ada": None,
-            "shib": None,
-            "aapl": None,
-            "bhp": None,
+            "BTC": None,
+            "SOL": None,
+            "ADA": None,
+            "SHIB": None,
+            "AAPL": None,
+            "BHP": None,
         }
         self.back_testing = back_testing
         self.asset_list_by_symbol = self.assets
 
         self.supported_crypto_symbols = self._get_crypto_symbols()
 
-        self.default_currency = "usd"
+        self.default_currency = "USD"
 
         self.balance = 10000
         self.starting_balance = self.balance
@@ -209,7 +218,7 @@ class BackTestAPI(ITradeAPI):
         return "back_test"
 
     def _get_crypto_symbols(self):
-        crypto_symbols = ["btc", "sol", "ada", "shib"]
+        crypto_symbols = ["BTC", "SOL", "ADA", "SHIB"]
         return crypto_symbols
 
     # not implemented
@@ -219,7 +228,7 @@ class BackTestAPI(ITradeAPI):
         )
 
     def get_account(self) -> Account:
-        account = Account({"usd": self.balance})
+        account = Account({"USD": self.balance})
         return account
 
     def get_position(self, symbol):
@@ -253,17 +262,20 @@ class BackTestAPI(ITradeAPI):
     def _translate_order_types(self, order_type):
         raise NotImplementedException
 
-    def order_create_by_value(self, *args, **kwargs):
-        raise NotImplementedException
+    # the backtest wrapper needs access to the data and to the date being assessed
+    # so that it can determine whether a limit order has been filled or not
+    # how are you going to do this??
 
     def buy_order_limit(self, symbol: str, units: float, unit_price: float):
         response = {
-            "order_type": 1,
+            "order_type": LIMIT_BUY,
             "orderUuid": "buy-abcdef",
             "secondary_asset": self.default_currency,
             "primary_asset": symbol,
             "quantity": units,
             "quantity_asset": symbol,
+            "limit_price": unit_price,
+            "qty": units,
             "amount": units,
             "rate": unit_price,
             "trigger": unit_price,
@@ -283,7 +295,7 @@ class BackTestAPI(ITradeAPI):
 
         self.active_order = response
 
-        return OrderResult(order_object=response)
+        return OrderResult(response=response)
 
     def buy_order_market():
         raise NotImplementedException
@@ -292,42 +304,16 @@ class BackTestAPI(ITradeAPI):
         raise NotImplementedException
 
     def list_orders(self):
-        response = {
-            "order_type": 4,
-            "orderUuid": "sell-abcdef",
-            "secondary_asset": "AAPL",
-            "primary_asset": self.default_currency,
-            "quantity": 10,
-            "quantity_asset": self.default_currency,
-            "amount": 10,
-            "rate": 5999,
-            "trigger": 5999,
-            "fees": 0,
-            "feeAmount": 0,
-            "status": 4,
-            "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
-            "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
-        }
-        return [OrderResult(response=response)]
+        return_orders = []
+        for symbol in self._orders:
+            return_orders.append(OrderResult(response=self._orders[symbol]))
+        return return_orders
 
     def get_order(self, order_id: str):
-        response = {
-            "order_type": 4,
-            "orderUuid": "sell-abcdef",
-            "secondary_asset": "AAPL",
-            "primary_asset": self.default_currency,
-            "quantity": 10,
-            "quantity_asset": self.default_currency,
-            "amount": 10,
-            "rate": 5999,
-            "trigger": 5999,
-            "fees": 0,
-            "feeAmount": 0,
-            "status": 4,
-            "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
-            "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
-        }
-        return OrderResult(response=response)
+        for symbol in self._orders:
+            if self._orders[symbol]["order_id"] == order_id:
+                return OrderResult(response=self._orders[symbol])
+        return False
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float):
         # how many of this symbol do we own? is it >= than the requested amount to sell?
@@ -377,6 +363,8 @@ class BackTestAPI(ITradeAPI):
 
         # csv_wp.debug(f"SELL,LIMIT,{symbol},{units},{unit_price}")
 
+        self._save_order(response)
+
         return OrderResult(order_object=response)
 
     def sell_order_market(
@@ -422,13 +410,11 @@ class BackTestAPI(ITradeAPI):
             f"{symbol}: Sold {units}  at market value of {back_testing_unit_price} (total value {back_testing_unit_price * units}) (back_testing={self.back_testing})"
         )
         # csv_wp.debug(f"SELL,MARKET,{symbol},{units},{back_testing_unit_price}")
+        # self._save_order(response=response)
+
+        del self._orders[symbol]
+
         return OrderResult(order_object=response)
-
-    def order_create_by_units(self):
-        raise NotImplementedException
-
-    def order_list(self):
-        raise NotImplementedException
 
     def close_position(self, symbol: str, back_testing_unit_price: float):
         held_position = self.get_position(symbol)
@@ -437,6 +423,23 @@ class BackTestAPI(ITradeAPI):
             units=held_position.quantity,
             back_testing_unit_price=back_testing_unit_price,
         )
+
+    def _save_order(self, response):
+        self._orders[response["secondary_asset"]] = response
+
+    def _get_order(self, symbol):
+        return self._orders[symbol]
+
+    def _delete_order(self, symbol):
+        if self._orders.get(symbol):
+            del self._orders[symbol]
+            log_wp.debug(f"{symbol}: Removed from self._orders list")
+            return True
+        else:
+            log_wp.warning(
+                f"{symbol}: Tried to remove from self._orders but did not find symbol"
+            )
+            return False
 
 
 if __name__ == "__main__":

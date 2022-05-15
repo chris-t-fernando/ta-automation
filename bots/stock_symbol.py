@@ -56,7 +56,7 @@ class Symbol:
         api: ITradeAPI,
         interval: str,
         real_money_trading: bool,
-        ssm,
+        store,
         data_source,
         to_date: str = None,
         back_testing: bool = False,
@@ -65,7 +65,7 @@ class Symbol:
         self.api = api
         self.interval = interval
         self.real_money_trading = real_money_trading
-        self.ssm = ssm
+        self.store = store
         self.data_source = data_source
         self.initialised = False
         self.last_date_processed = None
@@ -93,7 +93,7 @@ class Symbol:
     # writes the symbol to state
     def _write_to_state(self, order):
         stored_state = utils.get_stored_state(
-            ssm=self.ssm, back_testing=self.back_testing
+            store=self.store, back_testing=self.back_testing
         )
         broker_name = self.api.get_broker_name()
 
@@ -122,7 +122,7 @@ class Symbol:
         )
 
         utils.put_stored_state(
-            ssm=self.ssm, new_state=new_state, back_testing=self.back_testing
+            store=self.store, new_state=new_state, back_testing=self.back_testing
         )
 
         log_wp.info(f"{self.symbol}: Successfully wrote order to state")
@@ -130,7 +130,7 @@ class Symbol:
     # removes this symbol from the state
     def _remove_from_state(self):
         stored_state = utils.get_stored_state(
-            ssm=self.ssm, back_testing=self.back_testing
+            store=self.store, back_testing=self.back_testing
         )
         broker_name = self.api.get_broker_name()
         found_in_state = False
@@ -148,7 +148,7 @@ class Symbol:
                 new_state.append(this_state)
 
         utils.put_stored_state(
-            ssm=self.ssm, new_state=new_state, back_testing=self.back_testing
+            store=self.store, new_state=new_state, back_testing=self.back_testing
         )
 
         if found_in_state:
@@ -160,8 +160,28 @@ class Symbol:
             )
             return False
 
+    def _replace_rule(self, new_rule):
+        stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
+
+        new_rules = []
+
+        for rule in stored_rules:
+            if rule["symbol"] == self.symbol:
+                new_rules.append(new_rule)
+            else:
+                new_rules.append(rule)
+
+        write_result = utils.put_rules(
+            store=self.store,
+            symbol=self.symbol,
+            new_rules=new_rules,
+            back_testing=self.back_testing,
+        )
+
+        return write_result
+
     def _write_to_rules(self, buy_plan, order_result):
-        stored_rules = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
 
         new_rules = []
 
@@ -201,13 +221,13 @@ class Symbol:
         new_rules.append(new_rule)
 
         utils.put_rules(
-            ssm=self.ssm, new_rules=new_rules, back_testing=self.back_testing
+            store=self.store, new_rules=new_rules, back_testing=self.back_testing
         )
 
         log_wp.info(f"{self.symbol}: Successfully wrote new buy order to rules")
 
     def get_rule(self):
-        stored_rules = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
 
         for this_rule in stored_rules:
             if this_rule["symbol"] == self.symbol:
@@ -216,7 +236,7 @@ class Symbol:
         return False
 
     def get_state(self):
-        stored_state = utils.get_state(ssm=self.ssm, back_testing=self.back_testing)
+        stored_state = utils.get_state(store=self.store, back_testing=self.back_testing)
 
         for this_state in stored_state:
             if this_state["symbol"] == self.symbol:
@@ -224,9 +244,9 @@ class Symbol:
 
         return False
 
-    # removes the symbol from the buy rules in SSM
+    # removes the symbol from the buy rules in store
     def _remove_from_rules(self):
-        stored_state = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        stored_state = utils.get_rules(store=self.store, back_testing=self.back_testing)
         found_in_rules = False
 
         new_rules = []
@@ -240,7 +260,7 @@ class Symbol:
 
         if found_in_rules:
             utils.put_rules(
-                ssm=self.ssm, new_rules=new_rules, back_testing=self.back_testing
+                store=self.store, new_rules=new_rules, back_testing=self.back_testing
             )
             log_wp.debug(f"{self.symbol}: Successfully wrote updated rules")
             return True
@@ -288,6 +308,9 @@ class Symbol:
         bars = bars.tz_localize(None)
         # bars = bars.loc[bars.index <= yf_end]
 
+        if self.back_testing:
+            self.api.bars = bars
+
         return bars
 
     def update_bars(self, from_date=None, to_date=None):
@@ -308,6 +331,9 @@ class Symbol:
 
             new_bars = utils.add_signals(new_bars, interval=self.interval)
             self.bars = utils.merge_bars(self.bars, new_bars)
+
+            if self.back_testing:
+                self.api.bars = self.bars
 
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
@@ -359,8 +385,8 @@ class Symbol:
         # there's some messy logic here
         # NO_POSITION_TAKEN         if there is nothing in rules, no orders open - basically clean slate, nothing to do
         # BUY_LIMIT_ORDER_ACTIVE    if there's a buy order issued, then we are trying to take a position
-        # BUY_PRICE_MET             if there's a buy order recently filled but is no rule in ssm, then we just took a position
-        # POSITION_TAKEN            if there's a rule in ssm but no
+        # BUY_PRICE_MET             if there's a buy order recently filled but is no rule in store, then we just took a position
+        # POSITION_TAKEN            if there's a rule in store but no
 
         # TAKING_PROFIT = 4
         # STOP_LOSS_ACTIVE = 5
@@ -374,6 +400,8 @@ class Symbol:
         # if we have no data for this datestamp, then no action
         if datestamp not in self.bars.index:
             return
+
+        self._analyse_index = self.bars.index.get_loc(self._analyse_date)
 
         # keep progressing through the state machine until we hit a stop
         while True:
@@ -485,7 +513,6 @@ class Symbol:
 
     def check_state_no_position_taken(self):
         # get iloc of analyse_index
-        self._analyse_index = self.bars.index.get_loc(self._analyse_date)
 
         bars_slice = self.get_data_window()
 
@@ -529,7 +556,8 @@ class Symbol:
 
         # get inputs for next checks
         last_close = self.bars.close.loc[self._analyse_date]
-        self.active_rule = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        self.active_rule = self.get_rule()
+        # utils.get_rules(store=self.store, back_testing=self.back_testing)
 
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
         if not self.active_rule:
@@ -544,26 +572,39 @@ class Symbol:
         return self.trans_take_profit
 
     def check_state_take_profit(self):
+        # get current position for this symbol
         self.position = self.api.get_position(symbol=self.symbol)
-
-        # position liquidated
-        if self.position.quantity == 0:
-            return self.trans_externally_liquidated
-
-        # get inputs for next checks
-        last_close = self.bars.close.loc[self._analyse_date]
-        rules = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
-
-        # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
-        if not rules:
-            return self.trans_take_profit_to_stop_loss
 
         # get order
         order = self.api.get_order(order_id=self.active_order_id)
         self.active_order_id = order.order_id
 
+        # get last close
+        last_close = self.bars.close.loc[self._analyse_date]
+
+        # get rules
+        self.active_rule = self.get_rule()
+
+        # first check to see if the take profit order has been filled
+        if order.status_summary == "filled":
+            # do we have any units left?
+            if self.position.quantity == 0:
+                # nothing left to sell
+                return self.trans_close_position
+            else:
+                # still some left to sell, so transition back to same state
+                return self.trans_take_profit_again
+
+        # position liquidated but not using our fill order
+        if self.position.quantity == 0:
+            return self.trans_externally_liquidated
+
+        # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
+        if not self.active_rule:
+            return self.trans_take_profit_to_stop_loss
+
         # stop loss hit?
-        stop_loss = rules["current_stop_loss"]
+        stop_loss = self.active_rule["current_stop_loss"]
         if last_close < stop_loss:
             return self.trans_take_profit_to_stop_loss
 
@@ -582,10 +623,11 @@ class Symbol:
             return self.trans_externally_liquidated
 
         # get inputs for next checks
-        rules = utils.get_rules(ssm=self.ssm, back_testing=self.back_testing)
+        # rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
+        self.active_rule = self.get_rule()
 
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
-        if not rules:
+        if not self.active_rule:
             return self.trans_position_taken_to_stop_loss
 
         # get order
@@ -605,13 +647,15 @@ class Symbol:
 
     def trans_enter_position(self):
         # submit buy order
+        log_wp.debug(f"{self.symbol}: Started trans_enter_position")
         order_result = self.api.buy_order_limit(
             symbol=self.symbol,
             units=self.buy_plan.units,
             unit_price=self.buy_plan.entry_unit,
         )
 
-        if order_result.status_summary != "open":
+        open_statuses = ["open", "filled"]
+        if order_result.status_summary not in open_statuses:
             log_wp.error(
                 f"{self.symbol}: Failed to submit buy order {order_result.order_id}: {order_result.status_text}"
             )
@@ -626,8 +670,9 @@ class Symbol:
         # set self.current_check to check_position_taken
         self.current_check = self.check_state_entering_position
         log_wp.warning(
-            f"{self.symbol}: Successfully submitted limit buy order {order_result.id} at entry point {order_result.limit_price}"
+            f"{self.symbol}: Successfully submitted limit buy order {order_result.order_id} at unit price {order_result.limit_price}"
         )
+        log_wp.debug(f"{self.symbol}: Finished trans_enter_position")
         return True
 
     def trans_buy_order_timed_out(self):
@@ -779,13 +824,116 @@ class Symbol:
         self.active_order_result = None
         self.buy_plan = None
 
+        # TODO add to win/loss as unknown outcome
+
         self.current_check = self.check_state_no_position_taken
 
     def trans_close_position(self):
-        ...
+        # clear active order details
+        self.active_order_id = None
+        self.active_order_result = None
+        self.buy_plan = None
+
+        # delete rules
+        self._remove_from_rules()
+
+        # TODO add to win/loss
+
+        # set check
+        self.current_check = self.check_state_no_position_taken
 
     def trans_stop_loss_retry(self):
-        ...
+        # our take profit order was cancelled for some reason
+        # i'm not sure what i want to do here actually. this needs more thought than just spamming new orders
+
+        # no need to close the previous order - its dead
+        self.api.close_position(symbol=self.symbol)
+
+        # TODO i think i need to update the active order ID
+
+        # set current check
+        self.current_check = self.check_state_take_profit
+
+        return True
 
     def trans_take_profit_retry(self):
-        ...
+        # our take profit order was cancelled for some reason
+        # i'm not sure what i want to do here actually. this needs more thought than just spamming new orders
+
+        # self.active_rule already set in check phase
+        # self.position already set in check phase
+
+        pct = self.active_rule["risk_point_sell_down_pct"]
+        units = self.position.quantity
+        units_to_sell = floor(pct * units)
+
+        order = self.api.sell_order_limit(
+            symbol=self.symbol,
+            units=units_to_sell,
+            unit_price=self.active_rule["current_target_price"],
+        )
+
+        # hold on to active_order_id
+        self.active_order_id = order.order_id
+
+        # set current check
+        self.current_check = self.check_state_take_profit
+
+        return True
+
+    def trans_take_profit_again(self):
+        # our old take profit order was filled, so need to raise a new one
+        # no need to check if we still have a position - got checked at check stage
+
+        # self.active_rule already set in check phase
+        # self.position already set in check phase
+
+        filled_order = self.api.get_order(order_id=self.active_order_id)
+
+        # raise sell order
+        pct = self.active_rule["risk_point_sell_down_pct"]
+        units = self.position.quantity
+
+        units_to_sell = floor(pct * units)
+
+        new_steps = self.active_rule["steps"] + 1
+        new_target_profit = self.active_rule["original_risk"] * new_steps
+        new_target_unit_price = (
+            self.active_rule["current_starget_price"] + new_target_profit
+        )
+
+        order = self.api.sell_order_limit(
+            symbol=self.symbol,
+            units=units_to_sell,
+            unit_price=new_target_unit_price,
+        )
+
+        # hold on to active_order_id
+        self.active_order_id = order.order_id
+
+        # update rules
+        new_sales_obj = {
+            "units": filled_order.units,
+            "sale_price": filled_order._raw_response["_raw"]["filled_avg_price"],
+        }
+        new_units_held = self.api.get_position(symbol=self.symbol).quantity
+        new_units_sold = self.active_rule["units_sold"] + filled_order.units
+
+        new_rule = self.active_rule
+        new_rule["current_stop_loss"] = new_target_unit_price
+        new_rule["current_risk"] = new_target_profit
+        new_rule["sales"].append(new_sales_obj)
+        new_rule["units_held"] = new_units_held
+        new_rule["units_sold"] = new_units_sold
+        new_rule["steps"] += new_steps
+        new_rule["current_target_price"] = new_target_unit_price
+
+        if not self._replace_rule(new_rule=new_rule):
+            log_wp.error(
+                f"{self.symbol}: Failed to update rules with new rule! Likely orphaned order"
+            )
+
+        # set current check
+        self.current_check = self.check_state_take_profit
+
+        return True

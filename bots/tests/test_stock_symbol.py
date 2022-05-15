@@ -15,7 +15,7 @@ def test_order_expired(request, f_chris_symbol, f_order_buys):
     else:
         expected_result = False
 
-    actual_result = f_chris_symbol.enter_position_timed_out(
+    actual_result = f_chris_symbol._is_position_timed_out(
         datetime.now(), f_order_buys
     )
 
@@ -23,10 +23,10 @@ def test_order_expired(request, f_chris_symbol, f_order_buys):
 
 
 def test_remove_from_state(request, monkeypatch, f_chris_symbol, f_states):
-    def fake_get_stored_state(ssm, back_testing):
+    def fake_get_stored_state(store, back_testing):
         return f_states
 
-    def fake_put_stored_state(ssm, new_state, back_testing: bool = False):
+    def fake_put_stored_state(store, new_state, back_testing: bool = False):
         return
 
     monkeypatch.setattr(utils, "get_stored_state", fake_get_stored_state)
@@ -46,10 +46,10 @@ def test_remove_from_state(request, monkeypatch, f_chris_symbol, f_states):
 
 
 def test_remove_from_rules(request, monkeypatch, f_chris_symbol, f_rules):
-    def fake_get_rules(ssm, back_testing):
+    def fake_get_rules(store, back_testing):
         return f_rules
 
-    def fake_put_rules(ssm, new_rules, back_testing):
+    def fake_put_rules(store, new_rules, back_testing):
         return
 
     monkeypatch.setattr(utils, "get_rules", fake_get_rules)
@@ -67,7 +67,5 @@ def test_remove_from_rules(request, monkeypatch, f_chris_symbol, f_rules):
     assert actual_result == expected_result
 
 
-# def test_no_position_to_entering_position(request, monkeypatch, f_chris_symbol)
-#
-#    test_record = pd.Timestamp("2022-05-02 14:30:00")
-#    result = f_chris_symbol.process(test_record)
+def test_trans_enter_position(request, monkeypatch, f_chris_symbol, f_rules):
+    ...
