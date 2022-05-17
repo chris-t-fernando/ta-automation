@@ -7,7 +7,10 @@ from itradeapi import (
     NotImplementedException,
 )
 from datetime import datetime
+from pandas import Timestamp
+import uuid
 import logging
+from math import floor
 
 log_wp = logging.getLogger(
     "backtest_api"
@@ -116,53 +119,31 @@ class Position(IPosition):
 
 
 class OrderResult(IOrderResult):
-    order_id: str
-    sold_symbol: str
-    bought_symbol: str
-    quantity: float
-    quantity_symbol: str
-    quantity_id: int
-    trigger: float
-    status: int
-    status_text: str
-    status_summary: str
-    order_type: int
-    order_type_text: str
-    created_time: int
-    updated_time: int
-    success: bool
-    requested_units: float
-    requested_unit_price: float
-    requested_total_value: float
-    _raw_response: dict
-    # _raw_request
-
     def __init__(self, response: dict):
         self._raw_response = response
 
-        order_type = response["order_type"]
-        order_type_text = ORDER_MAP_INVERTED[order_type]
-
+        self.order_type = response["order_type"]
+        self.order_type_text = ORDER_MAP_INVERTED[self.order_type]
         self.order_id = response["orderUuid"]
-        if "BUY" in order_type_text:
-            self.bought_symbol = response["secondary_asset"]
-        else:
-            # sells
-            self.sold_symbol = response["primary_asset"]
+        self.symbol = response["symbol"]
 
-        # quantity is what you're paying with - only known if its a limit order
-        if order_type == LIMIT_BUY or order_type == LIMIT_SELL:
-            self.order_value = float(response["limit_price"]) * float(response["qty"])
-            self.limit_price = float(response["limit_price"])
+        if self.order_type == LIMIT_BUY or self.order_type == LIMIT_SELL:
+            self.ordered_unit_quantity = float(response["quantity"])
+            self.ordered_unit_price = float(response["limit_price"])
+            self.ordered_total_value = (
+                self.ordered_unit_quantity * self.ordered_unit_price
+            )
 
         else:
-            self.order_value = None
-            self.limit_price = None
+            # market orders - so there is only quantity is known, not price or total value
+            self.ordered_unit_quantity = float(response["quantity"])
+            self.ordered_unit_price = None
+            self.ordered_total_value = None
 
-        self.quantity = response["quantity"]
-        self.quantity_symbol = response["quantity_asset"]
+        self.filled_unit_quantity = None
+        self.filled_unit_price = None
+        self.filled_total_value = None
 
-        self.trigger = response["trigger"]
         self.status = response["status"]
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
@@ -171,14 +152,7 @@ class OrderResult(IOrderResult):
             or response["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
 
-        self.units = response["amount"]
-        self.unit_price = response["rate"]
         self.fees = response["feeAmount"]
-        self.total_value = self.units * self.unit_price
-
-        self.requested_units = response["amount"]
-        self.requested_unit_price = response["rate"]
-        self.requested_total_value = self.units * self.unit_price
 
         self.create_time = response["created_time"]
         self.update_time = response["updated_time"]
@@ -212,7 +186,9 @@ class BackTestAPI(ITradeAPI):
         self.holdings = 0
         self.position = 0
 
-        self.assets_held = {}
+        self._assets_held = {}
+        self._orders = {}
+        self.bars = {}
 
     def get_broker_name(self):
         return "back_test"
@@ -241,9 +217,9 @@ class BackTestAPI(ITradeAPI):
         # {symbol: , quantity}
         positions = []
 
-        for symbol in self.assets_held:
+        for symbol in self._assets_held:
             quantity = 0
-            for order in self.assets_held[symbol]:
+            for order in self._assets_held[symbol]:
                 quantity += order["units"]
 
             positions.append(Position(symbol=symbol, quantity=quantity))
@@ -266,109 +242,80 @@ class BackTestAPI(ITradeAPI):
     # so that it can determine whether a limit order has been filled or not
     # how are you going to do this??
 
-    def buy_order_limit(self, symbol: str, units: float, unit_price: float):
+    def buy_order_limit(
+        self,
+        symbol: str,
+        units: float,
+        unit_price: float,
+        back_testing_date: Timestamp,
+    ):
+        order_id = "buy-" + self._generate_order_id()
         response = {
             "order_type": LIMIT_BUY,
-            "orderUuid": "buy-abcdef",
+            "orderUuid": order_id,
             "secondary_asset": self.default_currency,
             "primary_asset": symbol,
-            "quantity": units,
-            "quantity_asset": symbol,
-            "limit_price": unit_price,
-            "qty": units,
-            "amount": units,
-            "rate": unit_price,
-            "trigger": unit_price,
-            "fees": 0,
-            "status": 4,
-            "feeAmount": 0,
-            "created_time": datetime.fromisoformat("2022-04-04 10:00:00"),
-            "updated_time": datetime.fromisoformat("2022-04-04 11:00:00"),
-        }
-
-        if self.assets_held.get(symbol) == None:
-            self.assets_held[symbol] = []
-
-        self.balance -= unit_price * units
-        self.assets_held[symbol].append({"units": units, "unit_price": unit_price})
-        # self._update_position()
-
-        self.active_order = response
-
-        return OrderResult(response=response)
-
-    def buy_order_market():
-        raise NotImplementedException
-
-    def delete_order(self):
-        raise NotImplementedException
-
-    def list_orders(self):
-        return_orders = []
-        for symbol in self._orders:
-            return_orders.append(OrderResult(response=self._orders[symbol]))
-        return return_orders
-
-    def get_order(self, order_id: str):
-        for symbol in self._orders:
-            if self._orders[symbol]["order_id"] == order_id:
-                return OrderResult(response=self._orders[symbol])
-        return False
-
-    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
-        # how many of this symbol do we own? is it >= than the requested amount to sell?
-        unit_count = 0
-        paid = 0
-        for order in self.assets_held[symbol]:
-            unit_count += order["units"]
-            paid += order["units"] * order["unit_price"]
-
-        if unit_count < units:
-            raise ValueError(
-                "Back Test API is trying to sell more units than you own..."
-            )
-
-        # now start popping units from held
-        # self.assets_held[symbol] is a list of objects that represent buy orders. when we sell, we need to pop/update these buy orders to remove them
-        unit_counter = units
-        for order in self.assets_held[symbol]:
-            if unit_counter - order["units"] >= 0:
-                unit_counter -= order["units"]
-                order["units"] = 0
-            else:
-                order["units"] -= unit_counter
-                unit_counter = 0
-
-        if unit_counter == 0:
-            self.active_order = None
-
-        self.balance += unit_price * units
-
-        response = {
-            "order_type": 4,
-            "orderUuid": "sell-abcdef",
-            "secondary_asset": symbol,
-            "primary_asset": self.default_currency,
+            "symbol": symbol,
             "quantity": units,
             "quantity_asset": self.default_currency,
-            "amount": units,
-            "rate": unit_price,
-            "trigger": unit_price,
+            "limit_price": unit_price,
+            "status": 1,
             "fees": 0,
             "feeAmount": 0,
-            "status": 4,
-            "created_time": datetime.fromisoformat("2022-04-04 11:15:00"),
-            "updated_time": datetime.fromisoformat("2022-04-04 11:20:00"),
+            "created_time": back_testing_date,
+            "updated_time": back_testing_date,
         }
 
-        # csv_wp.debug(f"SELL,LIMIT,{symbol},{units},{unit_price}")
+        self._save_order(response=response)
 
-        self._save_order(response)
+        self._update_order_status(back_testing_date)
 
-        return OrderResult(order_object=response)
+        # get the order status so it can be returned
+        order_result = self.get_order(
+            order_id=order_id, back_testing_date=back_testing_date
+        )
+
+        return order_result
+
+    def buy_order_market(self, symbol: str, units: float, back_testing_date: Timestamp):
+        raise NotImplementedException
+
+    def sell_order_limit(
+        self,
+        symbol: str,
+        units: float,
+        unit_price: float,
+        back_testing_date: Timestamp,
+    ):
+        order_id = "sell-" + self._generate_order_id()
+        response = {
+            "order_type": LIMIT_SELL,
+            "orderUuid": order_id,
+            "secondary_asset": symbol,
+            "primary_asset": self.default_currency,
+            "symbol": symbol,
+            "quantity": units,
+            "quantity_asset": self.default_currency,
+            "limit_price": unit_price,
+            "status": 1,
+            "fees": 0,
+            "feeAmount": 0,
+            "created_time": back_testing_date,
+            "updated_time": back_testing_date,
+        }
+
+        self._save_order(response=response)
+
+        self._update_order_status(back_testing_date)
+
+        order_result = self.get_order(
+            order_id=order_id, back_testing_date=back_testing_date
+        )
+
+        return order_result
 
     def sell_order_market(
-        self, symbol: str, units: float, back_testing_unit_price: float
+        self, symbol: str, units: float, back_testing_date: Timestamp
     ):
         held_position = self.get_position(symbol)
         if held_position.quantity < units:
@@ -378,7 +325,7 @@ class BackTestAPI(ITradeAPI):
 
         unit_counter = units
 
-        for order in self.assets_held[symbol]:
+        for order in self._assets_held[symbol]:
             if unit_counter - order["units"] >= 0:
                 unit_counter -= order["units"]
                 order["units"] = 0
@@ -392,9 +339,10 @@ class BackTestAPI(ITradeAPI):
 
         response = {
             "order_type": 4,
-            "orderUuid": "sell-abcdef",
+            "orderUuid": "sell-" + self._generate_order_id(),
             "secondary_asset": symbol,
             "primary_asset": self.default_currency,
+            "symbol": symbol,
             "quantity": units,
             "quantity_asset": self.default_currency,
             "amount": units,
@@ -416,7 +364,7 @@ class BackTestAPI(ITradeAPI):
 
         return OrderResult(order_object=response)
 
-    def close_position(self, symbol: str, back_testing_unit_price: float):
+    def close_position(self, symbol: str, back_testing_date: Timestamp):
         held_position = self.get_position(symbol)
         return self.sell_order_market(
             symbol=symbol,
@@ -424,13 +372,35 @@ class BackTestAPI(ITradeAPI):
             back_testing_unit_price=back_testing_unit_price,
         )
 
+    # store _orders as OrderResults instead of responses
+    # update fixtures to match new OrderResults spec
+    # or maybe update fixtures to use raw API results and then just remember
+    # that i need to pipe them through?
+    # or maybe make a script to update them?!
+    # then fix update_order_status
+    # fix close_position
+    # fix list_orders
+    # fix get_order
+
+    def list_orders(self):
+        return_orders = []
+        for symbol in self._orders:
+            return_orders.append(self._orders[symbol])
+        return return_orders
+
+    def get_order(self, order_id: str, back_testing_date: Timestamp):
+        # need to refresh order status
+        self._update_order_status(back_testing_date=back_testing_date)
+
+        for symbol in self._orders:
+            if self._orders[symbol].order_id == order_id:
+                return self._orders[symbol]
+        return False
+
     def _save_order(self, response):
-        self._orders[response["secondary_asset"]] = response
+        self._orders[response["symbol"]] = OrderResult(response=response)
 
-    def _get_order(self, symbol):
-        return self._orders[symbol]
-
-    def _delete_order(self, symbol):
+    def delete_order(self, symbol):
         if self._orders.get(symbol):
             del self._orders[symbol]
             log_wp.debug(f"{symbol}: Removed from self._orders list")
@@ -441,15 +411,168 @@ class BackTestAPI(ITradeAPI):
             )
             return False
 
+    def _generate_order_id(self):
+        return uuid.uuid4().hex[:6].upper()
+
+    def put_bars(self, symbol, bars):
+        self.bars[symbol] = bars
+
+    def _get_held_units(self, symbol):
+        unit_count = 0
+        paid = 0
+        for order in self._assets_held[symbol]:
+            unit_count += order["units"]
+            paid += order["units"] * order["unit_price"]
+
+        return unit_count, paid
+
+    def _update_order_status(self, back_testing_date):
+        # loop through all the orders looking for whether they've been filled
+        # assumes that this gets called with back_testing_date for every index in bars, since it only checks this index/back_testing_date
+        for symbol in self._orders:
+            this_order = self._orders[symbol]
+            # if the order is cancelled or filled ie. already actioned
+            if (
+                this_order.status in ORDER_STATUS_SUMMARY_TO_ID["cancelled"]
+                or this_order.status in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+            ):
+                continue
+
+            # if we got here, the order is not yet actioned
+            if this_order.order_type == MARKET_BUY:
+                # immediate fill - its just a question of how many units they bought
+                order_value = this_order["order_value"]
+                unit_price = self.bars[symbol].Low.loc[back_testing_date]
+                units_purchased = floor(order_value / unit_price)
+
+                # this_order["order_value"] =
+
+            elif this_order.order_type == MARKET_SELL:
+                ...
+                self._update_holdings()
+            elif this_order.order_type == LIMIT_BUY:
+                if (
+                    self.bars[symbol].Low.loc[back_testing_date]
+                    > this_order.ordered_unit_price
+                ):
+                    # mark this order as filled
+                    this_order.status = 4
+                    this_order.status_text = ORDER_STATUS_TEXT[this_order.status]
+                    this_order.status_summary = ORDER_STATUS_ID_TO_SUMMARY[
+                        this_order.status
+                    ]
+                    this_order.filled_unit_quantity = this_order.ordered_unit_quantity
+                    this_order.filled_unit_price = this_order.ordered_unit_price
+                    this_order.filled_total_value = (
+                        this_order.filled_unit_quantity * this_order.filled_unit_price
+                    )
+
+                    # instantiate this symbol in the held array - it gets populated in a couple lines
+                    if self._assets_held.get(symbol) == None:
+                        self._assets_held[symbol] = []
+
+                    self._assets_held[symbol].append(
+                        {
+                            "units": this_order.filled_unit_quantity,
+                            "unit_price": this_order.filled_unit_price,
+                        }
+                    )
+
+                    # update balance
+                    self.balance -= (
+                        this_order.filled_unit_price * this_order.filled_unit_quantity
+                    )
+
+            elif this_order.order_type == LIMIT_SELL:
+                if (
+                    self.bars[symbol].Low.loc[back_testing_date]
+                    > this_order.ordered_unit_price
+                ):
+                    # how many of this symbol do we own? is it >= than the requested amount to sell?
+                    held, paid = self._get_held_units(symbol)
+
+                    if held < this_order.ordered_unit_quantity:
+                        raise ValueError(
+                            f"{symbol}: Hold {held} so can't sell {this_order.ordered_unit_quantity} units"
+                        )
+
+                    # mark this order as filled
+                    this_order.status = 4
+                    this_order.status_text = ORDER_STATUS_TEXT[this_order.status]
+                    this_order.status_summary = ORDER_STATUS_ID_TO_SUMMARY[
+                        this_order.status
+                    ]
+                    this_order.filled_unit_quantity = this_order.ordered_unit_quantity
+                    this_order.filled_unit_price = this_order.ordered_unit_price
+                    this_order.filled_total_value = (
+                        this_order.filled_unit_quantity * this_order.filled_unit_price
+                    )
+
+                    self._do_sell(
+                        quantity_to_sell=this_order.filled_unit_quantity, symbol=symbol
+                    )
+
+                    # update balance
+                    self.balance += this_order.filled_total_value
+
+    def _do_sell(self, quantity_to_sell, symbol):
+        # now start popping units from held
+        # self._assets_held[symbol] is a list of objects that represent buy orders. when we sell, we need to pop/update these buy orders to remove them
+        for order in self._assets_held[symbol]:
+            if order["units"] - quantity_to_sell >= 0:
+                # more units on hand than we want to remove
+                order["units"] -= quantity_to_sell
+                quantity_to_sell = 0
+                # elif order["units"] - quantity_to_sell == 0:
+
+                # if quantity_to_sell - order["units"] > 0:
+                #    quantity_to_sell -= order["units"]
+                #    order["units"] = 0
+                # elif quantity_to_sell - order["units"] == 0:
+                order["units"] -= quantity_to_sell
+                quantity_to_sell = 0
+            else:
+                raise ValueError(
+                    f'{symbol}: Unable to remove {quantity_to_sell} units from holding of {order["units"]}, since that would be less than 0'
+                )
+
+        if held == 0:
+            del self.assets_held[symbol]
+
 
 if __name__ == "__main__":
     api = BackTestAPI()
+
+    import pandas as pd
+
+    import utils
+
+    f_file = "bots/tests/fixtures/order_buy_active.txt"
+    f = open(f_file, "r")
+    order_file = f.read()
+    unpickled_order = utils.unpickle(order_file)
+
+    data = pd.read_csv(
+        f"bots/tests/fixtures/symbol_chris.csv",
+        index_col=0,
+        parse_dates=True,
+        infer_datetime_format=True,
+    )
+
+    api.put_bars("CHRIS", data)
+
     api.get_account()
     api.list_positions()
-    api.buy_order_limit("btc", 10, 500)
-    api.list_positions()
-    api.sell_order_limit("btc", 3.5, 600)
-    api.sell_order_limit("btc", 3.5, 600)
-    api.sell_order_limit("btc", 3, 600)
+    # api.buy_order_market("CHRIS", 9, back_testing_date=Timestamp("2022-05-09 14:50:00"))
+    api.buy_order_limit(
+        "CHRIS", 10, 150, back_testing_date=Timestamp("2022-05-09 14:50:00")
+    )
+    print(api.list_positions())
+    api.sell_order_limit(
+        "CHRIS", 3.5, 151, back_testing_date=Timestamp("2022-05-09 14:50:00")
+    )
+
+    api.sell_order_limit("CHRIS", 3.5, 150)
+    api.sell_order_limit("CHRIS", 3, 150)
     print(f"Profit: {api.balance - api.starting_balance}")
     print("banana")

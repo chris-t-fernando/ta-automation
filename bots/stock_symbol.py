@@ -309,7 +309,7 @@ class Symbol:
         # bars = bars.loc[bars.index <= yf_end]
 
         if self.back_testing:
-            self.api.bars = bars
+            self.api.put_bars(symbol=self.symbol, bars=bars)
 
         return bars
 
@@ -333,7 +333,7 @@ class Symbol:
             self.bars = utils.merge_bars(self.bars, new_bars)
 
             if self.back_testing:
-                self.api.bars = self.bars
+                self.api.put_bars(symbol=self.symbol, bars=self.bars)
 
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
