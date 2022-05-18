@@ -307,7 +307,7 @@ def get_rules(store, back_testing):
         path = ""
 
     try:
-        return json.loads(
+        return unpickle(
             store.get_parameter(Name=f"/tabot/rules{path}/5m", WithDecryption=False)
             .get("Parameter")
             .get("Value")
@@ -330,7 +330,7 @@ def merge_rules(
             .get("Parameter")
             .get("Value")
         )
-        rules = json.loads(old_rules)
+        rules = unpickle(old_rules)
     except store.exceptions.ParameterNotFound:
         rules = []
 
@@ -387,11 +387,11 @@ def put_rules(store, symbol: str, new_rules: list, back_testing: bool = False):
 
     store.put_parameter(
         Name=f"/tabot/rules{path}/5m",
-        Value=json.dumps(new_rules),
+        Value=pickle(new_rules),
         Type="String",
         Overwrite=True,
     )
-    log_wp.debug(f"{symbol}: Wrote rule: {json.dumps(new_rules)}")
+    log_wp.debug(f"{symbol}: Successfully wrote updated rules")
 
     return True
 
@@ -410,7 +410,7 @@ def get_stored_state(store, back_testing: bool = False):
             .get("Parameter")
             .get("Value")
         )
-        return json.loads(json_stored_state)
+        return unpickle(json_stored_state)
     except store.exceptions.ParameterNotFound as e:
         return []
 
@@ -423,7 +423,7 @@ def put_stored_state(store, new_state=list, back_testing: bool = False):
 
     store.put_parameter(
         Name=f"/tabot{back_testing_path}/state",
-        Value=json.dumps(new_state),
+        Value=pickle(new_state),
         Type="String",
         Overwrite=True,
     )

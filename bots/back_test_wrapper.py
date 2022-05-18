@@ -10,7 +10,8 @@ from datetime import datetime
 from pandas import Timestamp
 import uuid
 import logging
-from math import floor
+import pytz
+
 
 # update fixtures to match new OrderResults spec
 # or maybe update fixtures to use raw API results and then just remember
@@ -157,7 +158,12 @@ class OrderResult(IOrderResult):
 class BackTestAPI(ITradeAPI):
     supported_crypto_symbols = []
 
-    def __init__(self, real_money_trading=False, back_testing: bool = False):
+    def __init__(
+        self,
+        real_money_trading=False,
+        back_testing: bool = False,
+        starting_balance: float = 100000,
+    ):
         # set up asset lists
         self.assets = {
             "BTC": None,
@@ -168,8 +174,9 @@ class BackTestAPI(ITradeAPI):
             "BHP": None,
         }
         self.back_testing = back_testing
-        self.asset_list_by_symbol = self.assets
+        self._balance = starting_balance
 
+        self.asset_list_by_symbol = self.assets
         self.supported_crypto_symbols = self._get_crypto_symbols()
 
         self.default_currency = "USD"
@@ -564,7 +571,7 @@ class BackTestAPI(ITradeAPI):
             elif this_order.order_type == LIMIT_BUY:
                 if (
                     self._bars[symbol].Low.loc[back_testing_date]
-                    > this_order.ordered_unit_price
+                    < this_order.ordered_unit_price
                 ):
                     log_wp.debug(
                         f"{symbol}: Starting fill for LIMIT_BUY order {this_order.order_id}"
@@ -707,9 +714,6 @@ class BackTestAPI(ITradeAPI):
 
         return True
 
-    def _set_balance(self, balance):
-        self._balance = balance
-
 
 if __name__ == "__main__":
     api = BackTestAPI()
@@ -731,9 +735,8 @@ if __name__ == "__main__":
     )
 
     api._put_bars("CHRIS", data)
-    back_testing_date = Timestamp("2022-05-09 14:50:00")
+    back_testing_date = Timestamp("2022-05-09 14:50:00").astimezone(pytz.utc)
     starting_balance = 1000
-    api._set_balance(starting_balance)
 
     api.get_account()
     api.list_positions()

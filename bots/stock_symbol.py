@@ -61,6 +61,7 @@ class Symbol:
         to_date: str = None,
         back_testing: bool = False,
     ):
+        self.back_testing = back_testing
         self.symbol = symbol
         self.api = api
         self.interval = interval
@@ -68,7 +69,6 @@ class Symbol:
         self.store = store
         self.data_source = data_source
         self.initialised = False
-        self.last_date_processed = None
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
         # state machine config
@@ -82,13 +82,15 @@ class Symbol:
             initialised=False,
         )
         self.bars = utils.add_signals(bars, interval)
-        self.back_testing = back_testing
 
         # when raising an initial buy order, how long should we wait for it to be filled til killing it?
         self.enter_position_timeout = self.interval_delta
 
         # pointer to current record to assess
         self._analyse_date = None
+
+        # this is hacky - if back_testing is True then this will be the same date as _analyse_date
+        self._back_testing_date = None
 
     # writes the symbol to state
     def _write_to_state(self, order):
@@ -125,7 +127,7 @@ class Symbol:
             store=self.store, new_state=new_state, back_testing=self.back_testing
         )
 
-        log_wp.info(f"{self.symbol}: Successfully wrote order to state")
+        log_wp.debug(f"{self.symbol}: Successfully wrote order to state")
 
     # removes this symbol from the state
     def _remove_from_state(self):
@@ -205,11 +207,11 @@ class Symbol:
             "steps": 0,
             "original_risk": buy_plan.risk_unit,
             "current_risk": buy_plan.risk_unit,
-            "purchase_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "purchase_price": order_result._raw_response["_raw"]["filled_avg_price"],
-            "units_held": order_result.unit_quantity,
+            "purchase_date": self._analyse_date,
+            "purchase_price": order_result.filled_unit_price,
+            "units_held": order_result.filled_unit_quantity,
             "units_sold": 0,
-            "units_bought": order_result.unit_quantity,
+            "units_bought": order_result.filled_unit_quantity,
             "order_id": order_result.order_id,
             "sales": [],
             "win_point_sell_down_pct": 0.5,
@@ -221,7 +223,10 @@ class Symbol:
         new_rules.append(new_rule)
 
         utils.put_rules(
-            store=self.store, new_rules=new_rules, back_testing=self.back_testing
+            symbol=self.symbol,
+            store=self.store,
+            new_rules=new_rules,
+            back_testing=self.back_testing,
         )
 
         log_wp.info(f"{self.symbol}: Successfully wrote new buy order to rules")
@@ -236,7 +241,9 @@ class Symbol:
         return False
 
     def get_state(self):
-        stored_state = utils.get_state(store=self.store, back_testing=self.back_testing)
+        stored_state = utils.get_stored_state(
+            store=self.store, back_testing=self.back_testing
+        )
 
         for this_state in stored_state:
             if this_state["symbol"] == self.symbol:
@@ -260,7 +267,10 @@ class Symbol:
 
         if found_in_rules:
             utils.put_rules(
-                store=self.store, new_rules=new_rules, back_testing=self.back_testing
+                symbol=self.symbol,
+                store=self.store,
+                new_rules=new_rules,
+                back_testing=self.back_testing,
             )
             log_wp.debug(f"{self.symbol}: Successfully wrote updated rules")
             return True
@@ -305,11 +315,11 @@ class Symbol:
                 f"{self.symbol}: No data returned for start {yf_start} end {yf_end}"
             )
 
-        bars = bars.tz_localize(None)
+        bars = bars.tz_convert(pytz.utc)
         # bars = bars.loc[bars.index <= yf_end]
 
         if self.back_testing:
-            self.api.put_bars(symbol=self.symbol, bars=bars)
+            self.api._put_bars(symbol=self.symbol, bars=bars)
 
         return bars
 
@@ -338,6 +348,7 @@ class Symbol:
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
 
+    """
     def set_stored_state(self, stored_state):
         requested_state = STATE_MAP[stored_state["state"]]
 
@@ -348,7 +359,10 @@ class Symbol:
         elif requested_state == BUY_LIMIT_ORDER_ACTIVE:
             # we have previously found a signal and put out a buy order
             # so we need to get that buy order
-            order = self.api.get_order(order_id=stored_state["order_id"])
+            order = self.api.get_order(
+                order_id=stored_state["order_id"],
+                back_testing_date=self._back_testing_date,
+            )
 
             if order == None:
                 raise RuntimeError(
@@ -392,10 +406,14 @@ class Symbol:
         # STOP_LOSS_ACTIVE = 5
 
         print("banana")
+    """
 
     def process(self, datestamp):
         # i'm too lazy to pass datestamp around so save it in object
         self._analyse_date = datestamp
+
+        if self.back_testing:
+            self._back_testing_date = self._analyse_date
 
         # if we have no data for this datestamp, then no action
         if datestamp not in self.bars.index:
@@ -424,16 +442,6 @@ class Symbol:
         # need the +1 otherwise it does not include the record at this index, it gets trimmed
         last_record = self._analyse_index + 1
         return self.bars.iloc[first_record:last_record]
-
-    def trans_no_position(self):
-        # work out where we came from:
-        #  - from buy timed out
-        #  - from buy cancelled
-        #  - from position taken, cancelled/liquidated outside app
-        #  - from sell taking profit, liquidated outside app
-        #  - from sell stop loss, filled/liquidated outside app
-        # if
-        ...
 
     # returns True/False depending on whether an OrderResult order has passed the configured timeout window
     def _is_position_timed_out(self, now, order):
@@ -481,6 +489,7 @@ class Symbol:
             symbol=self.symbol,
             units=buy_plan.units,
             unit_price=buy_plan.entry_unit,
+            back_testing_date=self._back_testing_date,
         )
 
         if not order_result.success:
@@ -529,20 +538,34 @@ class Symbol:
 
     def check_state_entering_position(self):
         # get status of buy order at self.active_order_id
-        order = self.api.get_order(order_id=self.active_order_id)
+        order = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._back_testing_date
+        )
 
         if order.status_summary == "cancelled":
             # the order got cancelled for some reason, so transition back to no position taken
+            log_wp.debug(
+                f"Order {order.order_id}: cancelled, next action is trans_buy_cancelled"
+            )
             return self.trans_buy_order_cancelled
         elif order.status_summary == "filled":
             # buy got filled so transition to position taken
             self.active_order_result = order
+            log_wp.debug(
+                f"Order {order.order_id}: filled, next action is trans_buy_order_filled"
+            )
             return self.trans_buy_order_filled
         elif order.status_summary == "open" or order.status_summary == "pending":
             # check timeout
-            if self._is_position_timed_out(now=datetime.now(), order=order):
+            if self._is_position_timed_out(now=self._analyse_date, order=order):
                 # transition back to no position taken
+                log_wp.debug(
+                    f"Order {order.order_id}: has timed out, next action is trans_buy_order_timed_out"
+                )
                 return self.trans_buy_order_timed_out
+            log_wp.debug(
+                f"Order {order.order_id}: is still open or pending. Last High was {self.bars.High.loc[self._analyse_date]} last Low was {self.bars.Low.loc[self._analyse_date]}"
+            )
 
         # do nothing - still open, not timedout
         return False
@@ -555,7 +578,7 @@ class Symbol:
             return self.trans_externally_liquidated
 
         # get inputs for next checks
-        last_close = self.bars.close.loc[self._analyse_date]
+        last_close = self.bars.Close.loc[self._analyse_date]
         self.active_rule = self.get_rule()
         # utils.get_rules(store=self.store, back_testing=self.back_testing)
 
@@ -576,11 +599,13 @@ class Symbol:
         self.position = self.api.get_position(symbol=self.symbol)
 
         # get order
-        order = self.api.get_order(order_id=self.active_order_id)
+        order = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._back_testing_date
+        )
         self.active_order_id = order.order_id
 
         # get last close
-        last_close = self.bars.close.loc[self._analyse_date]
+        last_close = self.bars.Close.loc[self._analyse_date]
 
         # get rules
         self.active_rule = self.get_rule()
@@ -631,7 +656,9 @@ class Symbol:
             return self.trans_position_taken_to_stop_loss
 
         # get order
-        order = self.api.get_order(order_id=self.active_order_id)
+        order = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._back_testing_date
+        )
 
         if order.status_summary == "cancelled":
             # the order got cancelled for some reason. we still have a position, so try to re-raise it
@@ -652,6 +679,7 @@ class Symbol:
             symbol=self.symbol,
             units=self.buy_plan.units,
             unit_price=self.buy_plan.entry_unit,
+            back_testing_date=self._back_testing_date,
         )
 
         open_statuses = ["open", "filled"]
@@ -670,7 +698,7 @@ class Symbol:
         # set self.current_check to check_position_taken
         self.current_check = self.check_state_entering_position
         log_wp.warning(
-            f"{self.symbol}: Successfully submitted limit buy order {order_result.order_id} at unit price {order_result.limit_price}"
+            f"{self.symbol}: Successfully submitted limit buy order {order_result.order_id} at unit price {order_result.ordered_unit_price}"
         )
         log_wp.debug(f"{self.symbol}: Finished trans_enter_position")
         return True
@@ -753,7 +781,8 @@ class Symbol:
         order = self.api.sell_order_limit(
             symbol=self.symbol,
             units=units_to_sell,
-            unit_price=self.buy_plan["current_target_price"],
+            unit_price=self.buy_plan.target_price,
+            back_testing_date=self._back_testing_date,
         )
 
         # hold on to active_order_id
@@ -775,7 +804,7 @@ class Symbol:
         order = self.api.sell_order_market(
             symbol=self.symbol,
             units=self.position.quantity,
-            back_testing=self.back_testing,
+            back_testing_date=self._back_testing_date,
         )
 
         if order.status_summary == "cancelled":
@@ -799,7 +828,7 @@ class Symbol:
         order = self.api.sell_order_market(
             symbol=self.symbol,
             units=self.position.quantity,
-            back_testing=self.back_testing,
+            back_testing_date=self._back_testing_date,
         )
 
         if order.status_summary == "cancelled":
@@ -847,7 +876,9 @@ class Symbol:
         # i'm not sure what i want to do here actually. this needs more thought than just spamming new orders
 
         # no need to close the previous order - its dead
-        self.api.close_position(symbol=self.symbol)
+        self.api.close_position(
+            symbol=self.symbol, back_testing_date=self._back_testing_date
+        )
 
         # TODO i think i need to update the active order ID
 
@@ -871,6 +902,7 @@ class Symbol:
             symbol=self.symbol,
             units=units_to_sell,
             unit_price=self.active_rule["current_target_price"],
+            back_testing_date=self._back_testing_date,
         )
 
         # hold on to active_order_id
@@ -888,7 +920,9 @@ class Symbol:
         # self.active_rule already set in check phase
         # self.position already set in check phase
 
-        filled_order = self.api.get_order(order_id=self.active_order_id)
+        filled_order = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._back_testing_date
+        )
 
         # raise sell order
         pct = self.active_rule["risk_point_sell_down_pct"]
@@ -899,13 +933,14 @@ class Symbol:
         new_steps = self.active_rule["steps"] + 1
         new_target_profit = self.active_rule["original_risk"] * new_steps
         new_target_unit_price = (
-            self.active_rule["current_starget_price"] + new_target_profit
+            self.active_rule["current_target_price"] + new_target_profit
         )
 
         order = self.api.sell_order_limit(
             symbol=self.symbol,
             units=units_to_sell,
             unit_price=new_target_unit_price,
+            back_testing_date=self._back_testing_date,
         )
 
         # hold on to active_order_id
@@ -913,11 +948,13 @@ class Symbol:
 
         # update rules
         new_sales_obj = {
-            "units": filled_order.units,
-            "sale_price": filled_order._raw_response["_raw"]["filled_avg_price"],
+            "units": filled_order.filled_unit_quantity,
+            "sale_price": filled_order.filled_unit_price,
         }
         new_units_held = self.api.get_position(symbol=self.symbol).quantity
-        new_units_sold = self.active_rule["units_sold"] + filled_order.units
+        new_units_sold = (
+            self.active_rule["units_sold"] + filled_order.filled_unit_quantity
+        )
 
         new_rule = self.active_rule
         new_rule["current_stop_loss"] = new_target_unit_price

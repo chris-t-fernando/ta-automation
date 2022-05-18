@@ -90,7 +90,9 @@ df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 class MacdBot:
     jobs = None
 
-    def __init__(self, ssm, data_source, back_testing=False):
+    def __init__(
+        self, ssm, data_source, back_testing=False, starting_balance: float = None
+    ):
         self.interval = "5m"
         self.real_money_trading = False
         self.ssm = ssm
@@ -132,9 +134,11 @@ class MacdBot:
             columns=df_report_columns, index=[x["symbol"] for x in symbols]
         )
 
-        if back_testing and global_override_broker:
-            for s in symbols:
-                s["api"] = "back_test"
+        if back_testing:
+            self.starting_balance = starting_balance
+            if global_override_broker:
+                for s in symbols:
+                    s["api"] = "back_test"
 
         # get brokers and then set them up
         self.api_list = []
@@ -142,7 +146,9 @@ class MacdBot:
             self.api_list.append(api["api"])
             log_wp.debug(f"Found broker {api}")
         self.api_list = list(set(self.api_list))
-        self.api_dict = self.setup_brokers(api_list=self.api_list, ssm=ssm)
+        self.api_dict = self.setup_brokers(
+            api_list=self.api_list, ssm=ssm, back_testing=back_testing
+        )
 
         # set up individual symbols
         self.symbols = {}
@@ -198,6 +204,7 @@ class MacdBot:
                     alpaca_key_id=api_key,
                     alpaca_secret_key=secret_key,
                     back_testing=back_testing,
+                    starting_balance=self.starting_balance,
                 )
             else:
                 raise ValueError(f"Unknown broker specified {api}")
@@ -275,7 +282,7 @@ class MacdBot:
 
         # iterate through the data until we reach the end
         while current_record <= data_end_date:
-            log_wp.debug(f"Started processing {current_record}")
+            # log_wp.debug(f"Started processing {current_record}")
             for s in self.symbols:
                 this_symbol = self.symbols[s]
                 this_symbol.process(current_record)
@@ -694,7 +701,12 @@ def main():
     )
     ## FINISH DELETE LATER
 
-    bot_handler = MacdBot(ssm=store, data_source=data_source, back_testing=back_testing)
+    bot_handler = MacdBot(
+        ssm=store,
+        data_source=data_source,
+        back_testing=back_testing,
+        starting_balance=10000,
+    )
     bot_handler.new_start()
 
     global df_trade_report
