@@ -278,7 +278,32 @@ class BackTestAPI(ITradeAPI):
         return order_result
 
     def buy_order_market(self, symbol: str, units: float, back_testing_date: Timestamp):
-        raise NotImplementedException
+        order_id = "buy-" + self._generate_order_id()
+        response = {
+            "order_type": MARKET_BUY,
+            "orderUuid": order_id,
+            "secondary_asset": self.default_currency,
+            "primary_asset": symbol,
+            "symbol": symbol,
+            "quantity": units,
+            "quantity_asset": self.default_currency,
+            "status": 1,
+            "fees": 0,
+            "feeAmount": 0,
+            "created_time": back_testing_date,
+            "updated_time": back_testing_date,
+        }
+
+        self._save_order(response=response)
+
+        self._update_order_status(back_testing_date)
+
+        # get the order status so it can be returned
+        order_result = self.get_order(
+            order_id=order_id, back_testing_date=back_testing_date
+        )
+
+        return order_result
 
     def sell_order_limit(
         self,
@@ -397,7 +422,12 @@ class BackTestAPI(ITradeAPI):
                 return self._orders[symbol]
         return False
 
+    # TODO you left off here - you need to hold on to filled/cancelled/non-active orders and when an order gets filled you need to move it from _orders onto that list
     def _save_order(self, response):
+        if self._orders.get(response["symbol"]):
+            raise ValueError(
+                f'{response["symbol"]}: Already have an order open for this symbol'
+            )
         self._orders[response["symbol"]] = OrderResult(response=response)
 
     def delete_order(self, symbol):
@@ -516,28 +546,29 @@ class BackTestAPI(ITradeAPI):
                     self.balance += this_order.filled_total_value
 
     def _do_sell(self, quantity_to_sell, symbol):
+        # check that we aren't trying to sell more than we actually hold
+        actual_held = 0
+        for order in self._assets_held[symbol]:
+            actual_held += order["units"]
+        if actual_held < quantity_to_sell:
+            raise ValueError(
+                f'{symbol}: Unable to remove {quantity_to_sell} units from holding of {order["units"]}, since that would be less than 0'
+            )
+
         # now start popping units from held
         # self._assets_held[symbol] is a list of objects that represent buy orders. when we sell, we need to pop/update these buy orders to remove them
         for order in self._assets_held[symbol]:
             if order["units"] - quantity_to_sell >= 0:
-                # more units on hand than we want to remove
-                order["units"] -= quantity_to_sell
-                quantity_to_sell = 0
-                # elif order["units"] - quantity_to_sell == 0:
-
-                # if quantity_to_sell - order["units"] > 0:
-                #    quantity_to_sell -= order["units"]
-                #    order["units"] = 0
-                # elif quantity_to_sell - order["units"] == 0:
+                # more units in this order than we need to sell
                 order["units"] -= quantity_to_sell
                 quantity_to_sell = 0
             else:
-                raise ValueError(
-                    f'{symbol}: Unable to remove {quantity_to_sell} units from holding of {order["units"]}, since that would be less than 0'
-                )
+                quantity_to_sell -= order["units"]
+                order["units"] = 0
 
-        if held == 0:
-            del self.assets_held[symbol]
+            # nothing left to sell, no point iterating over remaining orders
+            if quantity_to_sell == 0:
+                break
 
 
 if __name__ == "__main__":
@@ -563,15 +594,23 @@ if __name__ == "__main__":
 
     api.get_account()
     api.list_positions()
-    # api.buy_order_market("CHRIS", 9, back_testing_date=Timestamp("2022-05-09 14:50:00"))
     api.buy_order_limit(
-        "CHRIS", 10, 150, back_testing_date=Timestamp("2022-05-09 14:50:00")
+        "CHRIS", 3, 150, back_testing_date=Timestamp("2022-05-09 14:50:00")
     )
-    print(api.list_positions())
+    api.buy_order_limit(
+        "CHRIS", 4, 150, back_testing_date=Timestamp("2022-05-09 14:50:00")
+    )
+    api.buy_order_limit(
+        "CHRIS", 3, 150, back_testing_date=Timestamp("2022-05-09 14:50:00")
+    )
     api.sell_order_limit(
         "CHRIS", 3.5, 151, back_testing_date=Timestamp("2022-05-09 14:50:00")
     )
+    api.sell_order_limit(
+        "CHRIS", 6.5, 151, back_testing_date=Timestamp("2022-05-09 14:50:00")
+    )
 
+    api.buy_order_market("CHRIS", 9, back_testing_date=Timestamp("2022-05-09 14:50:00"))
     api.sell_order_limit("CHRIS", 3.5, 150)
     api.sell_order_limit("CHRIS", 3, 150)
     print(f"Profit: {api.balance - api.starting_balance}")
