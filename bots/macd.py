@@ -127,8 +127,18 @@ class MacdBot:
         ]
 
         symbols = [
+            {"symbol": "AAPL", "api": "alpaca"},
+            {"symbol": "AXS", "api": "alpaca"},
+            {"symbol": "TSLA", "api": "alpaca"},
+            {"symbol": "FB", "api": "alpaca"},
+            {"symbol": "GOOG", "api": "alpaca"},
+            {"symbol": "MSFT", "api": "alpaca"},
+            {"symbol": "NVDA", "api": "alpaca"},
+            {"symbol": "NVAX", "api": "alpaca"},
+            {"symbol": "BUD", "api": "alpaca"},
+            {"symbol": "AMZN", "api": "alpaca"},
+            {"symbol": "INFY", "api": "alpaca"},
             {"symbol": "RTX", "api": "alpaca"},
-            {"symbol": "ADA-USD", "api": "alpaca"},
         ]
 
         df_report = pd.DataFrame(
@@ -739,7 +749,7 @@ def main():
         back_testing=back_testing,
         starting_balance=10000,
     )
-    
+
     if len(bot_handler.symbols) == 0:
         print(f"Nothing to do - no symbols to watch/symbols are invalid/no data")
         return

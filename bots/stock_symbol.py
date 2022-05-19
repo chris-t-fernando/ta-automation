@@ -354,66 +354,6 @@ class Symbol:
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
 
-    """
-    def set_stored_state(self, stored_state):
-        requested_state = STATE_MAP[stored_state["state"]]
-
-        if requested_state == NO_POSITION_TAKEN:
-            # not much to do here - blank slate
-            self.load_state_no_position_taken()
-
-        elif requested_state == BUY_LIMIT_ORDER_ACTIVE:
-            # we have previously found a signal and put out a buy order
-            # so we need to get that buy order
-            order = self.api.get_order(
-                order_id=stored_state["order_id"],
-                back_testing_date=self._back_testing_date,
-            )
-
-            if order == None:
-                raise RuntimeError(
-                    f'Buy order in state not found on broker! Symbol {self.symbol}, order ID {stored_state["order_id"]} on broker {self.api.get_broker_name()}'
-                )
-
-            # now we have the order object, check whether it's been filled since last run - this means we've actually moved to another state
-            if order.status_summary == "open" or order.status_summary == "pending":
-                # its still open - now check if it has timed out
-                if self.enter_position_timed_out(now=datetime.now(), order=order):
-                    # its timed out, so transition back to no position
-                    self.trans_no_position_taken(reason="timeout", order=order)
-                else:
-                    # stored state said we had a buy order active, the order is still open and it hasn't timed out - so its still valid
-                    self.load_state_buy_limit_order_active(order=order)
-            elif order.status_summary == "cancelled":
-                # state had the order open but now its cancelled - so we need to go back to no position taken
-                self.trans_no_position_taken(reason="cancelled", order=order)
-            elif order.status_summary == "filled":
-                # state had the order open but now its filled - move to position taken
-                self.trans_position_taken(reason="buy_met")
-            else:
-                raise ValueError(
-                    f'Unknown order status summary for {stored_state["order_id"]} {order.status_summary}'
-                )
-
-        elif requested_state == POSITION_TAKEN:
-            # do we still hold this number of the position?
-            ["order_id"]
-
-        # self.state = requested_state
-
-        ## need to use the stored order ID to query the broker and find out more about the order - is it a buy, stop, or profit?
-        # there's some messy logic here
-        # NO_POSITION_TAKEN         if there is nothing in rules, no orders open - basically clean slate, nothing to do
-        # BUY_LIMIT_ORDER_ACTIVE    if there's a buy order issued, then we are trying to take a position
-        # BUY_PRICE_MET             if there's a buy order recently filled but is no rule in store, then we just took a position
-        # POSITION_TAKEN            if there's a rule in store but no
-
-        # TAKING_PROFIT = 4
-        # STOP_LOSS_ACTIVE = 5
-
-        print("banana")
-    """
-
     def process(self, datestamp):
         # i'm too lazy to pass datestamp around so save it in object
         self._analyse_date = datestamp
@@ -448,10 +388,6 @@ class Symbol:
         # need the +1 otherwise it does not include the record at this index, it gets trimmed
         last_record = self._analyse_index + 1
         bars = self.bars.iloc[first_record:last_record]
-        # if len(bars) < 200:
-        #    raise RuntimeError(
-        #        f"{self.symbol}: Less than 200 rows returned from analyse date {self._analyse_date}"
-        #    )
         return bars
 
     # returns True/False depending on whether an OrderResult order has passed the configured timeout window
@@ -711,13 +647,6 @@ class Symbol:
     def check_state_stop_loss(self):
         position = self.api.get_position(symbol=self.symbol)
 
-        # position liquidated
-        if position.quantity == 0:
-            log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: No units held but liquidated outside of this sell order, next action is trans_externally_liquidated"
-            )
-            return self.trans_externally_liquidated
-
         # get inputs for next checks
         # rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
         self.active_rule = self.get_rule()
@@ -749,6 +678,13 @@ class Symbol:
             return self.trans_close_position
 
         elif order.status_summary == "open" or order.status_summary == "pending":
+            # is the order still open but we don't own any? if so, it got liquidated outside of this process
+            if position.quantity == 0:
+                log_wp.critical(
+                    f"{self._analyse_date} {self.symbol}: No units held but liquidated outside of this sell order, next action is trans_externally_liquidated"
+                )
+                return self.trans_externally_liquidated
+
             # nothing to do
             log_wp.debug(
                 f"{self._analyse_date} {self.symbol}: Stop loss order still open, no next action"
