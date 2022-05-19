@@ -14,20 +14,20 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger("buyplan")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-log_wp.setLevel(logging.DEBUG)
+log_wp.setLevel(logging.INFO)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 
-ORDER_SIZE = 2000
-
 
 class BuyPlan:
+    ORDER_SIZE = 2000
+
     def __init__(self, symbol, df, profit_target: float = 1.5, notional_units=False):
         self.symbol = symbol
-        self.capital = ORDER_SIZE
+        self.capital = BuyPlan.ORDER_SIZE
 
         self.blue_cycle_start = get_blue_cycle_start(df=df)
         self.red_cycle_start = get_red_cycle_start(

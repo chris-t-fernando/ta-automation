@@ -6,7 +6,6 @@ from itradeapi import (
     IAsset,
     NotImplementedException,
 )
-from datetime import datetime
 from pandas import Timestamp
 import uuid
 import logging
@@ -29,7 +28,7 @@ formatter = logging.Formatter(
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
-log_wp.setLevel(logging.DEBUG)
+log_wp.setLevel(logging.INFO)
 
 
 # CONSTANTS
@@ -465,6 +464,13 @@ class BackTestAPI(ITradeAPI):
                 log_wp.debug(
                     f"{symbol}: Skipping this symbol in _inactive_orders since the status is {ORDER_STATUS_ID_TO_SUMMARY[this_order.status]}"
                 )
+                continue
+
+            try:
+                check_index = self._bars[symbol].loc[back_testing_date]
+            except KeyError as e:
+                log_wp.debug(f"{symbol}: No data for {back_testing_date}")
+                continue
 
             # if we got here, the order is not yet actioned
             if this_order.order_type == MARKET_BUY:
@@ -517,7 +523,7 @@ class BackTestAPI(ITradeAPI):
 
                 filled_symbols.append(symbol)
 
-                print(
+                log_wp.debug(
                     f"{symbol}: market_buy filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
                 )
 
@@ -564,7 +570,7 @@ class BackTestAPI(ITradeAPI):
 
                 filled_symbols.append(symbol)
 
-                print(
+                log_wp.info(
                     f"{symbol}: market_sell filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
                 )
 
@@ -625,7 +631,7 @@ class BackTestAPI(ITradeAPI):
 
                     filled_symbols.append(symbol)
 
-                    print(
+                    log_wp.info(
                         f"{symbol}: limit_buy filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
                     )
 
@@ -675,7 +681,7 @@ class BackTestAPI(ITradeAPI):
 
                     filled_symbols.append(symbol)
 
-                    print(
+                    log_wp.info(
                         f"{symbol}: limit_sell filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
                     )
 

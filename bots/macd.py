@@ -49,7 +49,7 @@ formatter = logging.Formatter(
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
-log_wp.setLevel(logging.DEBUG)
+log_wp.setLevel(logging.INFO)
 
 df_report = pd.DataFrame()
 df_report_columns = [
@@ -127,7 +127,8 @@ class MacdBot:
         ]
 
         symbols = [
-            {"symbol": "AAPL", "api": "alpaca"},
+            {"symbol": "RTX", "api": "alpaca"},
+            {"symbol": "ADA-USD", "api": "alpaca"},
         ]
 
         df_report = pd.DataFrame(
@@ -154,7 +155,7 @@ class MacdBot:
         self.symbols = {}
         for s in symbols:
             start_time = time.time()
-            self.symbols[s["symbol"]] = Symbol(
+            new_symbol = Symbol(
                 symbol=s["symbol"],
                 interval=self.interval,
                 real_money_trading=self.real_money_trading,
@@ -163,9 +164,15 @@ class MacdBot:
                 data_source=data_source,
                 back_testing=back_testing,
             )
-            log_wp.debug(
-                f'Set up {s["symbol"]} in {round(time.time() - start_time,1)}s'
-            )
+            if new_symbol._init_complete:
+                self.symbols[s["symbol"]] = new_symbol
+                log_wp.debug(
+                    f'{s["symbol"]}: Set up complete in {round(time.time() - start_time,1)}s'
+                )
+            else:
+                log_wp.debug(
+                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF returned {len(new_symbol.bars)} {round(time.time() - start_time,1)}s'
+                )
 
     def setup_brokers(self, api_list, ssm, back_testing: bool = False):
         api_set = set(api_list)
@@ -217,29 +224,54 @@ class MacdBot:
         start_date = None
         end_date = None
         latest_start = None
+
+        if len(self.symbols) == 0:
+            return None, None
+
         for s in self.symbols:
             # if this is the first symbol we're assessing
             if not start_date:
                 start_date = self.symbols[s].bars.index.min()
                 end_date = self.symbols[s].bars.index.max()
                 latest_start = start_date
+                latest_symbol = s
+
+                log_wp.debug(
+                    f"{s}: Setting start date to {start_date}, end date to {end_date}"
+                )
+                log_wp.debug(f"{s}: Latest start is {latest_start}")
             else:
                 if start_date > self.symbols[s].bars.index.min():
+                    log_wp.debug(
+                        f"{s}: Changing start date. Was {start_date} for {latest_symbol}, now {self.symbols[s].bars.index.min()}"
+                    )
                     start_date = self.symbols[s].bars.index.min()
 
                 if end_date < self.symbols[s].bars.index.max():
+                    log_wp.debug(
+                        f"{s}: Changing end date. Was {end_date}, now {self.symbols[s].bars.index.max()}"
+                    )
                     end_date = self.symbols[s].bars.index.max()
 
-                # used when back testing to make sure we don't try sampling index -200
-                if latest_start < start_date:
-                    latest_start = start_date
+            # used when back testing to make sure we don't try sampling index -200
+            # we're looking to see which symbol starts the LATEST
+            # if latest_start > self.symbols[s].bars.index.min():
+            if self.symbols[s].bars.index.min() > latest_start:
+                log_wp.debug(
+                    f"{s}: Latest start changed. Was {latest_start}, now {self.symbols[s].bars.index.min()}"
+                )
+                latest_start = self.symbols[s].bars.index.min()
+                latest_symbol = s
 
         if self.back_testing:
-
-            latest_start_position = self.symbols[s].bars.index.get_loc(latest_start)
+            latest_start_position = self.symbols[latest_symbol].bars.index.get_loc(
+                latest_start
+            )
             back_test_start_position = latest_start_position + 200
 
-            start_date = self.symbols[s].bars.index[back_test_start_position]
+            start_date = self.symbols[latest_symbol].bars.index[
+                back_test_start_position
+            ]
 
         return start_date, end_date
 
@@ -282,7 +314,7 @@ class MacdBot:
 
         # iterate through the data until we reach the end
         while current_record <= data_end_date:
-            # log_wp.debug(f"Started processing {current_record}")
+            log_wp.debug(f"Started processing {current_record}")
             for s in self.symbols:
                 this_symbol = self.symbols[s]
                 this_symbol.process(current_record)
@@ -707,10 +739,16 @@ def main():
         back_testing=back_testing,
         starting_balance=10000,
     )
+    
+    if len(bot_handler.symbols) == 0:
+        print(f"Nothing to do - no symbols to watch/symbols are invalid/no data")
+        return
+
     bot_handler.new_start()
 
     global df_trade_report
     df_trade_report.to_csv("trade_report.csv")
+    print("banana")
 
 
 if __name__ == "__main__":
