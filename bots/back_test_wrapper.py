@@ -115,11 +115,11 @@ class Position(IPosition):
 
 class OrderResult(IOrderResult):
     def __init__(self, response: dict):
-        self._raw_response = response
+        self._raw_response = response 
 
-        self.order_type = response["order_type"]
-        self.order_type_text = ORDER_MAP_INVERTED[self.order_type]
-        self.order_id = response["orderUuid"]
+        self.order_type = response["order_type"] 
+        self.order_type_text = ORDER_MAP_INVERTED[self.order_type] 
+        self.order_id = response["orderUuid"] 
         self.symbol = response["symbol"]
 
         if self.order_type == LIMIT_BUY or self.order_type == LIMIT_SELL:

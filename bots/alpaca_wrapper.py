@@ -125,29 +125,6 @@ class Position(IPosition):
 
 
 class OrderResult(IOrderResult):
-    order_id: str
-    sold_symbol: str
-    bought_symbol: str
-    order_value: float
-    order_currency: str
-    order_currency_id: int
-    limit_price: float
-    status: int
-    status_text: str
-    status_summary: str
-    order_type: int
-    order_type_text: str
-    create_time: int
-    update_time: int
-    total_value: float
-    requested_units: float
-    requested_unit_price: float
-    requested_total_value: float
-    success: bool
-    _raw_response: dict
-    # _raw_request
-
-    # TODO add requested values too, like swyftx
     def __init__(self, response: entity.Order):
         self._raw_response = response
 
@@ -158,27 +135,29 @@ class OrderResult(IOrderResult):
         self.order_type_text = ORDER_MAP_INVERTED[self.order_type]
 
         self.order_id = response.id
+        self.symbol = response.symbol
 
-        if response.side == "buy":
-            self.bought_symbol = response.symbol
-            self.bought_id = response.asset_id
-        else:
-            self.sold_symbol = response.symbol
-            self.sold_id = response.asset_id
-
-        self.unit_quantity = float(response.qty)
-
-        # quantity is what you're paying with - only known if its a limit order
         if response.type == "limit":
-            self.order_value = float(response.limit_price) * float(response.qty)
-            self.limit_price = float(response.limit_price)
+            self.ordered_unit_quantity = float(response.qty)
+            self.ordered_unit_price = float(response.limit_price)
+            self.ordered_total_value = (
+                self.ordered_unit_quantity * self.ordered_unit_price
+            )
 
         else:
-            self.order_value = None
-            self.limit_price = None
+            # market orders - so there is only quantity is known, not price or total value
+            self.ordered_unit_quantity = float(response.qty)
+            self.ordered_unit_price = None
+            self.ordered_total_value = None
 
-        self.order_currency = "USD"
-        self.order_currency_id = None
+        self.filled_unit_quantity = float(response.filled_qty)
+
+        if response.filled_avg_price:
+            self.filled_unit_price = float(response.filled_avg_price)
+            self.filled_total_value = self.filled_unit_quantity * self.filled_unit_price
+        else:
+            self.filled_unit_price = None
+            self.filled_total_value = None
 
         self.status = ORDER_STATUS_TEXT_INVERTED[response.status]
         self.status_text = response.status
@@ -188,6 +167,8 @@ class OrderResult(IOrderResult):
             self.status in ORDER_STATUS_SUMMARY_TO_ID["open"]
             or self.status in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
+
+        self.fees = 0
 
         self.create_time = response.submitted_at
         self.update_time = response.updated_at
@@ -334,17 +315,12 @@ class AlpacaAPI(ITradeAPI):
         # get the order so we have all the info about it
         return self.get_order(order_id=response.id)
 
-    def get_order(self, order_id: str):
+    def get_order(self, order_id: str, back_testing_date=None):
         all_orders = self.list_orders()
         for o in all_orders:
             if o.order_id == order_id:
                 return o
 
-        # return OrderResult(
-        #    order_object=response, asset_list_by_id=self._asset_list_by_id
-        # )
-
-    # todo: basically everything after this!
     def _translate_order_types(self, order_type):
         if order_type == "MARKET_BUY":
             return "buy"
@@ -368,7 +344,9 @@ class AlpacaAPI(ITradeAPI):
 
         return self.api.submit_order(*args, **kwargs)
 
-    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
+    def sell_order_limit(
+        self, symbol: str, units: float, unit_price: float, back_testing_date=None
+    ):
         return self._submit_order(
             symbol=symbol, units=units, order_type=LIMIT_SELL, trigger=unit_price
         )
@@ -382,7 +360,9 @@ class AlpacaAPI(ITradeAPI):
             time_in_force="day",
         )
 
-    def buy_order_limit(self, symbol: str, units: float, unit_price: float):
+    def buy_order_limit(
+        self, symbol: str, units: float, unit_price: float, back_testing_date=None
+    ):
         return self._submit_order(
             symbol=symbol, units=units, order_type=LIMIT_BUY, trigger=unit_price
         )
@@ -395,7 +375,7 @@ class AlpacaAPI(ITradeAPI):
             time_in_force="day",
         )
 
-    def buy_order_market(self, symbol, units):
+    def buy_order_market(self, symbol, units, back_testing_date=None):
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
     def delete_order(self, order_id):
@@ -427,17 +407,12 @@ class AlpacaAPI(ITradeAPI):
             orders.append(OrderResult(response=o))
         return orders
 
-    def sell_order_limit(self):
-        ...
+    # def sell_order_limit(
+    #    self, symbol: str, units: int, order_type: int, back_testing_date=None
+    # ):
+    #    return self._submit_order(symbol=symbol, units=units, order_type=MARKET_SELL)
 
-    def sell_order_market(
-        self, symbol: str, units: float, back_testing_unit_price: None
-    ):
-        if back_testing_unit_price != None:
-            raise NotImplementedError(
-                "back_testing_unit_price is not available in real implementation of ITradeAPI"
-            )
-
+    def sell_order_market(self, symbol: str, units: float, back_testing_date=None):
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_SELL)
 
         return self.api.submit_order(
@@ -449,7 +424,7 @@ class AlpacaAPI(ITradeAPI):
         )
 
     # TODO i don't think this actually returns an orderresult
-    def close_position(self, symbol: str) -> OrderResult:
+    def close_position(self, symbol: str, back_testing_date=None) -> OrderResult:
         return self.api.close_position(symbol=symbol)
 
 
@@ -471,6 +446,8 @@ if __name__ == "__main__":
     api = AlpacaAPI(alpaca_key_id=api_key, alpaca_secret_key=secret_key)
     api.get_account()
     api.list_positions()
-    api.buy_order_limit(symbol="AAPL", units=5, unit_price=201)
-    api.buy_order_market(symbol="AAPL", units=10)
+    a = api.buy_order_limit(symbol="AAPL", units=5, unit_price=201)
+    b = api.buy_order_market(symbol="AAPL", units=10)
+    c = api.sell_order_limit(symbol="AAPL", units=5, unit_price=201)
+    d = api.sell_order_market(symbol="AAPL", units=10)
     print("banana")

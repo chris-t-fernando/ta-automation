@@ -89,6 +89,7 @@ df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 
 class BotReport:
     def __init__(self, starting_balance: float):
+        self.starting_balance = starting_balance
         self.orders = {}
         self.win_count = 0
         self.loss_count = 0
