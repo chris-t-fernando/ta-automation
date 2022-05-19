@@ -87,6 +87,34 @@ df_trade_report_columns = [
 df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 
 
+class BotReport:
+    def __init__(self, starting_balance: float):
+        self.orders = {}
+        self.win_count = 0
+        self.loss_count = 0
+        self.breakeven_count = 0
+        self.win_streak = 0
+        self.lose_streak = 0
+        self.breakeven_streak = 0
+        self.peak_orders = 0
+        self.peak_capital_balance = 0
+
+    def add_order(self, order_result):
+        self.orders[order_result.symbol] = order_result
+        self._update_counters()
+        self._update_streaks()
+        self._update_peaks()
+
+    def _update_counters(self):
+        ...
+
+    def _update_streaks(self):
+        ...
+
+    def _update_peaks(self):
+        ...
+
+
 class MacdBot:
     jobs = None
 
@@ -277,7 +305,7 @@ class MacdBot:
             latest_start_position = self.symbols[latest_symbol].bars.index.get_loc(
                 latest_start
             )
-            back_test_start_position = latest_start_position + 200
+            back_test_start_position = latest_start_position + 250
 
             start_date = self.symbols[latest_symbol].bars.index[
                 back_test_start_position

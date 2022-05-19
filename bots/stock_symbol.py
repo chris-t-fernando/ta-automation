@@ -949,7 +949,7 @@ class Symbol:
             filled_order.filled_unit_quantity * filled_order.filled_unit_price
         )
         log_wp.warning(
-            f"{self.symbol}: Successfully took profit: order ID {filled_order.order_id} sold {filled_order.filled_unit_quantity} at {filled_order.filled_unit_price} for value {filled_value}"
+            f"{self._analyse_date} {self.symbol}: Successfully took profit: order ID {filled_order.order_id} sold {filled_order.filled_unit_quantity} at {filled_order.filled_unit_price} for value {filled_value}"
         )
 
         # raise sell order
@@ -957,6 +957,10 @@ class Symbol:
         units = self.position.quantity
 
         units_to_sell = floor(pct * units)
+
+        # units_to_sell might be less than 1 whole unit - in this case, just sell 1 unit? TODO nominal/fractional shares
+        if units_to_sell == 0:
+            units_to_sell = 1
 
         new_steps = self.active_rule["steps"] + 1
         new_target_profit = self.active_rule["original_risk"] * new_steps
@@ -996,7 +1000,7 @@ class Symbol:
 
         if not self._replace_rule(new_rule=new_rule):
             log_wp.critical(
-                f"{self.symbol}: Failed to update rules with new rule! Likely orphaned order"
+                f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )
 
         # set current check
@@ -1004,6 +1008,6 @@ class Symbol:
 
         new_value = order.ordered_unit_quantity * order.ordered_unit_price
         log_wp.warning(
-            f"{self.symbol}: Successfully lodged new take profit: order ID {order.order_id} (state {order.status_summary}) to sell {order.ordered_unit_quantity} unit at {round(order.ordered_unit_price,2)} for value {round(new_value,2)} with new stop loss {round(new_stop_loss,2)}"
+            f"{self._analyse_date} {self.symbol}: Successfully lodged new take profit: order ID {order.order_id} (state {order.status_summary}) to sell {order.ordered_unit_quantity} unit at {round(order.ordered_unit_price,2)} for value {round(new_value,2)} with new stop loss {round(new_stop_loss,2)}"
         )
         return True

@@ -141,6 +141,11 @@ def add_signals(bars, interval):
 
 def get_red_cycle_start(df: pd.DataFrame, before_date):
     try:
+        return df.loc[
+            (df["macd_cycle"] == "blue")
+            & (df.index < before_date)
+            & (df.macd_crossover == True)
+        ].index[-1]
         return df.loc[(df["macd_cycle"] == "blue") & (df.index < before_date)].index[-1]
     except IndexError as e:
         return False

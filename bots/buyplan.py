@@ -67,6 +67,8 @@ class BuyPlan:
 
         self.steps = 0
         self.risk_unit = self.entry_unit - self.stop_unit
+        if self.risk_unit == 0:
+            print("banana")
         self.risk_value = self.units * self.risk_unit
         self.target_profit = profit_target * self.risk_unit
         self.original_risk_unit = self.risk_unit
