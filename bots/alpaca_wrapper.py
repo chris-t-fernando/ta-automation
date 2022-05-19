@@ -202,6 +202,7 @@ class AlpacaAPI(ITradeAPI):
         alpaca_secret_key: str,
         real_money_trading=False,
         back_testing: bool = False,
+        back_testing_balance: float = None,
     ):
         # self.order_types = ORDER_TYPES
         if real_money_trading:
@@ -270,9 +271,6 @@ class AlpacaAPI(ITradeAPI):
             positions.append(Position(symbol=position.symbol, quantity=position.qty))
         return positions
 
-    def _translate_bars(self, bars):
-        ...
-
     def get_last_close(self, symbol: str):
         history = yf.Ticker(symbol).history(interval="1m", actions=False)
         return history["Close"].iloc[-1]
@@ -329,21 +327,6 @@ class AlpacaAPI(ITradeAPI):
         else:
             raise NotImplementedException
 
-    def order_create_by_value(self, *args, **kwargs):
-        # TODO - normalise this!
-        if kwargs.get("order_type") != None:
-            side = kwargs.get("order_type")
-            del kwargs["order_type"]
-            kwargs["side"] = side
-        else:
-            for arg in args:
-                if arg == "buy" or arg == "sell":
-                    arg = self._translate_order_types(arg)
-
-            # side = args[3]
-
-        return self.api.submit_order(*args, **kwargs)
-
     def sell_order_limit(
         self, symbol: str, units: float, unit_price: float, back_testing_date=None
     ):
@@ -378,7 +361,7 @@ class AlpacaAPI(ITradeAPI):
     def buy_order_market(self, symbol, units, back_testing_date=None):
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
-    def delete_order(self, order_id):
+    def cancel_order(self, order_id):
         return self.api.cancel_order(order_id=order_id)
 
     # TODO signature needs to match swyftx

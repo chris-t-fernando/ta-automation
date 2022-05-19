@@ -11,6 +11,8 @@ import uuid
 import logging
 import pytz
 
+# import datetime
+# from dateutil.relativedelta import relativedelta
 
 # update fixtures to match new OrderResults spec
 # or maybe update fixtures to use raw API results and then just remember
@@ -115,11 +117,11 @@ class Position(IPosition):
 
 class OrderResult(IOrderResult):
     def __init__(self, response: dict):
-        self._raw_response = response 
+        self._raw_response = response
 
-        self.order_type = response["order_type"] 
-        self.order_type_text = ORDER_MAP_INVERTED[self.order_type] 
-        self.order_id = response["orderUuid"] 
+        self.order_type = response["order_type"]
+        self.order_type_text = ORDER_MAP_INVERTED[self.order_type]
+        self.order_id = response["orderUuid"]
         self.symbol = response["symbol"]
 
         if self.order_type == LIMIT_BUY or self.order_type == LIMIT_SELL:
@@ -161,7 +163,7 @@ class BackTestAPI(ITradeAPI):
         self,
         real_money_trading=False,
         back_testing: bool = False,
-        starting_balance: float = 100000,
+        back_testing_balance: float = 100000,
     ):
         # set up asset lists
         self.assets = {
@@ -173,7 +175,7 @@ class BackTestAPI(ITradeAPI):
             "BHP": None,
         }
         self.back_testing = back_testing
-        self._balance = starting_balance
+        self._balance = back_testing_balance
 
         self.asset_list_by_symbol = self.assets
         self.supported_crypto_symbols = self._get_crypto_symbols()
@@ -221,17 +223,11 @@ class BackTestAPI(ITradeAPI):
 
         return positions
 
-    def _translate_bars(self, bars):
-        raise NotImplementedException
-
     def get_last_close(self, symbol: str):
         raise NotImplementedException
 
     def get_bars(self, symbol: str, start: str, end: str, interval: str):
         raise NotImplementedException("Back Trade API does not query for bars")
-
-    def _translate_order_types(self, order_type):
-        raise NotImplementedException
 
     def buy_order_limit(
         self,
@@ -360,13 +356,33 @@ class BackTestAPI(ITradeAPI):
             back_testing_date=back_testing_date,
         )
 
-    def list_orders(self):
+    def list_orders(self, symbol: str = None, symbols: list = None, after: str = None):
+        if symbol and symbols:
+            raise ValueError("Can't specify both 'symbol' and 'symbols' - choose one")
+
+        if after:
+            raise NotImplementedException(
+                f"Parameter 'after' is not implemented in back_test_wrapper"
+            )
+
         return_orders = []
-        for symbol in self._orders:
-            return_orders.append(self._orders[symbol])
+        for ordered_symbol in self._orders:
+            return_orders.append(self._orders[ordered_symbol])
 
         for order in self._inactive_orders:
+
             return_orders.append(order)
+
+        if symbol or symbols:
+            if symbol:
+                symbols = [symbol]
+
+            new_return_orders = []
+            for order in return_orders:
+                if order.symbol in symbols:
+                    new_return_orders.append(order)
+
+            return_orders = new_return_orders
 
         return return_orders
 
@@ -388,7 +404,7 @@ class BackTestAPI(ITradeAPI):
             )
         self._orders[response["symbol"]] = OrderResult(response=response)
 
-    def delete_order(self, order_id):
+    def cancel_order(self, order_id):
         symbol_to_delete = None
         for symbol in self._orders:
             if self._orders[symbol].order_id == order_id:
@@ -488,7 +504,7 @@ class BackTestAPI(ITradeAPI):
                     log_wp.warning(
                         f"{symbol}: Unable to fill {this_order.order_id} - order value is {order_value} but balance is only {self._balance}"
                     )
-                    self.delete_order(order_id=this_order.order_id)
+                    self.cancel_order(order_id=this_order.order_id)
                     continue
 
                 # mark this order as filled
@@ -539,7 +555,7 @@ class BackTestAPI(ITradeAPI):
                     log_wp.warning(
                         f"{symbol}: Failed to fill order {this_order.order_id} - trying to sell {this_order.ordered_unit_quantity} units but only hold {held}"
                     )
-                    self.delete_order(order_id=this_order.order_id)
+                    self.cancel_order(order_id=this_order.order_id)
                     continue
                     # raise ValueError(
                     #    f"{symbol}: Hold {held} so can't sell {this_order.ordered_unit_quantity} units"
@@ -591,7 +607,7 @@ class BackTestAPI(ITradeAPI):
                         log_wp.warning(
                             f"{symbol}: Unable to fill {this_order.order_id} - order value is {order_value} but balance is only {self._balance}"
                         )
-                        self.delete_order(order_id=this_order.order_id)
+                        self.cancel_order(order_id=this_order.order_id)
                         continue
 
                     # mark this order as filled
@@ -650,7 +666,7 @@ class BackTestAPI(ITradeAPI):
                         log_wp.debug(
                             f"{symbol}: Failed to fill order {this_order.order_id} - trying to sell {this_order.ordered_unit_quantity} units but only hold {held}"
                         )
-                        self.delete_order(order_id=this_order.order_id)
+                        self.cancel_order(order_id=this_order.order_id)
                         continue
                         # raise ValueError(
                         #    f"{symbol}: Hold {held} so can't sell {this_order.ordered_unit_quantity} units"
@@ -722,7 +738,8 @@ class BackTestAPI(ITradeAPI):
 
 
 if __name__ == "__main__":
-    api = BackTestAPI()
+    starting_balance = 10000
+    api = BackTestAPI(back_testing=True, back_testing_balance=starting_balance)
 
     import pandas as pd
 
@@ -741,20 +758,31 @@ if __name__ == "__main__":
     )
 
     api._put_bars("CHRIS", data)
-    back_testing_date = Timestamp("2022-05-09 14:50:00").astimezone(pytz.utc)
-    starting_balance = 1000
+    back_testing_date = Timestamp("2022-05-09 14:50:00").tz_localize(pytz.utc)
 
     api.get_account()
     api.list_positions()
 
-    api.buy_order_market("CHRIS", 1000, back_testing_date)
+    api.buy_order_market(symbol="CHRIS", units=10, back_testing_date=back_testing_date)
     api.sell_order_market(symbol="CHRIS", units=4, back_testing_date=back_testing_date)
-    api.sell_order_limit("CHRIS", 3, 20, back_testing_date)
-    api.buy_order_limit("CHRIS", 3, 150, back_testing_date)
-    api.buy_order_limit("CHRIS", 4, 150, back_testing_date)
-    api.buy_order_limit("CHRIS", 3, 150, back_testing_date)
-    api.sell_order_limit("CHRIS", 3.5, 151, back_testing_date)
-    api.sell_order_limit("CHRIS", 6.5, 151, back_testing_date)
+    api.sell_order_limit(
+        symbol="CHRIS", units=3, unit_price=20, back_testing_date=back_testing_date
+    )
+    # api.buy_order_limit(
+    #    symbol="CHRIS", units=3, unit_price=150, back_testing_date=back_testing_date
+    # )
+    # api.buy_order_limit(
+    #    symbol="CHRIS", units=4, unit_price=150, back_testing_date=back_testing_date
+    # )
+    # api.buy_order_limit(
+    #    symbol="CHRIS", units=3, unit_price=150, back_testing_date=back_testing_date
+    # )
+    # api.sell_order_limit(
+    #    symbol="CHRIS", units=3.5, unit_price=151, back_testing_date=back_testing_date
+    # )
+    # api.sell_order_limit(
+    #    symbol="CHRIS", units=6.5, unit_price=151, back_testing_date=back_testing_date
+    # )
 
     print(f"Profit: {round(api._balance - starting_balance,2)}")
     api.list_orders()

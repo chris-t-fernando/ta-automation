@@ -37,8 +37,8 @@ import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-global_back_testing = True
-global_override_broker = True
+global_back_testing = False
+global_override_broker = False
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -49,7 +49,7 @@ formatter = logging.Formatter(
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
-log_wp.setLevel(logging.INFO)
+log_wp.setLevel(logging.DEBUG)
 
 df_report = pd.DataFrame()
 df_report_columns = [
@@ -120,13 +120,14 @@ class MacdBot:
     jobs = None
 
     def __init__(
-        self, ssm, data_source, back_testing=False, starting_balance: float = None
+        self, ssm, data_source, back_testing=False, back_testing_balance: float = None
     ):
         self.interval = "5m"
         self.real_money_trading = False
         self.ssm = ssm
         self.data_source = data_source
         self.back_testing = back_testing
+        self.back_testing_balance = back_testing_balance
 
         # get jobs
         symbols = [
@@ -156,6 +157,44 @@ class MacdBot:
         ]
 
         symbols = [
+            {"symbol": "C", "api": "alpaca"},
+            {"symbol": "PFE", "api": "alpaca"},
+            {"symbol": "GE", "api": "alpaca"},
+            {"symbol": "AIG", "api": "alpaca"},
+            {"symbol": "WMT", "api": "alpaca"},
+            {"symbol": "IBM", "api": "alpaca"},
+            {"symbol": "BAC", "api": "alpaca"},
+            {"symbol": "JNJ", "api": "alpaca"},
+            {"symbol": "GS", "api": "alpaca"},
+            {"symbol": "CVX", "api": "alpaca"},
+            {"symbol": "PG", "api": "alpaca"},
+            {"symbol": "MO", "api": "alpaca"},
+            {"symbol": "JPM", "api": "alpaca"},
+            {"symbol": "COP", "api": "alpaca"},
+            {"symbol": "VLO", "api": "alpaca"},
+            {"symbol": "TXN", "api": "alpaca"},
+            {"symbol": "SLB", "api": "alpaca"},
+            {"symbol": "HD", "api": "alpaca"},
+            {"symbol": "UNH", "api": "alpaca"},
+            {"symbol": "MRK", "api": "alpaca"},
+            {"symbol": "VZ", "api": "alpaca"},
+            {"symbol": "CAT", "api": "alpaca"},
+            {"symbol": "PD", "api": "alpaca"},
+            {"symbol": "DNA", "api": "alpaca"},
+            {"symbol": "GM", "api": "alpaca"},
+            {"symbol": "HPQ", "api": "alpaca"},
+            {"symbol": "KO", "api": "alpaca"},
+            {"symbol": "AXP", "api": "alpaca"},
+            {"symbol": "UPS", "api": "alpaca"},
+            {"symbol": "MMM", "api": "alpaca"},
+            {"symbol": "VIA", "api": "alpaca"},
+            {"symbol": "WFC", "api": "alpaca"},
+            {"symbol": "HAL", "api": "alpaca"},
+            {"symbol": "BA", "api": "alpaca"},
+            {"symbol": "F", "api": "alpaca"},
+            {"symbol": "X", "api": "alpaca"},
+            {"symbol": "LLY", "api": "alpaca"},
+            {"symbol": "RIG", "api": "alpaca"},
             {"symbol": "AAPL", "api": "alpaca"},
             {"symbol": "AXS", "api": "alpaca"},
             {"symbol": "TSLA", "api": "alpaca"},
@@ -170,12 +209,16 @@ class MacdBot:
             {"symbol": "RTX", "api": "alpaca"},
         ]
 
+        # symbols = [
+        #    {"symbol": "C", "api": "alpaca"},
+        #    {"symbol": "PFE", "api": "alpaca"},
+        # ]
+
         df_report = pd.DataFrame(
             columns=df_report_columns, index=[x["symbol"] for x in symbols]
         )
 
         if back_testing:
-            self.starting_balance = starting_balance
             if global_override_broker:
                 for s in symbols:
                     s["api"] = "back_test"
@@ -205,11 +248,11 @@ class MacdBot:
             )
             if new_symbol._init_complete:
                 self.symbols[s["symbol"]] = new_symbol
-                log_wp.debug(
+                log_wp.info(
                     f'{s["symbol"]}: Set up complete in {round(time.time() - start_time,1)}s'
                 )
             else:
-                log_wp.debug(
+                log_wp.error(
                     f'{s["symbol"]}: Failed to set up symbol - check spelling? YF returned {len(new_symbol.bars)} {round(time.time() - start_time,1)}s'
                 )
 
@@ -250,7 +293,7 @@ class MacdBot:
                     alpaca_key_id=api_key,
                     alpaca_secret_key=secret_key,
                     back_testing=back_testing,
-                    starting_balance=self.starting_balance,
+                    back_testing_balance=self.back_testing_balance,
                 )
             else:
                 raise ValueError(f"Unknown broker specified {api}")
@@ -336,7 +379,11 @@ class MacdBot:
                         )
 
     def new_start(self):
-        # first find the oldest and newest records we're working with
+        # update the data
+        for s in self.symbols:
+            self.symbols[s].update_bars()
+
+        # find the oldest and newest records we're working with
         data_start_date, data_end_date = self.get_date_range()
 
         # get interval delta - used at the end of each iteration to work out what to do next
@@ -356,7 +403,13 @@ class MacdBot:
             log_wp.debug(f"Started processing {current_record}")
             for s in self.symbols:
                 this_symbol = self.symbols[s]
-                this_symbol.process(current_record)
+                if (
+                    this_symbol._analyse_date == None
+                    or this_symbol._analyse_date < data_end_date
+                ):
+                    this_symbol.process(current_record)
+                else:
+                    print(f"{s}: No new data")
             current_record = current_record + interval_delta
 
         log_wp.debug(f"Finished processing all records")
@@ -747,43 +800,48 @@ def main():
             Type="String",
             Overwrite=True,
         )
+        api_key = (
+            ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
+            .get("Parameter")
+            .get("Value")
+        )
+        secret_key = (
+            ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=True)
+            .get("Parameter")
+            .get("Value")
+        )
+
+        store.put_parameter(
+            Name=f"/tabot/alpaca/api_key",
+            Value=api_key,
+        )
+        store.put_parameter(
+            Name=f"/tabot/alpaca/security_key",
+            Value=secret_key,
+        )
+
     else:
         store = ssm
-
-    # TODO delete later!
-    api_key = (
-        ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
-        .get("Parameter")
-        .get("Value")
-    )
-    secret_key = (
-        ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=True)
-        .get("Parameter")
-        .get("Value")
-    )
-
-    store.put_parameter(
-        Name=f"/tabot/alpaca/api_key",
-        Value=api_key,
-    )
-    store.put_parameter(
-        Name=f"/tabot/alpaca/security_key",
-        Value=secret_key,
-    )
-    ## FINISH DELETE LATER
 
     bot_handler = MacdBot(
         ssm=store,
         data_source=data_source,
         back_testing=back_testing,
-        starting_balance=10000,
+        back_testing_balance=10000,
     )
 
     if len(bot_handler.symbols) == 0:
         print(f"Nothing to do - no symbols to watch/symbols are invalid/no data")
         return
 
-    bot_handler.new_start()
+    if back_testing:
+        bot_handler.new_start()
+    else:
+        while True:
+            bot_handler.new_start()
+            pause = get_pause()
+            log_wp.debug(f"Sleeping for {round(pause,0)}s")
+            time.sleep(pause)
 
     global df_trade_report
     df_trade_report.to_csv("trade_report.csv")

@@ -516,7 +516,7 @@ class SwyftxAPI(ITradeAPI):
             order_object=response, asset_list_by_id=self._asset_list_by_id
         )
 
-    def delete_order(self, order_id: str) -> dict:
+    def cancel_order(self, order_id: str) -> dict:
         request = self.api.request(orders.OrdersCancel(orderID=order_id))
         return request
 

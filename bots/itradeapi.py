@@ -101,7 +101,7 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def delete_order(self, order_id: str):
+    def cancel_order(self, order_id: str):
         ...
 
     @abstractmethod

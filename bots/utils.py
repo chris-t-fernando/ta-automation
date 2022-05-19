@@ -12,7 +12,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger("utils")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-log_wp.setLevel(logging.INFO)
+log_wp.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )

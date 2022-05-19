@@ -23,7 +23,7 @@ log_wp = logging.getLogger(
     "stock_symbol"
 )  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-log_wp.setLevel(logging.INFO)
+log_wp.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )
@@ -402,7 +402,7 @@ class Symbol:
     def trans_no_position_taken(self, reason: str, order):
         if reason == "timeout":
             # kill the job, remove state
-            self.api.delete_order(order_id=order.order_id)
+            self.api.cancel_order(order_id=order.order_id)
             self._remove_from_state()
 
         elif reason == "cancelled":
@@ -735,7 +735,7 @@ class Symbol:
         else:
             # cancel order
             log_wp.info(f"{self.symbol}: Deleting order")
-            self.api.delete_order(order_id=state["order_id"])
+            self.api.cancel_order(order_id=state["order_id"])
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -820,7 +820,7 @@ class Symbol:
         # self.active_order_id already held from check
 
         # cancel take profit order
-        self.api.delete_order(order_id=self.active_order_id)
+        self.api.cancel_order(order_id=self.active_order_id)
 
         # submit stop loss
         order = self.api.sell_order_market(
