@@ -37,8 +37,12 @@ import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
-global_back_testing = False
-global_override_broker = False
+# do reporting
+# 200 df merge update bring down to just changes - faster faster
+# why are weird dataframe end dates occurring?!
+
+global_back_testing = True
+global_override_broker = True
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
