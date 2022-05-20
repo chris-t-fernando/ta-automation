@@ -207,7 +207,17 @@ class MacdBot:
             {"symbol": "AMZN", "api": "alpaca"},
             {"symbol": "INFY", "api": "alpaca"},
             {"symbol": "RTX", "api": "alpaca"},
+            {"symbol": "GME", "api": "alpaca"},
         ]
+
+        # symbols = [
+        #    {"symbol": "MSFT", "api": "alpaca"},
+        #    {"symbol": "C", "api": "alpaca"},
+        #    {"symbol": "PFE", "api": "alpaca"},
+        #    {"symbol": "GE", "api": "alpaca"},
+        #    {"symbol": "AIG", "api": "alpaca"},
+        #    {"symbol": "WMT", "api": "alpaca"},
+        # ]
 
         # symbols = [
         #    {"symbol": "C", "api": "alpaca"},
@@ -317,31 +327,17 @@ class MacdBot:
                 end_date = self.symbols[s].bars.index.max()
                 latest_start = start_date
                 latest_symbol = s
-
-                log_wp.debug(
-                    f"{s}: Setting start date to {start_date}, end date to {end_date}"
-                )
-                log_wp.debug(f"{s}: Latest start is {latest_start}")
             else:
                 if start_date > self.symbols[s].bars.index.min():
-                    log_wp.debug(
-                        f"{s}: Changing start date. Was {start_date} for {latest_symbol}, now {self.symbols[s].bars.index.min()}"
-                    )
                     start_date = self.symbols[s].bars.index.min()
 
                 if end_date < self.symbols[s].bars.index.max():
-                    log_wp.debug(
-                        f"{s}: Changing end date. Was {end_date}, now {self.symbols[s].bars.index.max()}"
-                    )
                     end_date = self.symbols[s].bars.index.max()
 
             # used when back testing to make sure we don't try sampling index -200
             # we're looking to see which symbol starts the LATEST
             # if latest_start > self.symbols[s].bars.index.min():
             if self.symbols[s].bars.index.min() > latest_start:
-                log_wp.debug(
-                    f"{s}: Latest start changed. Was {latest_start}, now {self.symbols[s].bars.index.min()}"
-                )
                 latest_start = self.symbols[s].bars.index.min()
                 latest_symbol = s
 
@@ -355,6 +351,9 @@ class MacdBot:
                 back_test_start_position
             ]
 
+        log_wp.debug(
+            f"Range of all symbol bars: latest start date {latest_start} (for {latest_symbol}), latest end date {end_date}"
+        )
         return start_date, end_date
 
     def set_state(self):
@@ -381,6 +380,7 @@ class MacdBot:
     def new_start(self):
         # update the data
         for s in self.symbols:
+            log_wp.debug(f"{s}: Updating bar data")
             self.symbols[s].update_bars()
 
         # find the oldest and newest records we're working with

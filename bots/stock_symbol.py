@@ -338,8 +338,17 @@ class Symbol:
             to_date=to_date,
         )
 
+        trimmed_new_bars = new_bars.loc[
+            (new_bars.index.minute % 5 == 0) & (new_bars.index.second == 0)
+        ]
+        if len(new_bars) != len(trimmed_new_bars):
+            print("banana")
+
+        new_bars = trimmed_new_bars
+
         if len(new_bars) > 0:
             # pad new bars to 200 rows so that macd and sma200 work
+            # TODO merge these bars in before running add_signals - this way we're doing signals for only a couple rows instead of 200
             if len(new_bars) < 200:
                 new_bars = utils.merge_bars(
                     new_bars=new_bars, bars=self.bars.iloc[-200:]
@@ -349,7 +358,7 @@ class Symbol:
             self.bars = utils.merge_bars(self.bars, new_bars)
 
             if self.back_testing:
-                self.api.put_bars(symbol=self.symbol, bars=self.bars)
+                self.api._put_bars(symbol=self.symbol, bars=self.bars)
 
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
