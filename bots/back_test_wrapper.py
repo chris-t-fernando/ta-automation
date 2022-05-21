@@ -421,12 +421,13 @@ class BackTestAPI(ITradeAPI):
 
         if symbol_to_delete:
             # need to update the order to cancelled
-            self._orders[symbol_to_delete].status = 2
+            self._orders[symbol_to_delete].status = 6
             self._orders[symbol_to_delete].status_summary = ORDER_STATUS_ID_TO_SUMMARY[
-                2
+                6
             ]
-            self._orders[symbol_to_delete].status_text = ORDER_STATUS_TEXT[2]
+            self._orders[symbol_to_delete].status_text = ORDER_STATUS_TEXT[6]
             self._orders[symbol_to_delete].success = False
+            self._orders[symbol_to_delete].update_time = back_testing_date
 
             # need to move the order to self._inactive_orders
             self._inactive_orders.append(self._orders[symbol_to_delete])
@@ -435,7 +436,9 @@ class BackTestAPI(ITradeAPI):
             log_wp.debug(
                 f"{symbol_to_delete}: Moved order_id {order_id} from self._orders to self._inactive_orders"
             )
-            return self.get_order(order_id=order_id, back_testing_date=back_testing_date)
+            return self.get_order(
+                order_id=order_id, back_testing_date=back_testing_date
+            )
         else:
             log_wp.warning(
                 f"Tried to remove order_id {order_id} from self._orders but did not find it - is it already closed?"

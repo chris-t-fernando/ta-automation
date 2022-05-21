@@ -39,25 +39,31 @@ class IPosition(ABC):
 
 
 class IOrderResult(ABC):
-    order_id: str
-    sold_symbol: str
-    bought_symbol: str
-    quantity: float
-    quantity_symbol: str
-    quantity_id: int
-    trigger: float
-    status: int
-    status_text: str
-    status_summary: str
-    order_type: int
-    order_type_text: str
-    created_time: int
-    updated_time: int
-    _raw_response: dict
-
     @abstractmethod
     def __init__(self, response: dict, orders_create_object):
         ...
+
+    def as_dict(self):
+        return {
+            "symbol": self.symbol,
+            "order_id": self.order_id,
+            "order_type": self.order_type,
+            "order_type_text": self.order_type_text,
+            "play_id": self.play_id,
+            "status": self.status,
+            "status_summary": self.status_summary,
+            "status_text": self.status_text,
+            "ordered_unit_quantity": self.ordered_unit_quantity,
+            "ordered_unit_price": self.ordered_unit_price,
+            "ordered_total_value": self.ordered_total_value,
+            "filled_unit_quantity": self.filled_unit_quantity,
+            "filled_unit_price": self.filled_unit_price,
+            "filled_total_value": self.filled_total_value,
+            "fees": self.fees,
+            "success": self.success,
+            "create_time": self.create_time,
+            "update_time": self.update_time,
+        }
 
 
 # interface for api

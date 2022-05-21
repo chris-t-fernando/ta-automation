@@ -394,14 +394,14 @@ def merge_rules(
         changed = True
 
     else:
-        log_wp.debug(f"{symbol}: No action specified")
+        log_wp.error(f"{symbol}: No action specified")
         raise Exception("No action specified")
 
     if changed == True:
-        log_wp.debug(f"{symbol}: Merged rules successfully")
+        log_wp.log(9, f"{symbol}: Merged rules successfully")
         return new_rules
     else:
-        log_wp.debug(f"{symbol}: No rules changed!")
+        log_wp.log(9, f"{symbol}: No rules changed!")
         return False
 
 
@@ -418,7 +418,7 @@ def put_rules(store, symbol: str, new_rules: list, back_testing: bool = False):
         Type="String",
         Overwrite=True,
     )
-    log_wp.debug(f"{symbol}: Successfully wrote updated rules")
+    log_wp.log(9, f"{symbol}: Successfully wrote updated rules")
 
     return True
 

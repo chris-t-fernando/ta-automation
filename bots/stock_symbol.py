@@ -16,6 +16,7 @@ import logging
 import warnings
 from buyplan import BuyPlan
 from math import floor
+import pandas as pd
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -177,7 +178,7 @@ class Symbol:
             store=self.store, new_state=new_state, back_testing=self.back_testing
         )
 
-        log_wp.debug(f"{self.symbol}: Successfully wrote order to state")
+        log_wp.log(9, f"{self.symbol}: Successfully wrote order to state")
 
     # removes this symbol from the state
     def _remove_from_state(self):
@@ -204,7 +205,7 @@ class Symbol:
         )
 
         if found_in_state:
-            log_wp.debug(f"{self.symbol}: Successfully wrote updated state")
+            log_wp.log(9, f"{self.symbol}: Successfully wrote updated state")
             return True
         else:
             log_wp.warning(
@@ -282,7 +283,7 @@ class Symbol:
             back_testing=self.back_testing,
         )
 
-        log_wp.debug(f"{self.symbol}: Successfully wrote new buy order to rules")
+        log_wp.log(9, f"{self.symbol}: Successfully wrote new buy order to rules")
 
     # gets rule for this symbol
     def get_rule(self):
@@ -315,7 +316,7 @@ class Symbol:
                 new_rules=new_rules,
                 back_testing=self.back_testing,
             )
-            log_wp.debug(f"{self.symbol}: Successfully wrote updated rules")
+            log_wp.log(9, f"{self.symbol}: Successfully wrote updated rules")
             return True
         else:
             log_wp.warning(
@@ -531,6 +532,8 @@ class Symbol:
         return self.trans_take_profit
 
     def check_state_take_profit(self):
+        if self._back_testing_date == pd.Timestamp("2022-05-19 21:45:00+00:00"):
+            print("basd")
         # get current position for this symbol
         self.position = self.api.get_position(symbol=self.symbol)
 
@@ -753,7 +756,7 @@ class Symbol:
         order_result = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_report.add_order(order_result, self._analyse_date)
+        self.bot_report.add_order(order_result, self.play_id)
 
         # update active_order_id
         self.active_order_id = None
@@ -798,6 +801,10 @@ class Symbol:
         cancelled_order = self.api.cancel_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
+        log_wp.warning(
+            f"{self.symbol}: Successfully cancelled take_profit order {cancelled_order.order_id}"
+        )
+
         self.bot_report.add_order(cancelled_order, self.play_id)
 
         # submit stop loss
@@ -813,6 +820,9 @@ class Symbol:
             )
             return False
 
+        log_wp.warning(
+            f"{self.symbol}: Successfully submitted stop_loss order {order.order_id}"
+        )
         self.bot_report.add_order(order, self.play_id)
 
         # update active_order_id

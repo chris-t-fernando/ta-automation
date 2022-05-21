@@ -33,6 +33,7 @@ from utils import (
     get_interval_settings,
     get_stored_state,
 )
+from dateutil.relativedelta import relativedelta
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -43,8 +44,8 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 # why are weird dataframe end dates occurring?!
 # better stop loss pct figures
 
-global_back_testing = False
-global_override_broker = False
+global_back_testing = True
+global_override_broker = True
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -133,55 +134,82 @@ class BotReport:
         self._update_peaks()
 
     def generate_df(self):
-        symbol = []
-        order_id = []
-        play_id = []
-        status = []
-        status_summary = []
-        status_text = []
-        ordered_unit_quantity = []
-        ordered_unit_price = []
-        ordered_total_value = []
-        filled_unit_quantity = []
-        filled_unit_price = []
-        filled_total_value = []
-        fees = []
-        success = []
+        self.orders_df = pd.DataFrame([x.as_dict() for x in self.orders])
+        plays = self.orders_df.play_id.unique()
+        columns = [
+            "play_id",
+            "symbol",
+            "buy_value",
+            "sell_value",
+            "profit",
+            "outcome",
+            "take_profit_count",
+            "start",
+            "end",
+            "duration",
+        ]
+        # set up the destination dataframe
+        play_df = pd.DataFrame(columns=columns)
 
-        for order in self.orders:
-            symbol.append(order.symbol)
-            order_id.append(order.order_id)
-            play_id.append(order.play_id)
-            status.append(order.status)
-            status_summary.append(order.status_summary)
-            status_text.append(order.status_text)
-            ordered_unit_quantity.append(order.ordered_unit_quantity)
-            ordered_unit_price.append(order.ordered_unit_price)
-            ordered_total_value.append(order.ordered_total_value)
-            filled_unit_quantity.append(order.filled_unit_quantity)
-            filled_unit_price.append(order.filled_unit_price)
-            filled_total_value.append(order.filled_total_value)
-            fees.append(order.fees)
-            success.append(order.success)
+        # the broker api may fill an order automatically or it may queue it (market closed, price condition not met etc)
+        # the state machine submits, and then gets the order details automatically so it might come back as filled immediately
+        # then the state machine goes to the next step which also queries - so it can look like there are duplicate orders in here
+        # for the purposes of generating our report, we can ignore duplicates
+        unique_orders = self.orders_df.drop_duplicates(subset=["order_id"], keep="last")
+        for play in plays:
+            buy_value = unique_orders.loc[
+                (unique_orders.order_type == 3) & (unique_orders.play_id == play)
+            ].filled_total_value.item()
+            sell_value = unique_orders.loc[
+                (unique_orders.order_type != 3) & (unique_orders.play_id == play)
+            ].filled_total_value.sum()
+            profit = sell_value - buy_value
 
-        df_dict = {
-            "symbol": symbol,
-            "order_id": order_id,
-            "play_id": play_id,
-            "status": status,
-            "status_summary": status_summary,
-            "status_text": status_text,
-            "ordered_unit_quantity": ordered_unit_quantity,
-            "ordered_unit_price": ordered_unit_price,
-            "ordered_total_value": ordered_total_value,
-            "filled_unit_quantity": filled_unit_quantity,
-            "filled_unit_price": filled_unit_price,
-            "filled_total_value": filled_total_value,
-            "fees": fees,
-            "success": success,
-        }
+            if profit < 0:
+                outcome = "loss"
+            else:
+                outcome = "win"
 
-        self.orders_df = pd.DataFrame(df_dict)
+            symbol = unique_orders.loc[unique_orders.play_id == play].symbol.iloc[0]
+
+            start = unique_orders.loc[
+                (unique_orders.order_type == 3) & (unique_orders.play_id == play)
+            ].create_time.min()
+            end = unique_orders.loc[
+                (unique_orders.order_type != 3) & (unique_orders.play_id == play)
+            ].update_time.max()
+
+            take_profit_count = len(
+                unique_orders.loc[
+                    (unique_orders.order_type == 4)
+                    & (unique_orders.play_id == play)
+                    & (unique_orders.status_summary == "filled")
+                ]
+            )
+
+            duration = end - start
+
+            new_row = pd.DataFrame(
+                {
+                    "play_id": play,
+                    "symbol": symbol,
+                    "buy_value": buy_value,
+                    "sell_value": sell_value,
+                    "profit": profit,
+                    "outcome": outcome,
+                    "take_profit_count": take_profit_count,
+                    "start": start,
+                    "end": end,
+                    "duration": duration,
+                },
+                columns=columns,
+                index=[0],
+            )
+            play_df = pd.concat([play_df, new_row], ignore_index=True)
+
+            print(f"Play ID {play} made {profit} profit")
+
+        print("banana")
 
     # add in timestamps and use it for order by
     def _update_counters(self):
@@ -326,7 +354,7 @@ class MacdBot:
             {"symbol": "SOL-USD", "api": "alpaca"},
         ]
 
-        symbols = mixed_symbols_small
+        symbols = nyse_symbols_big
 
         df_report = pd.DataFrame(
             columns=df_report_columns, index=[x["symbol"] for x in symbols]
@@ -484,7 +512,7 @@ class MacdBot:
 
         # iterate through the data until we reach the end
         while current_record <= data_end_date:
-            log_wp.debug(f"Started processing {current_record}")
+            # log_wp.debug(f"Started processing {current_record}")
             for s in self.symbols:
                 this_symbol = self.symbols[s]
                 if (
@@ -496,12 +524,12 @@ class MacdBot:
                     print(f"{s}: No new data")
             current_record = current_record + interval_delta
 
-        log_wp.debug(f"Finished processing all records")
+        # log_wp.debug(f"Finished processing all records")
 
 
 def main():
     back_testing = global_back_testing
-    interval = "1m"
+    interval = "5m"
     log_wp.debug(
         f"Starting up, poll time is {interval}, back testing is {back_testing}"
     )
