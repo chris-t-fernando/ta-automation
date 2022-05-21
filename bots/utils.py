@@ -6,7 +6,7 @@ import logging
 import jsonpickle
 from datetime import datetime
 import warnings
-import json
+import uuid
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -18,6 +18,13 @@ formatter = logging.Formatter(
 )
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
+
+
+def get_interval_integer(interval):
+    if interval in ["1m", "2m", "5m", "15m", "30m"]:
+        return int(interval[:-1])
+
+    raise ValueError("I can't be bothered implementing week intervals")
 
 
 def get_interval_settings(interval):
@@ -44,16 +51,19 @@ def get_interval_settings(interval):
             relativedelta(days=max_period[interval]),
         )
     elif interval == "1h":
+        raise ValueError("I can't be bothered implementing hourly intervals")
         return (
             relativedelta(hours=int(interval[:-1])),
             relativedelta(days=max_period[interval]),
         )
     elif interval == "1d" or interval == "5d":
+        raise ValueError("I can't be bothered implementing day intervals")
         return (
             relativedelta(days=int(interval[:-1])),
             relativedelta(days=max_period[interval]),
         )
     elif interval == "1wk":
+        raise ValueError("I can't be bothered implementing week intervals")
         return (
             relativedelta(weeks=int(interval[:-2])),
             relativedelta(days=max_period[interval]),
@@ -206,28 +216,40 @@ def check_buy_signal(df, symbol):
 
     if crossover and macd_negative and sma_trending_up:
         # all conditions met for a buy
-        log_wp.warning(
+        log_wp.debug(
             f"{symbol}: FOUND BUY SIGNAL AT {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)})"
         )
         return True
 
-    log_wp.debug(
-        f"{symbol}: No buy signal at {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)}"
-    )
+    # log_wp.debug(
+    #    f"{symbol}: No buy signal at {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)}"
+    # )
     return False
 
 
-def get_pause():
+def generate_id(length: int = 6):
+    return uuid.uuid4().hex[:length].upper()
+
+
+def get_interval_in_seconds(interval):
+    interval_int = get_interval_integer(interval)
+    seconds = interval_int * 60
+    return seconds
+
+
+def get_pause(interval):
+    interval_seconds = get_interval_in_seconds(interval)
+
     # get current time
     now = datetime.now()
     # convert it to seconds
     now_ts = now.timestamp()
     # how many seconds into the current 5 minute increment are we
-    mod = now_ts % 300
+    mod = now_ts % interval_seconds
     # 5 minutes minus that = seconds til next 5 minute mark
-    pause = 300 - mod
+    pause = interval_seconds - mod
     # just another couple seconds to make sure the stock data is available when we run
-    pause += 2
+    pause += 5
     return pause
 
 

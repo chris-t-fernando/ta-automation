@@ -7,9 +7,9 @@ from itradeapi import (
     NotImplementedException,
 )
 from pandas import Timestamp
-import uuid
 import logging
 import pytz
+import utils
 
 # import datetime
 # from dateutil.relativedelta import relativedelta
@@ -236,7 +236,7 @@ class BackTestAPI(ITradeAPI):
         unit_price: float,
         back_testing_date: Timestamp,
     ):
-        order_id = "buy-" + self._generate_order_id()
+        order_id = "buy-" + utils.generate_id()
         response = {
             "order_type": LIMIT_BUY,
             "orderUuid": order_id,
@@ -263,7 +263,7 @@ class BackTestAPI(ITradeAPI):
         return order_result
 
     def buy_order_market(self, symbol: str, units: float, back_testing_date: Timestamp):
-        order_id = "buy-" + self._generate_order_id()
+        order_id = "buy-" + utils.generate_id()
         response = {
             "order_type": MARKET_BUY,
             "orderUuid": order_id,
@@ -295,7 +295,7 @@ class BackTestAPI(ITradeAPI):
         unit_price: float,
         back_testing_date: Timestamp,
     ):
-        order_id = "sell-" + self._generate_order_id()
+        order_id = "sell-" + utils.generate_id()
         response = {
             "order_type": LIMIT_SELL,
             "orderUuid": order_id,
@@ -324,7 +324,7 @@ class BackTestAPI(ITradeAPI):
         self, symbol: str, units: float, back_testing_date: Timestamp
     ):
 
-        order_id = "sell-" + self._generate_order_id()
+        order_id = "sell-" + utils.generate_id()
         response = {
             "order_type": MARKET_SELL,
             "orderUuid": order_id,
@@ -370,7 +370,6 @@ class BackTestAPI(ITradeAPI):
             return_orders.append(self._orders[ordered_symbol])
 
         for order in self._inactive_orders:
-
             return_orders.append(order)
 
         if symbol or symbols:
@@ -404,7 +403,7 @@ class BackTestAPI(ITradeAPI):
             )
         self._orders[response["symbol"]] = OrderResult(response=response)
 
-    def cancel_order(self, order_id):
+    def cancel_order(self, order_id, back_testing_date):
         symbol_to_delete = None
         for symbol in self._orders:
             if self._orders[symbol].order_id == order_id:
@@ -436,15 +435,12 @@ class BackTestAPI(ITradeAPI):
             log_wp.debug(
                 f"{symbol_to_delete}: Moved order_id {order_id} from self._orders to self._inactive_orders"
             )
-            return True
+            return self.get_order(order_id=order_id, back_testing_date=back_testing_date)
         else:
             log_wp.warning(
                 f"Tried to remove order_id {order_id} from self._orders but did not find it - is it already closed?"
             )
             return False
-
-    def _generate_order_id(self):
-        return uuid.uuid4().hex[:6].upper()
 
     def _put_bars(self, symbol, bars):
         self._bars[symbol] = bars

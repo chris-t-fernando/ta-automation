@@ -39,10 +39,12 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # do reporting
 # 200 df merge update bring down to just changes - faster faster
+# check if market is closed and don't query
 # why are weird dataframe end dates occurring?!
+# better stop loss pct figures
 
-global_back_testing = True
-global_override_broker = True
+global_back_testing = False
+global_override_broker = False
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -92,24 +94,96 @@ df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 
 
 class BotReport:
-    def __init__(self, starting_balance: float):
-        self.starting_balance = starting_balance
-        self.orders = {}
+    columns = [
+        "symbol",
+        "order_id",
+        "play_id",
+        "status",
+        "status_summary",
+        "status_text",
+        "ordered_unit_quantity",
+        "ordered_unit_price",
+        "ordered_total_value",
+        "filled_unit_quantity",
+        "filled_unit_price",
+        "filled_total_value",
+        "fees",
+        "success",
+    ]
+
+    def __init__(self):
+        self.orders = []
         self.win_count = 0
         self.loss_count = 0
         self.breakeven_count = 0
         self.win_streak = 0
         self.lose_streak = 0
         self.breakeven_streak = 0
+        self.current_win_streak = 0
+        self.current_loss_streak = 0
+        self.current_breakeven = 0
         self.peak_orders = 0
         self.peak_capital_balance = 0
 
-    def add_order(self, order_result):
-        self.orders[order_result.symbol] = order_result
+    def add_order(self, order_result, play_id):
+        order_result.play_id = play_id
+        self.orders.append(order_result)
         self._update_counters()
         self._update_streaks()
         self._update_peaks()
 
+    def generate_df(self):
+        symbol = []
+        order_id = []
+        play_id = []
+        status = []
+        status_summary = []
+        status_text = []
+        ordered_unit_quantity = []
+        ordered_unit_price = []
+        ordered_total_value = []
+        filled_unit_quantity = []
+        filled_unit_price = []
+        filled_total_value = []
+        fees = []
+        success = []
+
+        for order in self.orders:
+            symbol.append(order.symbol)
+            order_id.append(order.order_id)
+            play_id.append(order.play_id)
+            status.append(order.status)
+            status_summary.append(order.status_summary)
+            status_text.append(order.status_text)
+            ordered_unit_quantity.append(order.ordered_unit_quantity)
+            ordered_unit_price.append(order.ordered_unit_price)
+            ordered_total_value.append(order.ordered_total_value)
+            filled_unit_quantity.append(order.filled_unit_quantity)
+            filled_unit_price.append(order.filled_unit_price)
+            filled_total_value.append(order.filled_total_value)
+            fees.append(order.fees)
+            success.append(order.success)
+
+        df_dict = {
+            "symbol": symbol,
+            "order_id": order_id,
+            "play_id": play_id,
+            "status": status,
+            "status_summary": status_summary,
+            "status_text": status_text,
+            "ordered_unit_quantity": ordered_unit_quantity,
+            "ordered_unit_price": ordered_unit_price,
+            "ordered_total_value": ordered_total_value,
+            "filled_unit_quantity": filled_unit_quantity,
+            "filled_unit_price": filled_unit_price,
+            "filled_total_value": filled_total_value,
+            "fees": fees,
+            "success": success,
+        }
+
+        self.orders_df = pd.DataFrame(df_dict)
+
+    # add in timestamps and use it for order by
     def _update_counters(self):
         ...
 
@@ -119,22 +193,31 @@ class BotReport:
     def _update_peaks(self):
         ...
 
+    def _convert_orders_to_df(self):
+        ...
+
 
 class MacdBot:
     jobs = None
 
     def __init__(
-        self, ssm, data_source, back_testing=False, back_testing_balance: float = None
+        self,
+        ssm,
+        data_source,
+        interval="5m",
+        back_testing=False,
+        back_testing_balance: float = None,
     ):
-        self.interval = "5m"
+        self.interval = interval
         self.real_money_trading = False
         self.ssm = ssm
         self.data_source = data_source
         self.back_testing = back_testing
         self.back_testing_balance = back_testing_balance
+        self.bot_report = BotReport()
 
         # get jobs
-        symbols = [
+        mixed_symbols = [
             {"symbol": "AAPL", "api": "alpaca"},
             {"symbol": "AXS", "api": "alpaca"},
             {"symbol": "TSLA", "api": "alpaca"},
@@ -148,7 +231,6 @@ class MacdBot:
             {"symbol": "INFY", "api": "alpaca"},
             {"symbol": "RTX", "api": "alpaca"},
             {"symbol": "ADA-USD", "api": "alpaca"},
-            {"symbol": "BTC-USD", "api": "alpaca"},
             {"symbol": "ETH-USD", "api": "alpaca"},
             {"symbol": "SOL-USD", "api": "alpaca"},
             {"symbol": "XRP-USD", "api": "alpaca"},
@@ -160,7 +242,7 @@ class MacdBot:
             {"symbol": "BNB-USD", "api": "alpaca"},
         ]
 
-        symbols = [
+        nyse_symbols_big = [
             {"symbol": "C", "api": "alpaca"},
             {"symbol": "PFE", "api": "alpaca"},
             {"symbol": "GE", "api": "alpaca"},
@@ -214,19 +296,37 @@ class MacdBot:
             {"symbol": "GME", "api": "alpaca"},
         ]
 
-        # symbols = [
-        #    {"symbol": "MSFT", "api": "alpaca"},
-        #    {"symbol": "C", "api": "alpaca"},
-        #    {"symbol": "PFE", "api": "alpaca"},
-        #    {"symbol": "GE", "api": "alpaca"},
-        #    {"symbol": "AIG", "api": "alpaca"},
-        #    {"symbol": "WMT", "api": "alpaca"},
-        # ]
+        nyse_symbols_medium = [
+            {"symbol": "C", "api": "alpaca"},
+            {"symbol": "PFE", "api": "alpaca"},
+            {"symbol": "GE", "api": "alpaca"},
+            {"symbol": "AIG", "api": "alpaca"},
+            {"symbol": "WMT", "api": "alpaca"},
+            {"symbol": "IBM", "api": "alpaca"},
+            {"symbol": "BAC", "api": "alpaca"},
+            {"symbol": "JNJ", "api": "alpaca"},
+            {"symbol": "GS", "api": "alpaca"},
+            {"symbol": "CVX", "api": "alpaca"},
+            {"symbol": "PG", "api": "alpaca"},
+            {"symbol": "MO", "api": "alpaca"},
+            {"symbol": "JPM", "api": "alpaca"},
+            {"symbol": "COP", "api": "alpaca"},
+            {"symbol": "VLO", "api": "alpaca"},
+            {"symbol": "TXN", "api": "alpaca"},
+            {"symbol": "GME", "api": "alpaca"},
+        ]
 
-        # symbols = [
-        #    {"symbol": "C", "api": "alpaca"},
-        #    {"symbol": "PFE", "api": "alpaca"},
-        # ]
+        nyse_symbols = [
+            {"symbol": "MSFT", "api": "alpaca"},
+            {"symbol": "C", "api": "alpaca"},
+        ]
+
+        mixed_symbols_small = [
+            {"symbol": "C", "api": "alpaca"},
+            {"symbol": "SOL-USD", "api": "alpaca"},
+        ]
+
+        symbols = mixed_symbols_small
 
         df_report = pd.DataFrame(
             columns=df_report_columns, index=[x["symbol"] for x in symbols]
@@ -256,6 +356,7 @@ class MacdBot:
                 interval=self.interval,
                 real_money_trading=self.real_money_trading,
                 api=self.api_dict[s["api"]],
+                bot_report=self.bot_report,
                 store=ssm,
                 data_source=data_source,
                 back_testing=back_testing,
@@ -360,27 +461,6 @@ class MacdBot:
         )
         return start_date, end_date
 
-    def set_state(self):
-        stored_state = get_stored_state(ssm=self.ssm, back_testing=self.back_testing)
-
-        for s in self.symbols:
-            this_symbol = self.symbols[s]
-            for this_state in stored_state:
-                # if there is an order for this symbol
-                if s == this_state["symbol"]:
-                    # update the symbol with the order - the logic is in symbol to work out what the state means
-                    broker_name = this_symbol.api.get_broker_name()
-                    if broker_name == this_state["broker"]:
-                        this_symbol.set_stored_state(stored_state=this_state)
-                        log_wp.debug(
-                            f"{s}: Found state for {s} using broker {broker_name}"
-                        )
-                    else:
-                        # matched symbol but not broker
-                        log_wp.warning(
-                            f'{s}: Found state for {s} but brokers did not match (state {this_state["broker"]} vs config {broker_name})'
-                        )
-
     def new_start(self):
         # update the data
         for s in self.symbols:
@@ -418,379 +498,12 @@ class MacdBot:
 
         log_wp.debug(f"Finished processing all records")
 
-    def start(self):
-        rules = get_rules(ssm=self.ssm, back_testing=self.back_testing)
-        validate_rules(rules)
-        positions = self.list_positions()
-        back_testing_unit_price = None
-
-        while True:
-            for s in self.symbols:
-                this_symbol = self.symbols[s]
-                # get new data
-                if self.back_testing:
-                    # if we're backtesting, start at the very first record that includes SMA200 plus some buffer to work out direction of market
-                    current_record_index = 250
-
-                else:
-                    # if we are not backtesting, get the most recent record
-                    current_record_index = this_symbol.bars.index.get_loc(
-                        this_symbol.bars.index[-1]
-                    )
-
-                records_to_process = len(this_symbol.bars.iloc[current_record_index:])
-
-                # check we aren't doubling up (only really relevant for backtrading)
-                if this_symbol.bars.index[-1] == this_symbol.last_date_processed:
-                    log_wp.debug(
-                        f"{s}: No new records to process. Last record was {this_symbol.bars.index[-1]} (back_test={self.back_testing})"
-                    )
-                    continue
-
-                # while there is data to be processed
-                while current_record_index <= this_symbol.bars.index.get_loc(
-                    this_symbol.bars.index[-1]
-                ):
-                    # process the records
-                    # get the current record
-                    current_record = this_symbol.bars.index[current_record_index]
-                    log_wp.debug(
-                        f"{s}: Processing {current_record} (back_test={self.back_testing})"
-                    )
-
-                    position = this_symbol.api.get_position(symbol=s)
-
-                    # if we are backtesting, we need to read into the future to get the market price we'll be able to sell at
-                    if self.back_testing:
-                        # get next record
-                        try:
-                            next_record = this_symbol.bars.index[
-                                current_record_index + 1
-                            ]
-                            back_testing_unit_price = this_symbol.bars.Open.loc[
-                                next_record
-                            ]
-                        except IndexError as e:
-                            back_testing_unit_price = None
-
-                    rules = apply_sell_rules(
-                        ssm=self.ssm,
-                        api=this_symbol.api,
-                        rules=rules,
-                        position=position,
-                        last_close=this_symbol.bars.Close.loc[current_record],
-                        symbol=s,
-                        period=current_record,
-                        back_testing=self.back_testing,
-                        back_testing_unit_price=back_testing_unit_price,
-                    )
-
-                    # BUY
-                    if position.quantity == 0:
-                        # check if we have a buy signal
-                        buffer = current_record_index - 200
-                        # need the +1 otherwise it does not include the record at this index, it gets trimmed
-                        bars_slice = this_symbol.bars.iloc[
-                            buffer : (current_record_index + 1)
-                        ]
-                        buy_signal_found = check_buy_signal(bars_slice, symbol=s)
-
-                        if buy_signal_found:
-                            # how much can we spend?
-                            balance = this_symbol.api.get_account().assets[
-                                this_symbol.api.default_currency
-                            ]
-                            buy_plan = BuyPlan(symbol=s, df=bars_slice)
-
-                            order_result = this_symbol.api.buy_order_limit(
-                                symbol=s,
-                                units=buy_plan.units,
-                                unit_price=buy_plan.entry_unit,
-                            )
-
-                            new_rule = {
-                                "symbol": buy_plan.symbol,
-                                "original_stop_loss": buy_plan.stop_unit,
-                                "current_stop_loss": buy_plan.stop_unit,
-                                "original_target_price": buy_plan.target_price,
-                                "current_target_price": buy_plan.target_price,
-                                "steps": 0,
-                                "original_risk": buy_plan.risk_unit,
-                                "current_risk": buy_plan.risk_unit,
-                                "purchase_date": datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                ),
-                                "purchase_price": buy_plan.entry_unit,
-                                "units_held": buy_plan.units,  # TODO
-                                "units_sold": 0,
-                                "units_bought": buy_plan.units,
-                                "order_id": 0,  # TODO
-                                "sales": [],
-                                "win_point_sell_down_pct": 0.5,
-                                "win_point_new_stop_loss_pct": 0.99,
-                                "risk_point_sell_down_pct": 0.25,
-                                "risk_point_new_stop_loss_pct": 0.98,
-                            }
-                            global df_trade_report
-                            df_trade_report.loc[df_trade_report.shape[0]] = [
-                                current_record,
-                                s,
-                                "BUY",
-                                "LIMIT",
-                                buy_plan.units,
-                                buy_plan.entry_unit,
-                                buy_plan.units * buy_plan.entry_unit,
-                            ]
-
-                            rules_result = merge_rules(
-                                ssm=self.ssm,
-                                symbol=s,
-                                action="create",
-                                new_rule=new_rule,
-                                back_testing=self.back_testing,
-                            )
-                            if rules_result != False:
-                                rules = rules_result
-                                put_rules(
-                                    ssm=self.ssm,
-                                    symbol=s,
-                                    new_rules=rules,
-                                    back_testing=self.back_testing,
-                                )
-
-                            else:
-                                # returns False if the rule already existed - this should not happen because it should raise a Value exception in that case...
-                                ...
-
-                    else:
-                        log_wp.debug(
-                            f"{s}: Position held so skipped buy analysis (back_test={self.back_testing})"
-                        )
-
-                    # move on to the next one
-                    current_record_index += 1
-
-                # hold on to last processed record so we can make sure we don't re-process it
-                this_symbol.last_date_processed = this_symbol.bars.index[-1]
-
-            # we've processed all data for all symbols
-            if self.back_testing:
-                # if we get here, we've finished processing
-                break
-            else:
-                # if we get here, we need to sleep til we can get more data
-                df_trade_report.to_csv("trade_report.csv")
-                pause = get_pause()
-                log_wp.debug(f"Sleeping for {round(pause,0)}s")
-                time.sleep(pause)
-
-                for s in self.symbols:
-                    self.symbols[s].update_bars()
-
-    def list_positions(self):
-        positions = {}
-        for api in self.api_dict:
-            this_api = self.api_dict[api]
-            this_api.position = this_api.list_positions()
-            positions[api] = this_api.position
-        return positions
-
-
-def apply_sell_rules(
-    ssm,
-    api: ITradeAPI,
-    rules: list,
-    position: IPosition,
-    last_close: float,
-    symbol: str,
-    period: pd.Timestamp,
-    back_testing: bool = False,
-    back_testing_unit_price: float = None,
-):
-    global df_trade_report
-    stop_loss_triggered = []
-    sell_point_triggered = []
-    risk_point_triggered = []
-    trigger_results = []
-
-    # TODO this is so shonky - basically if back_testing is True but back_testing_unit_price is None, assume we're analysing the last record and do nothing
-    if back_testing and back_testing_unit_price == None:
-        log_wp.debug(
-            f"{symbol}: Reached last rule, ignoring apply_sell_rules (back_testing={back_testing})"
-        )
-        return rules
-
-    for rule in rules:
-        rule_symbol = rule["symbol"]
-
-        if rule_symbol == symbol:
-            # matched a rule
-            trigger_stop = trigger_stop_loss(rule, last_close, period)
-            trigger_sell = trigger_sell_point(rule, last_close, period)
-            trigger_risk = trigger_risk_point(rule, last_close, period)
-
-            if trigger_stop:
-                # stop loss hit! liquidate
-                log_wp.warning(
-                    f"{symbol}: Stop loss triggered at {period}, closing position at market value (back_testing={back_testing})"
-                )
-                close_response = api.close_position(symbol, back_testing_unit_price)
-
-                if close_response.success:
-                    # also need to write an updated rule to SSM for next run
-                    rules_result = merge_rules(
-                        ssm=ssm,
-                        symbol=symbol,
-                        action="delete",
-                        back_testing=back_testing,
-                    )
-                    if rules_result != False:
-                        rules = rules_result
-                        put_rules(
-                            ssm=ssm,
-                            symbol=symbol,
-                            new_rules=rules_result,
-                            back_testing=back_testing,
-                        )
-                    df_trade_report.loc[df_trade_report.shape[0]] = [
-                        period,
-                        symbol,
-                        "SELL",
-                        "STOP",
-                        position.quantity,
-                        back_testing_unit_price,
-                        position.quantity * back_testing_unit_price,
-                    ]
-
-                    return rules
-                else:
-                    # need a better way of notifying me of this stuff
-                    log_wp.critical(
-                        f"{symbol}: HIT STOP LOSS AT {period} BUT FAILED TO BE LIQUIDATED (back_testing={back_testing})"
-                    )
-                    raise RuntimeError()
-
-            elif trigger_sell or trigger_risk:
-                if trigger_sell:
-                    new_target_pct = rule["win_point_sell_down_pct"]
-                    # reporting
-                    sell_point_triggered.append(
-                        {
-                            "symbol": symbol,
-                            "last_close": last_close,
-                            "rule": rule,
-                        }
-                    )
-                else:
-                    # trigger risk
-                    new_target_pct = rule["risk_point_sell_down_pct"]
-                    # reporting
-                    risk_point_triggered.append(
-                        {
-                            "symbol": symbol,
-                            "last_close": last_close,
-                            "rule": rule,
-                        }
-                    )
-                    new_target_pct = 0
-
-                # hit high watermark of target price
-                units_to_sell = position.quantity * new_target_pct
-                sell_response = api.sell_order_market(
-                    symbol=symbol,
-                    units=units_to_sell,
-                    back_testing_unit_price=back_testing_unit_price,
-                )
-
-                if not sell_response.success:
-                    # need a better way of notifying me of this stuff
-                    log_wp.critical(
-                        f"{symbol}: FAILED TO TAKE PROFIT AT {period} ****** DO NOT IGNORE THIS *****"
-                    )
-                    raise RuntimeError()
-
-                # order accepted but not filled
-                if sell_response.status_summary == "cancelled":
-                    raise RuntimeError(
-                        f"Order was cancelled immediately by broker {str(sell_response)}"
-                    )
-                else:
-                    if sell_response.status_summary == "open":
-                        log_wp.critical(
-                            f'{symbol}: Hit target sale point at {period}. Submitted sell market order for {round(rule["win_point_sell_down_pct"]*100,0)}% of units'
-                        )
-                    elif sell_response.status_summary == "filled":
-                        # order filled
-                        sell_value = sell_response.total_value
-                        log_wp.critical(
-                            f'{symbol}: Hit target sale point at {period}. Successfully sold {round(rule["win_point_sell_down_pct"]*100,0)}% of units for total value {round(sell_value,2)}'
-                        )
-
-                    new_units_held = api.get_position(symbol=symbol).quantity
-
-                    updated_ssm_rule = rule.copy()
-
-                    new_units_sold = rule["units_sold"] + sell_response.units
-                    new_sales_obj = {
-                        "units": new_units_sold,
-                        "sale_price": sell_response.unit_price,
-                    }
-                    new_steps = updated_ssm_rule["steps"] + 1
-                    new_risk = rule["original_risk"] * new_steps
-                    new_stop_loss = (
-                        sell_response.unit_price
-                    )  # TODO you messed with this!
-
-                    updated_ssm_rule["current_stop_loss"] = new_stop_loss
-                    updated_ssm_rule["current_risk"] = new_risk
-                    updated_ssm_rule["sales"].append(new_sales_obj)
-                    updated_ssm_rule["units_held"] = new_units_held
-                    updated_ssm_rule["units_sold"] = new_units_sold
-                    updated_ssm_rule["steps"] += new_steps
-                    updated_ssm_rule["current_target_price"] = (
-                        updated_ssm_rule["current_target_price"]
-                        + updated_ssm_rule["original_risk"]
-                    )
-
-                    rules_result = merge_rules(
-                        ssm=ssm,
-                        symbol=symbol,
-                        action="replace",
-                        new_rule=updated_ssm_rule,
-                        back_testing=back_testing,
-                    )
-                    if rules_result != False:
-                        rules = rules_result
-                        put_rules(
-                            ssm=ssm,
-                            symbol=symbol,
-                            new_rules=rules_result,
-                            back_testing=back_testing,
-                        )
-
-                    df_trade_report.loc[df_trade_report.shape[0]] = [
-                        period,
-                        symbol,
-                        "SELL",
-                        "PROFIT",
-                        sell_response.units,
-                        back_testing_unit_price,
-                        position.quantity * back_testing_unit_price,
-                    ]
-
-                    return rules
-
-            else:
-                log_wp.debug(f"{symbol}: Not ready to sell")
-                return rules
-    return rules
-
 
 def main():
     back_testing = global_back_testing
-    poll_time = 5
+    interval = "1m"
     log_wp.debug(
-        f"Starting up, poll time is {poll_time}m, back testing is {back_testing}"
+        f"Starting up, poll time is {interval}, back testing is {back_testing}"
     )
     ssm = boto3.client("ssm")
     data_source = yf
@@ -830,6 +543,7 @@ def main():
     bot_handler = MacdBot(
         ssm=store,
         data_source=data_source,
+        interval=interval,
         back_testing=back_testing,
         back_testing_balance=10000,
     )
@@ -843,9 +557,11 @@ def main():
     else:
         while True:
             bot_handler.new_start()
-            pause = get_pause()
+            pause = get_pause(interval)
             log_wp.debug(f"Sleeping for {round(pause,0)}s")
             time.sleep(pause)
+
+    bot_handler.bot_report.generate_df()
 
     global df_trade_report
     df_trade_report.to_csv("trade_report.csv")
@@ -854,3 +570,28 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
+    def set_state(self):
+        stored_state = get_stored_state(ssm=self.ssm, back_testing=self.back_testing)
+
+        for s in self.symbols:
+            this_symbol = self.symbols[s]
+            for this_state in stored_state:
+                # if there is an order for this symbol
+                if s == this_state["symbol"]:
+                    # update the symbol with the order - the logic is in symbol to work out what the state means
+                    broker_name = this_symbol.api.get_broker_name()
+                    if broker_name == this_state["broker"]:
+                        this_symbol.set_stored_state(stored_state=this_state)
+                        log_wp.debug(
+                            f"{s}: Found state for {s} using broker {broker_name}"
+                        )
+                    else:
+                        # matched symbol but not broker
+                        log_wp.warning(
+                            f'{s}: Found state for {s} but brokers did not match (state {this_state["broker"]} vs config {broker_name})'
+                        )
+
+
+"""

@@ -55,13 +55,15 @@ class Symbol:
         symbol: str,
         api: ITradeAPI,
         interval: str,
-        real_money_trading: bool,
         store,
+        bot_report,
         data_source,
+        real_money_trading: bool = False,
         to_date: str = None,
         back_testing: bool = False,
     ):
         self.back_testing = back_testing
+        self.bot_report = bot_report
         self.symbol = symbol
         self.api = api
         self.interval = interval
@@ -76,6 +78,7 @@ class Symbol:
         self.active_order_id = None
         self.buy_plan = None
         self.active_rule = None
+        self.play_id = None
 
         # when raising an initial buy order, how long should we wait for it to be filled til killing it?
         self.enter_position_timeout = self.interval_delta
@@ -97,6 +100,46 @@ class Symbol:
         else:
             self.bars = utils.add_signals(bars, interval)
             self._init_complete = True
+
+    def process(self, datestamp):
+        # i'm too lazy to pass datestamp around so save it in object
+        self._analyse_date = datestamp
+
+        if self.back_testing:
+            self._back_testing_date = self._analyse_date
+
+        # if we have no data for this datestamp, then no action
+        if datestamp not in self.bars.index:
+            return
+        # print(f"{self.symbol} bar count {len(self.bars)}")
+        self._analyse_index = self.bars.index.get_loc(self._analyse_date)
+
+        # keep progressing through the state machine until we hit a stop
+        while True:
+            # run the current check - will return reference to a transition function if the check says we're ready for next state
+            next_transition = self.current_check()
+            # not ready for next state, break
+            if next_transition == False:
+                break
+
+            # do the next transition, which will set self.current_check to whatever the next state check is, ready for next loop
+            if next_transition():
+                ...
+
+        # TODO: not sure what to return?!
+        return
+
+    # STATE AND RULE FUNCTIONS
+    def get_state(self):
+        stored_state = utils.get_stored_state(
+            store=self.store, back_testing=self.back_testing
+        )
+
+        for this_state in stored_state:
+            if this_state["symbol"] == self.symbol:
+                return this_state
+
+        return False
 
     # writes the symbol to state
     def _write_to_state(self, order):
@@ -126,6 +169,7 @@ class Symbol:
                 "order_id": order.order_id,
                 "broker": broker_name,
                 "state": STATE_MAP_INVERTED[order.status],
+                "play_id": self.play_id,
             }
         )
 
@@ -168,6 +212,7 @@ class Symbol:
             )
             return False
 
+    # replaces the rule for this symbol
     def _replace_rule(self, new_rule):
         stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
 
@@ -188,6 +233,7 @@ class Symbol:
 
         return write_result
 
+    # adds sybol to rules - will barf if one already exists
     def _write_to_rules(self, buy_plan, order_result):
         stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
 
@@ -206,6 +252,7 @@ class Symbol:
         # if we got here, the symbol does not exist in rules so we are okay to add it
         new_rule = {
             "symbol": buy_plan.symbol,
+            "play_id": self.play_id,
             "original_stop_loss": buy_plan.stop_unit,
             "current_stop_loss": buy_plan.stop_unit,
             "original_target_price": buy_plan.target_price,
@@ -237,23 +284,13 @@ class Symbol:
 
         log_wp.debug(f"{self.symbol}: Successfully wrote new buy order to rules")
 
+    # gets rule for this symbol
     def get_rule(self):
         stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
 
         for this_rule in stored_rules:
             if this_rule["symbol"] == self.symbol:
                 return this_rule
-
-        return False
-
-    def get_state(self):
-        stored_state = utils.get_stored_state(
-            store=self.store, back_testing=self.back_testing
-        )
-
-        for this_state in stored_state:
-            if this_state["symbol"] == self.symbol:
-                return this_state
 
         return False
 
@@ -286,6 +323,9 @@ class Symbol:
             )
             return False
 
+    # END STATE AND RULE FUNCTIONS
+
+    # START BAR FUNCTIONS
     def _get_bars(self, from_date=None, to_date=None, initialised: bool = True):
 
         if initialised == False:
@@ -320,6 +360,17 @@ class Symbol:
             log_wp.debug(
                 f"{self.symbol}: No data returned for start {yf_start} end {yf_end}"
             )
+            return bars
+
+        interval_mod = utils.get_interval_integer(self.interval)
+
+        trimmed_new_bars = bars.loc[
+            (bars.index.minute % interval_mod == 0) & (bars.index.second == 0)
+        ]
+        # if len(bars) != len(trimmed_new_bars):
+        #    print("banana")
+
+        bars = trimmed_new_bars
 
         bars = bars.tz_convert(pytz.utc)
         # bars = bars.loc[bars.index <= yf_end]
@@ -338,13 +389,13 @@ class Symbol:
             to_date=to_date,
         )
 
-        trimmed_new_bars = new_bars.loc[
-            (new_bars.index.minute % 5 == 0) & (new_bars.index.second == 0)
-        ]
-        if len(new_bars) != len(trimmed_new_bars):
-            print("banana")
+        # trimmed_new_bars = new_bars.loc[
+        #    (new_bars.index.minute % 5 == 0) & (new_bars.index.second == 0)
+        # ]
+        # if len(new_bars) != len(trimmed_new_bars):
+        #    print("banana")
 
-        new_bars = trimmed_new_bars
+        # new_bars = trimmed_new_bars
 
         if len(new_bars) > 0:
             # pad new bars to 200 rows so that macd and sma200 work
@@ -363,119 +414,9 @@ class Symbol:
         else:
             log_wp.debug(f"{self.symbol}: No new data since {from_date}")
 
-    def process(self, datestamp):
-        # i'm too lazy to pass datestamp around so save it in object
-        self._analyse_date = datestamp
+    # END  BAR FUNCTIONS
 
-        if self.back_testing:
-            self._back_testing_date = self._analyse_date
-
-        # if we have no data for this datestamp, then no action
-        if datestamp not in self.bars.index:
-            return
-        # print(f"{self.symbol} bar count {len(self.bars)}")
-        self._analyse_index = self.bars.index.get_loc(self._analyse_date)
-
-        # keep progressing through the state machine until we hit a stop
-        while True:
-            # run the current check - will return reference to a transition function if the check says we're ready for next state
-            next_transition = self.current_check()
-            # not ready for next state, break
-            if next_transition == False:
-                break
-
-            # do the next transition, which will set self.current_check to whatever the next state check is, ready for next loop
-            if next_transition():
-                ...
-
-        # TODO: not sure what to return?!
-        return
-
-    def get_data_window(self, length: int = 200):
-        # get the last 200 records before this one
-        first_record = self._analyse_index - length
-        # need the +1 otherwise it does not include the record at this index, it gets trimmed
-        last_record = self._analyse_index + 1
-        bars = self.bars.iloc[first_record:last_record]
-        return bars
-
-    # returns True/False depending on whether an OrderResult order has passed the configured timeout window
-    def _is_position_timed_out(self, now, order):
-        cutoff_date = now.astimezone(pytz.utc) - self.enter_position_timeout
-        cutoff_date = cutoff_date.astimezone(pytz.utc)
-        if order.create_time < cutoff_date:
-            return True
-        return False
-
-    # used to clean up state before we actually enter no_position_taken
-    def trans_no_position_taken(self, reason: str, order):
-        if reason == "timeout":
-            # kill the job, remove state
-            self.api.cancel_order(order_id=order.order_id)
-            self._remove_from_state()
-
-        elif reason == "cancelled":
-            # job is already killed, but still need to remove state
-            self._remove_from_state()
-        elif reason == "stop_loss":
-            # stop loss hit, remove from state and remove from rules
-            self._remove_from_state()
-            self._remove_from_rules()
-        else:
-            raise ValueError(f"Unknown reason: {reason}")
-
-        # now we are done cleaning up, set this symbol to no position taken
-        self.load_state_no_position_taken()
-
-    # used to clean up state before we actually enter position_taken
-    def trans_position_taken(self):
-        # buy order got closed, so clean up reference to it in symbol, remove from state, add to rules
-        self._remove_from_state()
-        # need to work out what to write in to the rules!
-        self.generate_play()
-
-        ...
-
-    # when we have found a signal and raise a buy order
-    def trans_buy_limit_order_active(self, buy_plan):
-        # buy_plan should tell us everything we need to know about the play
-        # first raise the buy request
-        # if its accepted, write it to state
-        order_result = self.api.buy_order_limit(
-            symbol=self.symbol,
-            units=buy_plan.units,
-            unit_price=buy_plan.entry_unit,
-            back_testing_date=self._back_testing_date,
-        )
-
-        if not order_result.success:
-            raise RuntimeError(f"Buy order was rejected: {order_result.status_text}")
-
-        # add the buy order to state
-        self._write_to_state()
-
-        # was it filled already?
-        if order_result.status_summary == "filled":
-            # skip straight to position taken
-            self.trans_position_taken()
-
-    # set this symbol to no position taken
-    def load_state_no_position_taken(self):
-        # this one is pretty simple - just do it
-        self.state = NO_POSITION_TAKEN
-
-    def load_state_buy_limit_order_active(self, order):
-        self.state = BUY_LIMIT_ORDER_ACTIVE
-        self.active_order_id = order.order_id
-
-    #
-    #
-    #
-    #
-    #
-    #
-    #
-
+    # START CHECK_STATE FUNCTIONS
     def check_state_no_position_taken(self):
         # get iloc of analyse_index
 
@@ -508,9 +449,9 @@ class Symbol:
 
             self.buy_plan = buy_plan
             log_wp.debug(
-                f"{self.symbol}: Found buy signal, next step is trans_enter_position"
+                f"{self.symbol}: Found buy signal, next step is trans_entering_position"
             )
-            return self.trans_enter_position
+            return self.trans_entering_position
 
         # if we got here, nothing to do
         # log_wp.debug(f"{self.symbol}: No buy signal found, no action to take")
@@ -700,9 +641,14 @@ class Symbol:
             )
             return False
 
-    def trans_enter_position(self):
+    # END  CHECK_STATE FUNCTIONS
+
+    # START TRANSITION FUNCTIONS
+    def trans_entering_position(self):
         # submit buy order
-        log_wp.debug(f"{self.symbol}: Started trans_enter_position")
+        log_wp.debug(f"{self.symbol}: Started trans_entering_position")
+
+        self.play_id = "play-" + utils.generate_id()
 
         order_result = self.api.buy_order_limit(
             symbol=self.symbol,
@@ -721,6 +667,8 @@ class Symbol:
         # hold on to order ID
         self.active_order_id = order_result.order_id
 
+        self.bot_report.add_order(order_result, play_id=self.play_id)
+
         # write state
         self._write_to_state(order_result)
 
@@ -730,7 +678,7 @@ class Symbol:
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Buy order {order_result.order_id} (state {order_result.status_summary}) at unit price {order_result.ordered_unit_price} submitted"
         )
-        log_wp.debug(f"{self.symbol}: Finished trans_enter_position")
+        log_wp.debug(f"{self.symbol}: Finished trans_entering_position")
         return True
 
     def trans_buy_order_timed_out(self):
@@ -744,11 +692,16 @@ class Symbol:
         else:
             # cancel order
             log_wp.info(f"{self.symbol}: Deleting order")
-            self.api.cancel_order(order_id=state["order_id"])
+            order_result = self.api.cancel_order(
+                order_id=state["order_id"], back_testing_date=self._analyse_date
+            )
+
+        self.bot_report.add_order(order_result, self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
         self.buy_plan = None
+        self.play_id = None
 
         # clear state
         self._remove_from_state()
@@ -770,9 +723,15 @@ class Symbol:
             # no need to cancel order - it already got nuked
             ...
 
+        order_result = self.api.cancel_order(
+            order_id=self.active_order_id, back_testing_date=self._analyse_date
+        )
+        self.bot_report.add_order(order_result, self.play_id)
+
         # clear any variables set at symbol
         self.active_order_id = None
         self.buy_plan = None
+        self.play_id = None
 
         # clear state
         self._remove_from_state()
@@ -790,6 +749,11 @@ class Symbol:
         self._write_to_rules(
             buy_plan=self.buy_plan, order_result=self.active_order_result
         )
+
+        order_result = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._analyse_date
+        )
+        self.bot_report.add_order(order_result, self._analyse_date)
 
         # update active_order_id
         self.active_order_id = None
@@ -816,6 +780,8 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
+        self.bot_report.add_order(order, self.play_id)
+
         # hold on to active_order_id
         self.active_order_id = order.order_id
 
@@ -829,7 +795,10 @@ class Symbol:
         # self.active_order_id already held from check
 
         # cancel take profit order
-        self.api.cancel_order(order_id=self.active_order_id)
+        cancelled_order = self.api.cancel_order(
+            order_id=self.active_order_id, back_testing_date=self._analyse_date
+        )
+        self.bot_report.add_order(cancelled_order, self.play_id)
 
         # submit stop loss
         order = self.api.sell_order_market(
@@ -843,6 +812,8 @@ class Symbol:
                 f"{self._analyse_date} {self.symbol}: Unable to submit stop loss order for symbol! API returned {order.status_text}"
             )
             return False
+
+        self.bot_report.add_order(order, self.play_id)
 
         # update active_order_id
         self.active_order_id = order.order_id
@@ -868,6 +839,8 @@ class Symbol:
             )
             return False
 
+        self.bot_report.add_order(order, self.play_id)
+
         # update active_order_id
         self.active_order_id = order.order_id
 
@@ -877,22 +850,34 @@ class Symbol:
         return True
 
     def trans_externally_liquidated(self):
+        order = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._analyse_date
+        )
+        self.bot_report.add_order(order, self.play_id)
+
         # already don't hold any, so no need to delete orders
         # just need to clean up the object and delete rules
         self._remove_from_rules()
         self.active_order_id = None
         self.active_order_result = None
         self.buy_plan = None
+        self.play_id = None
 
         # TODO add to win/loss as unknown outcome
 
         self.current_check = self.check_state_no_position_taken
 
     def trans_close_position(self):
+        order = self.api.get_order(
+            order_id=self.active_order_id, back_testing_date=self._analyse_date
+        )
+        self.bot_report.add_order(order, self.play_id)
+
         # clear active order details
         self.active_order_id = None
         self.active_order_result = None
         self.buy_plan = None
+        self.play_id = None
 
         # delete rules
         self._remove_from_rules()
@@ -907,11 +892,13 @@ class Symbol:
         # i'm not sure what i want to do here actually. this needs more thought than just spamming new orders
 
         # no need to close the previous order - its dead
-        self.api.close_position(
+        order = self.api.close_position(
             symbol=self.symbol, back_testing_date=self._back_testing_date
         )
 
-        # TODO i think i need to update the active order ID
+        self.bot_report.add_order(order, self.play_id)
+
+        self.active_order_id = order.order_id
 
         # set current check
         self.current_check = self.check_state_take_profit
@@ -936,6 +923,8 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
+        self.bot_report.add_order(order, self.play_id)
+
         # hold on to active_order_id
         self.active_order_id = order.order_id
 
@@ -957,6 +946,7 @@ class Symbol:
         filled_value = (
             filled_order.filled_unit_quantity * filled_order.filled_unit_price
         )
+        self.bot_report.add_order(filled_order, self.play_id)
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Successfully took profit: order ID {filled_order.order_id} sold {filled_order.filled_unit_quantity} at {filled_order.filled_unit_price} for value {filled_value}"
         )
@@ -1006,11 +996,14 @@ class Symbol:
         new_rule["units_sold"] = new_units_sold
         new_rule["steps"] += new_steps
         new_rule["current_target_price"] = new_target_unit_price
+        new_rule["play_id"] = self.play_id
 
         if not self._replace_rule(new_rule=new_rule):
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )
+
+        self.bot_report.add_order(order, self.play_id)
 
         # set current check
         self.current_check = self.check_state_take_profit
@@ -1020,3 +1013,24 @@ class Symbol:
             f"{self._analyse_date} {self.symbol}: Successfully lodged new take profit: order ID {order.order_id} (state {order.status_summary}) to sell {order.ordered_unit_quantity} unit at {round(order.ordered_unit_price,2)} for value {round(new_value,2)} with new stop loss {round(new_stop_loss,2)}"
         )
         return True
+
+    # END TRANSITION FUNCTIONS
+
+    # START SUPPORTING FUNCTIONS
+    def get_data_window(self, length: int = 200):
+        # get the last 200 records before this one
+        first_record = self._analyse_index - length
+        # need the +1 otherwise it does not include the record at this index, it gets trimmed
+        last_record = self._analyse_index + 1
+        bars = self.bars.iloc[first_record:last_record]
+        return bars
+
+    # returns True/False depending on whether an OrderResult order has passed the configured timeout window
+    def _is_position_timed_out(self, now, order):
+        cutoff_date = now.astimezone(pytz.utc) - self.enter_position_timeout
+        cutoff_date = cutoff_date.astimezone(pytz.utc)
+        if order.create_time < cutoff_date:
+            return True
+        return False
+
+    # END SUPPORTING FUNCTIONS

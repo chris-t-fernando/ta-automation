@@ -101,7 +101,7 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def cancel_order(self, order_id: str):
+    def cancel_order(self, order_id: str, back_testing_date):
         ...
 
     @abstractmethod
@@ -109,7 +109,7 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def get_order(self):
+    def get_order(self, order_id, back_testing_date):
         ...
 
     @abstractmethod

@@ -393,8 +393,9 @@ class AlpacaAPI(ITradeAPI):
     def buy_order_market(self, symbol, units, back_testing_date=None):
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
-    def cancel_order(self, order_id):
-        return self.api.cancel_order(order_id=order_id)
+    def cancel_order(self, order_id, back_testing_date=None):
+        self.api.cancel_order(order_id=order_id)
+        return self.get_order(order_id=order_id, back_testing_date=back_testing_date)
 
     # TODO signature needs to match swyftx
     # also need the return to match swyftx - currently returns empty list if no active orders
