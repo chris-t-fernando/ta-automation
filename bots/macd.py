@@ -44,8 +44,8 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 # why are weird dataframe end dates occurring?!
 # better stop loss pct figures
 
-global_back_testing = True
-global_override_broker = True
+global_back_testing = False
+global_override_broker = False
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -258,16 +258,21 @@ class MacdBot:
             {"symbol": "AMZN", "api": "alpaca"},
             {"symbol": "INFY", "api": "alpaca"},
             {"symbol": "RTX", "api": "alpaca"},
-            {"symbol": "ADA-USD", "api": "alpaca"},
+            # {"symbol": "ADA-USD", "api": "alpaca"},
             {"symbol": "ETH-USD", "api": "alpaca"},
             {"symbol": "SOL-USD", "api": "alpaca"},
-            {"symbol": "XRP-USD", "api": "alpaca"},
+            # {"symbol": "XRP-USD", "api": "alpaca"},
             {"symbol": "DOGE-USD", "api": "alpaca"},
             {"symbol": "SHIB-USD", "api": "alpaca"},
             {"symbol": "MATIC-USD", "api": "alpaca"},
-            {"symbol": "ATOM-USD", "api": "alpaca"},
-            {"symbol": "FTT-USD", "api": "alpaca"},
-            {"symbol": "BNB-USD", "api": "alpaca"},
+            # {"symbol": "ATOM-USD", "api": "alpaca"},
+            # {"symbol": "FTT-USD", "api": "alpaca"},
+            # {"symbol": "BNB-USD", "api": "alpaca"},
+            {"symbol": "WBTC-USD", "api": "alpaca"},
+            {"symbol": "TRX-USD", "api": "alpaca"},
+            {"symbol": "UNI-USD", "api": "alpaca"},
+            {"symbol": "BAT-USD", "api": "alpaca"},
+            {"symbol": "PAXG-USD", "api": "alpaca"},
         ]
 
         nyse_symbols_big = [
@@ -354,7 +359,7 @@ class MacdBot:
             {"symbol": "SOL-USD", "api": "alpaca"},
         ]
 
-        symbols = nyse_symbols_big
+        symbols = mixed_symbols
 
         df_report = pd.DataFrame(
             columns=df_report_columns, index=[x["symbol"] for x in symbols]
@@ -406,7 +411,10 @@ class MacdBot:
         for api in api_set:
             start_time = time.time()
             if api == "back_test":
-                api_dict[api] = BackTestAPI(back_testing=back_testing)
+                api_dict[api] = BackTestAPI(
+                    back_testing=back_testing,
+                    back_testing_balance=self.back_testing_balance,
+                )
                 break
 
             elif api == "swyftx":
@@ -417,7 +425,11 @@ class MacdBot:
                     .get("Parameter")
                     .get("Value")
                 )
-                api_dict[api] = SwyftxAPI(api_key=api_key, back_testing=back_testing)
+                api_dict[api] = SwyftxAPI(
+                    api_key=api_key,
+                    back_testing=back_testing,
+                    back_testing_balance=self.back_testing_balance,
+                )
 
             elif api == "alpaca":
                 api_key = (
