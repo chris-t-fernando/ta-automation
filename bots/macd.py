@@ -20,19 +20,7 @@ from stock_symbol import (
     STOP_LOSS_ACTIVE,
 )
 from buyplan import BuyPlan
-from utils import (
-    get_pause,
-    check_buy_signal,
-    validate_rules,
-    get_rules,
-    put_rules,
-    merge_rules,
-    trigger_stop_loss,
-    trigger_sell_point,
-    trigger_risk_point,
-    get_interval_settings,
-    get_stored_state,
-)
+from utils import get_pause, get_interval_settings
 from dateutil.relativedelta import relativedelta
 import warnings
 
@@ -46,6 +34,8 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 global_back_testing = False
 global_override_broker = False
+
+bot_telemetry = None
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -135,6 +125,9 @@ class BotTelemetry:
 
     def generate_df(self):
         self.orders_df = pd.DataFrame([x.as_dict() for x in self.orders])
+        if len(self.orders_df) == 0:
+            return
+
         plays = self.orders_df.play_id.unique()
         columns = [
             "play_id",
@@ -243,7 +236,8 @@ class MacdBot:
         self.data_source = data_source
         self.back_testing = back_testing
         self.back_testing_balance = back_testing_balance
-        self.bot_telemetry = BotTelemetry()
+        global bot_telemetry
+        self.bot_telemetry = bot_telemetry
         # get interval delta - used at the end of each iteration to work out what to do next
 
         # get jobs
@@ -361,7 +355,29 @@ class MacdBot:
             {"symbol": "SOL-USD", "api": "alpaca"},
         ]
 
-        symbols = mixed_symbols
+        crypto_symbol = [
+            {"symbol": "SOL-USD", "api": "alpaca"},
+        ]
+
+        crypto_symbols_all = [
+            # {"symbol": "ADA-USD", "api": "alpaca"},
+            {"symbol": "ETH-USD", "api": "alpaca"},
+            {"symbol": "SOL-USD", "api": "alpaca"},
+            # {"symbol": "XRP-USD", "api": "alpaca"},
+            {"symbol": "DOGE-USD", "api": "alpaca"},
+            {"symbol": "SHIB-USD", "api": "alpaca"},
+            {"symbol": "MATIC-USD", "api": "alpaca"},
+            # {"symbol": "ATOM-USD", "api": "alpaca"},
+            # {"symbol": "FTT-USD", "api": "alpaca"},
+            # {"symbol": "BNB-USD", "api": "alpaca"},
+            {"symbol": "WBTC-USD", "api": "alpaca"},
+            {"symbol": "TRX-USD", "api": "alpaca"},
+            {"symbol": "UNI-USD", "api": "alpaca"},
+            {"symbol": "BAT-USD", "api": "alpaca"},
+            {"symbol": "PAXG-USD", "api": "alpaca"},
+        ]
+
+        symbols = crypto_symbols_all
 
         df_report = pd.DataFrame(
             columns=df_report_columns, index=[x["symbol"] for x in symbols]
@@ -391,7 +407,7 @@ class MacdBot:
                 interval=self.interval,
                 real_money_trading=self.real_money_trading,
                 api=self.api_dict[s["api"]],
-                bot_report=self.bot_telemetry,
+                bot_telemetry=self.bot_telemetry,
                 store=ssm,
                 data_source=data_source,
                 back_testing=back_testing,
@@ -546,6 +562,8 @@ def main():
     log_wp.debug(
         f"Starting up, poll time is {interval}, back testing is {back_testing}"
     )
+    global bot_telemetry
+    bot_telemetry = BotTelemetry()
     ssm = boto3.client("ssm")
     data_source = yf
 

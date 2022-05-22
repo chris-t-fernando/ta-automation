@@ -126,5 +126,9 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def get_position(self, symbol) -> IPosition:
+    def get_position(self, symbol:str) -> IPosition:
+        ...
+
+    @abstractmethod
+    def get_precision(self, symbol:str) -> int:
         ...

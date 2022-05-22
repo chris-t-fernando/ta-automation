@@ -186,6 +186,8 @@ class OrderResult(IOrderResult):
                 return LIMIT_BUY
             elif order_type == "market":
                 return MARKET_BUY
+            elif order_type == "stop_limit":
+                return STOP_LIMIT_BUY
             else:
                 raise ValueError(f"Unknown order type: {order_type}")
         elif order_side == "sell":
@@ -193,6 +195,8 @@ class OrderResult(IOrderResult):
                 return LIMIT_SELL
             elif order_type == "market":
                 return MARKET_SELL
+            elif order_type == "stop_limit":
+                return STOP_LIMIT_SELL
             else:
                 raise ValueError(f"Unknown order type: {order_type}")
         else:
@@ -312,26 +316,57 @@ class AlpacaAPI(ITradeAPI):
         return yf_symbol
 
     def _submit_order(
-        self, symbol: str, units: int, order_type: int, trigger: float = None
+        self,
+        symbol: str,
+        units: int,
+        order_type: int,
+        limit_unit_price: float = None,
+        sell_stop_price: float = None,
     ) -> OrderResult:
-        if order_type > 4:
-            raise NotImplementedException(
-                f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
-            )
+        if order_type == 5:
+            raise NotImplementedException(f"STOPLIMITBUY is not implemented yet")
 
-        if "BUY" in ORDER_MAP_INVERTED[order_type]:
+        alpaca_symbol = self._to_alpaca(symbol)
+
+        order_type_text = ORDER_MAP_INVERTED[order_type]
+        if "BUY" in order_type_text:
             side = "buy"
         else:
             side = "sell"
 
-        if "MARKET" in ORDER_MAP_INVERTED[order_type]:
+        if "MARKET" in order_type_text:
+            # if its a market order
             alpaca_type = "market"
             limit_price = None
-        else:
-            alpaca_type = "limit"
-            limit_price = round(trigger, 2)
+            sell_stop_dict = None
+        elif "STOP_LIMIT_SELL" == order_type_text:
+            # if its a sell limit order
+            alpaca_type = "stop_limit"
+            precision = self.get_precision(symbol=symbol)
+            limit_price = round(limit_unit_price, precision)
+            sell_stop_price_rounded = round(sell_stop_price, precision)
+            sell_stop_dict = {
+                "stop_price": sell_stop_price_rounded,
+                "limit_price": 0.000005,
+            }
+            # sell_stop_dict = {"stop_price": "%.10f" % sell_stop_price_rounded}
+            # sell_stop_dict = {
+            #    "stop_price": "{:f}".format(float(sell_stop_price_rounded))
+            # }
 
-        alpaca_symbol = self._to_alpaca(symbol)
+        else:
+            # just a plain old sell limit order
+            alpaca_type = "limit"
+            # if its a crypto symbol, we can go to ridiculous degrees of precision
+            # but if its a normal symbol, it needs to be clipped at a precision of thousandth's (0.000)
+            precision = self.get_precision(symbol=symbol)
+            limit_price = round(limit_unit_price, precision)
+            # sell_stop_price_rounded = round(sell_stop_price, precision)
+            # sell_stop_dict = {
+            #    "stop_price": sell_stop_price_rounded,
+            #    "limit_price": 0.000005,
+            # }
+
         # do the order
         response = self.api.submit_order(
             symbol=alpaca_symbol,
@@ -340,6 +375,7 @@ class AlpacaAPI(ITradeAPI):
             type=alpaca_type,
             limit_price=limit_price,
             time_in_force="day",
+            stop_loss=sell_stop_dict,
         )
 
         # get the order so we have all the info about it
@@ -363,7 +399,10 @@ class AlpacaAPI(ITradeAPI):
         self, symbol: str, units: float, unit_price: float, back_testing_date=None
     ):
         return self._submit_order(
-            symbol=symbol, units=units, order_type=LIMIT_SELL, trigger=unit_price
+            symbol=symbol,
+            units=units,
+            order_type=LIMIT_SELL,
+            limit_unit_price=unit_price,
         )
 
         return self.api.submit_order(
@@ -379,7 +418,10 @@ class AlpacaAPI(ITradeAPI):
         self, symbol: str, units: float, unit_price: float, back_testing_date=None
     ):
         return self._submit_order(
-            symbol=symbol, units=units, order_type=LIMIT_BUY, trigger=unit_price
+            symbol=symbol,
+            units=units,
+            order_type=LIMIT_BUY,
+            limit_unit_price=unit_price,
         )
         return self.api.submit_order(
             symbol=symbol,
@@ -453,6 +495,12 @@ class AlpacaAPI(ITradeAPI):
     def close_position(self, symbol: str, back_testing_date=None) -> OrderResult:
         alpaca_symbol = self._to_alpaca(yf_symbol=symbol)
         return self.api.close_position(symbol=alpaca_symbol)
+
+    def get_precision(self, symbol: str) -> int:
+        if symbol not in self.supported_crypto_symbols:
+            return 3
+        else:
+            return 15
 
 
 if __name__ == "__main__":

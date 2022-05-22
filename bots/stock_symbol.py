@@ -434,7 +434,11 @@ class Symbol:
             # first how much cash do we have to spend?
             account = self.api.get_account()
             balance = account.assets["USD"]
-            buy_plan = BuyPlan(symbol=self.symbol, df=bars_slice)
+
+            # next check precision on order - normal stocks are only to the thousandth, crypto is huge
+            precision = self.api.get_precision(symbol=self.symbol)
+
+            buy_plan = BuyPlan(symbol=self.symbol, df=bars_slice, precision=precision)
 
             if balance <= buy_plan.entry_unit:
                 log_wp.info(
@@ -491,7 +495,7 @@ class Symbol:
 
         # do nothing - still open, not timedout
         log_wp.debug(
-            f"{self.symbol}: Order {order.order_id} is still open but not filled. Last High was {self.bars.High.loc[self._analyse_date]} last Low was {self.bars.Low.loc[self._analyse_date]}, trigger is {order.ordered_unit_price}"
+            f"{self.symbol}: Order {order.order_id} is still open but not filled. Last High was {self.bars.High.loc[self._analyse_date]} last Low was {self.bars.Low.loc[self._analyse_date]}, limit price is {order.ordered_unit_price}"
         )
         return False
 

@@ -25,7 +25,14 @@ log_wp.addHandler(hdlr)
 class BuyPlan:
     ORDER_SIZE = 2000
 
-    def __init__(self, symbol, df, profit_target: float = 1.5, notional_units=False):
+    def __init__(
+        self,
+        symbol: str,
+        df,
+        profit_target: float = 1.5,
+        notional_units: bool = False,
+        precision: int = 3,
+    ):
         self.symbol = symbol
         self.capital = BuyPlan.ORDER_SIZE
 
@@ -41,10 +48,13 @@ class BuyPlan:
         self.macd_signal_gap = self.blue_cycle_macd - self.blue_cycle_signal
 
         # then get the lowest close price since the cycle began
-        stop_unit = calculate_stop_loss_unit_price(
-            df=df,
-            start_date=self.red_cycle_start,
-            end_date=self.blue_cycle_start,
+        stop_unit = round(
+            calculate_stop_loss_unit_price(
+                df=df,
+                start_date=self.red_cycle_start,
+                end_date=self.blue_cycle_start,
+            ),
+            precision,
         )
 
         stop_unit_date = calculate_stop_loss_date(
@@ -57,8 +67,8 @@ class BuyPlan:
         self.intervals_since_stop = count_intervals(df=df, start_date=stop_unit_date)
 
         # calculate other order variables
-        self.entry_unit = df.Close.iloc[-1]
-        self.stop_unit = stop_unit
+        self.entry_unit = round(df.Close.iloc[-1], precision)
+        self.stop_unit = round(stop_unit, precision)
 
         if notional_units:
             self.units = self.capital / self.entry_unit
@@ -66,16 +76,16 @@ class BuyPlan:
             self.units = floor(self.capital / self.entry_unit)
 
         self.steps = 0
-        self.risk_unit = self.entry_unit - self.stop_unit
+        self.risk_unit = round(self.entry_unit - self.stop_unit, precision)
         if self.risk_unit == 0:
             print("banana")
-        self.risk_value = self.units * self.risk_unit
-        self.target_profit = profit_target * self.risk_unit
-        self.original_risk_unit = self.risk_unit
+        self.risk_value = round(self.units * self.risk_unit, precision)
+        self.target_profit = round(profit_target * self.risk_unit, precision)
+        self.original_risk_unit = round(self.risk_unit, precision)
         self.original_stop = stop_unit
 
-        self.entry_unit = round(self.entry_unit, 2)
-        self.target_price = self.entry_unit + self.target_profit
+        self.entry_unit = round(self.entry_unit, precision)
+        self.target_price = round(self.entry_unit + self.target_profit, precision)
 
         # fmt: off
         log_wp.info(f"{self.symbol} - BUY PLAN REPORT")

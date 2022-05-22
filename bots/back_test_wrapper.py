@@ -735,6 +735,9 @@ class BackTestAPI(ITradeAPI):
 
         return True
 
+    def get_precision(self, symbol: str) -> int:
+        return 3
+
 
 if __name__ == "__main__":
     starting_balance = 10000

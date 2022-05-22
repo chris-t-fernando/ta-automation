@@ -185,7 +185,7 @@ def count_intervals(df: pd.DataFrame, start_date, end_date=None):
 
 
 def clean(number):
-    number = round(number, 2)
+    number = round(number, 4)
     return "{:,}".format(number)
 
 
@@ -248,8 +248,8 @@ def get_pause(interval):
     mod = now_ts % interval_seconds
     # 5 minutes minus that = seconds til next 5 minute mark
     pause = interval_seconds - mod
-    # just another couple seconds to make sure the stock data is available when we run
-    pause += 5
+    # sleep for another 90 seconds - this is the yahoo finance gap
+    pause += 90
     return pause
 
 
@@ -456,34 +456,34 @@ def put_stored_state(store, new_state=list, back_testing: bool = False):
     )
 
 
-def trigger_sell_point(rule, last_price, period):
-    if rule["current_target_price"] < last_price:
-        log_wp.warning(
-            f'{rule["symbol"]}: Target price met at {period} (market {last_price} vs rule {rule["current_target_price"]})'
-        )
-        return True
-    else:
-        return False
+# def trigger_sell_point(rule, last_price, period):
+#    if rule["current_target_price"] < last_price:
+#        log_wp.warning(
+#            f'{rule["symbol"]}: Target price met at {period} (market {last_price} vs rule {rule["current_target_price"]})'
+#        )
+#        return True
+#    else:
+#        return False
 
 
-def trigger_risk_point(rule, last_price, period):
-    if (last_price + rule["current_risk"]) < last_price:
-        log_wp.warning(
-            f'{rule["symbol"]}: Risk price met at {period} (market {last_price} vs rule {(last_price + rule["current_risk"])}'
-        )
-        return True
-    else:
-        return False
+# def trigger_risk_point(rule, last_price, period):
+#    if (last_price + rule["current_risk"]) < last_price:
+#        log_wp.warning(
+#            f'{rule["symbol"]}: Risk price met at {period} (market {last_price} vs rule {(last_price + rule["current_risk"])}'
+#        )
+#        return True
+#    else:
+#        return False
 
 
-def trigger_stop_loss(rule, last_price, period):
-    if rule["current_stop_loss"] >= last_price:
-        log_wp.warning(
-            f'{rule["symbol"]}: Stop loss triggered at {period} (market {last_price} vs rule {rule["current_stop_loss"]})'
-        )
-        return True
-    else:
-        return False
+# def trigger_stop_loss(rule, last_price, period):
+#    if rule["current_stop_loss"] >= last_price:
+#        log_wp.warning(
+#            f'{rule["symbol"]}: Stop loss triggered at {period} (market {last_price} vs rule {rule["current_stop_loss"]})'
+#        )
+#        return True
+#    else:
+#        return False
 
 
 def pickle(object):
