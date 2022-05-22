@@ -57,14 +57,14 @@ class Symbol:
         api: ITradeAPI,
         interval: str,
         store,
-        bot_report,
+        bot_telemetry,
         data_source,
         real_money_trading: bool = False,
         to_date: str = None,
         back_testing: bool = False,
     ):
         self.back_testing = back_testing
-        self.bot_report = bot_report
+        self.bot_telemetry = bot_telemetry
         self.symbol = symbol
         self.api = api
         self.interval = interval
@@ -467,14 +467,14 @@ class Symbol:
         if order.status_summary == "cancelled":
             # the order got cancelled for some reason, so transition back to no position taken
             log_wp.debug(
-                f"Order {order.order_id}: cancelled, next action is trans_buy_cancelled"
+                f"{self.symbol}: Order {order.order_id}: cancelled, next action is trans_buy_cancelled"
             )
             return self.trans_buy_order_cancelled
         elif order.status_summary == "filled":
             # buy got filled so transition to position taken
             self.active_order_result = order
             log_wp.debug(
-                f"Order {order.order_id}: filled, next action is trans_buy_order_filled"
+                f"{self.symbol}: Order {order.order_id}: filled, next action is trans_buy_order_filled"
             )
             return self.trans_buy_order_filled
         elif order.status_summary == "open" or order.status_summary == "pending":
@@ -482,16 +482,16 @@ class Symbol:
             if self._is_position_timed_out(now=self._analyse_date, order=order):
                 # transition back to no position taken
                 log_wp.debug(
-                    f"Order {order.order_id}: has timed out, next action is trans_buy_order_timed_out"
+                    f"{self.symbol}: Order {order.order_id}: has timed out, next action is trans_buy_order_timed_out"
                 )
                 return self.trans_buy_order_timed_out
-            log_wp.debug(
-                f"Order {order.order_id}: is still open or pending. Last High was {self.bars.High.loc[self._analyse_date]} last Low was {self.bars.Low.loc[self._analyse_date]}"
+            log_wp.log(
+                9, f"{self.symbol}: Order {order.order_id}: is still open or pending"
             )
 
         # do nothing - still open, not timedout
         log_wp.debug(
-            f"{self.symbol}: Order {order.order_id} is still open but not filled, no action"
+            f"{self.symbol}: Order {order.order_id} is still open but not filled. Last High was {self.bars.High.loc[self._analyse_date]} last Low was {self.bars.Low.loc[self._analyse_date]}, trigger is {order.ordered_unit_price}"
         )
         return False
 
@@ -670,7 +670,7 @@ class Symbol:
         # hold on to order ID
         self.active_order_id = order_result.order_id
 
-        self.bot_report.add_order(order_result, play_id=self.play_id)
+        self.bot_telemetry.add_order(order_result, play_id=self.play_id)
 
         # write state
         self._write_to_state(order_result)
@@ -699,7 +699,7 @@ class Symbol:
                 order_id=state["order_id"], back_testing_date=self._analyse_date
             )
 
-        self.bot_report.add_order(order_result, self.play_id)
+        self.bot_telemetry.add_order(order_result, self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -729,7 +729,7 @@ class Symbol:
         order_result = self.api.cancel_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_report.add_order(order_result, self.play_id)
+        self.bot_telemetry.add_order(order_result, self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -756,7 +756,7 @@ class Symbol:
         order_result = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_report.add_order(order_result, self.play_id)
+        self.bot_telemetry.add_order(order_result, self.play_id)
 
         # update active_order_id
         self.active_order_id = None
@@ -783,7 +783,7 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # hold on to active_order_id
         self.active_order_id = order.order_id
@@ -805,7 +805,7 @@ class Symbol:
             f"{self.symbol}: Successfully cancelled take_profit order {cancelled_order.order_id}"
         )
 
-        self.bot_report.add_order(cancelled_order, self.play_id)
+        self.bot_telemetry.add_order(cancelled_order, self.play_id)
 
         # submit stop loss
         order = self.api.sell_order_market(
@@ -823,7 +823,7 @@ class Symbol:
         log_wp.warning(
             f"{self.symbol}: Successfully submitted stop_loss order {order.order_id}"
         )
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # update active_order_id
         self.active_order_id = order.order_id
@@ -849,7 +849,7 @@ class Symbol:
             )
             return False
 
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # update active_order_id
         self.active_order_id = order.order_id
@@ -863,7 +863,7 @@ class Symbol:
         order = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # already don't hold any, so no need to delete orders
         # just need to clean up the object and delete rules
@@ -881,7 +881,7 @@ class Symbol:
         order = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # clear active order details
         self.active_order_id = None
@@ -906,7 +906,7 @@ class Symbol:
             symbol=self.symbol, back_testing_date=self._back_testing_date
         )
 
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         self.active_order_id = order.order_id
 
@@ -933,7 +933,7 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # hold on to active_order_id
         self.active_order_id = order.order_id
@@ -956,7 +956,7 @@ class Symbol:
         filled_value = (
             filled_order.filled_unit_quantity * filled_order.filled_unit_price
         )
-        self.bot_report.add_order(filled_order, self.play_id)
+        self.bot_telemetry.add_order(filled_order, self.play_id)
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Successfully took profit: order ID {filled_order.order_id} sold {filled_order.filled_unit_quantity} at {filled_order.filled_unit_price} for value {filled_value}"
         )
@@ -1013,7 +1013,7 @@ class Symbol:
                 f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )
 
-        self.bot_report.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order, self.play_id)
 
         # set current check
         self.current_check = self.check_state_take_profit

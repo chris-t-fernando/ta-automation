@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pandas import DataFrame
 
 MARKET_BUY = 1
 MARKET_SELL = 2
@@ -73,55 +74,57 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def get_broker_name(self):
+    def get_broker_name(self) -> str:
         ...
 
     @abstractmethod
-    def get_account(self):
+    def get_account(self) -> IAccount:
         ...
 
     @abstractmethod
-    def list_positions(self):
+    def list_positions(self) -> IPosition:
         ...
 
     @abstractmethod
-    def get_bars(self):
+    def get_bars(self) -> DataFrame:
         ...
 
     @abstractmethod
-    def buy_order_market(self):
+    def buy_order_market(self) -> IOrderResult:
         ...
 
     @abstractmethod
-    def buy_order_limit(self):
+    def buy_order_limit(self) -> IOrderResult:
         ...
 
     @abstractmethod
     def sell_order_market(
         self, symbol: str, units: float, back_testing_unit_price: None
-    ):
+    ) -> IOrderResult:
         ...
 
     @abstractmethod
-    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
+    def sell_order_limit(
+        self, symbol: str, units: float, unit_price: float
+    ) -> IOrderResult:
         ...
 
     @abstractmethod
-    def cancel_order(self, order_id: str, back_testing_date):
+    def cancel_order(self, order_id: str, back_testing_date) -> IOrderResult:
         ...
 
     @abstractmethod
-    def list_orders(self):
+    def list_orders(self) -> list:
         ...
 
     @abstractmethod
-    def get_order(self, order_id, back_testing_date):
+    def get_order(self, order_id, back_testing_date) -> IOrderResult:
         ...
 
     @abstractmethod
-    def close_position(self, symbol: str):
+    def close_position(self, symbol: str) -> IOrderResult:
         ...
 
     @abstractmethod
-    def get_position(self, symbol):
+    def get_position(self, symbol) -> IPosition:
         ...

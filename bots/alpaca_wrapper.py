@@ -312,7 +312,7 @@ class AlpacaAPI(ITradeAPI):
         return yf_symbol
 
     def _submit_order(
-        self, symbol: str, units: int, order_type: int, trigger: bool = None
+        self, symbol: str, units: int, order_type: int, trigger: float = None
     ) -> OrderResult:
         if order_type > 4:
             raise NotImplementedException(

@@ -94,7 +94,7 @@ df_trade_report_columns = [
 df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 
 
-class BotReport:
+class BotTelemetry:
     columns = [
         "symbol",
         "order_id",
@@ -237,12 +237,14 @@ class MacdBot:
         back_testing_balance: float = None,
     ):
         self.interval = interval
+        self.interval_delta, max_range = get_interval_settings(self.interval)
         self.real_money_trading = False
         self.ssm = ssm
         self.data_source = data_source
         self.back_testing = back_testing
         self.back_testing_balance = back_testing_balance
-        self.bot_report = BotReport()
+        self.bot_telemetry = BotTelemetry()
+        # get interval delta - used at the end of each iteration to work out what to do next
 
         # get jobs
         mixed_symbols = [
@@ -389,7 +391,7 @@ class MacdBot:
                 interval=self.interval,
                 real_money_trading=self.real_money_trading,
                 api=self.api_dict[s["api"]],
-                bot_report=self.bot_report,
+                bot_report=self.bot_telemetry,
                 store=ssm,
                 data_source=data_source,
                 back_testing=back_testing,
@@ -496,24 +498,23 @@ class MacdBot:
                 back_test_start_position
             ]
 
+        # TODO once you work out why we aren't analysing the most recent data, drop this to level 9
         log_wp.debug(
             f"Range of all symbol bars: latest start date {latest_start} (for {latest_symbol}), latest end date {end_date}"
         )
         return start_date, end_date
 
-    def new_start(self):
+    def process_bars(self):
         # update the data
         for s in self.symbols:
-            log_wp.debug(f"{s}: Updating bar data")
+            log_wp.log(9, f"{s}: Updating bar data")
             self.symbols[s].update_bars()
 
         # find the oldest and newest records we're working with
         data_start_date, data_end_date = self.get_date_range()
 
-        # get interval delta - used at the end of each iteration to work out what to do next
-        interval_delta, max_range = get_interval_settings(self.interval)
-
-        # define our starting point
+        # define our starting point - if we're backtesting then go from the beginning of the data
+        # if we're running live, then just process the most recent data
         if self.back_testing:
             current_record = data_start_date
         else:
@@ -533,8 +534,8 @@ class MacdBot:
                 ):
                     this_symbol.process(current_record)
                 else:
-                    print(f"{s}: No new data")
-            current_record = current_record + interval_delta
+                    log_wp.log(9, f"{s}: No new data")
+            current_record = current_record + self.interval_delta
 
         # log_wp.debug(f"Finished processing all records")
 
@@ -593,15 +594,14 @@ def main():
         return
 
     if back_testing:
-        bot_handler.new_start()
+        bot_handler.process_bars()
     else:
         while True:
-            bot_handler.new_start()
+            bot_handler.process_bars()
+            bot_handler.bot_telemetry.generate_df()
             pause = get_pause(interval)
-            log_wp.debug(f"Sleeping for {round(pause,0)}s")
+            log_wp.log(9, f"Sleeping for {round(pause,0)}s")
             time.sleep(pause)
-
-    bot_handler.bot_report.generate_df()
 
     global df_trade_report
     df_trade_report.to_csv("trade_report.csv")
