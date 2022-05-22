@@ -12,7 +12,6 @@ from alpaca_trade_api import REST, entity
 import pandas as pd
 import boto3
 import logging
-import json
 import math
 from dateutil.relativedelta import relativedelta
 
@@ -205,7 +204,7 @@ class OrderResult(IOrderResult):
 
 # concrete implementation of trade api for alpaca
 class AlpacaAPI(ITradeAPI):
-    supported_crypto_symbols = []
+    supported_crypto_symbols_alp = []
 
     def __init__(
         self,
@@ -234,10 +233,18 @@ class AlpacaAPI(ITradeAPI):
         # self.asset_list_by_id = self._structure_asset_dict_by_id(assets)
         self.asset_list_by_symbol = self._structure_asset_dict_by_symbol(self.assets)
 
-        self.supported_crypto_symbols = self._get_crypto_symbols()
-        self._create_yf_to_alpaca_symbol_mapping(self.supported_crypto_symbols)
+        self.supported_crypto_symbols_alp = self._get_crypto_symbols()
+        self._create_yf_to_alpaca_symbol_mapping(self.supported_crypto_symbols_alp)
+        self.supported_crypto_symbols_yf = self._get_crypto_symbols_yf()
 
         self.default_currency = "usd"
+
+    def _get_crypto_symbols_yf(self):
+        yf_symbols = []
+        for alp_symbol in self.supported_crypto_symbols_alp:
+            yf_symbols.append(self._to_yf(alp_symbol))
+
+        return yf_symbols
 
     def _create_yf_to_alpaca_symbol_mapping(self, crypto_symbols):
         self._yf_to_alpaca_symbol_map = {}
@@ -252,6 +259,7 @@ class AlpacaAPI(ITradeAPI):
         return "alpaca"
 
     def _get_crypto_symbols(self):
+        # convert this to yf symbols
         crypto_symbols = []
         for asset in self.assets:
             if asset._raw["class"] == "crypto":
@@ -342,7 +350,7 @@ class AlpacaAPI(ITradeAPI):
         elif "STOP_LIMIT_SELL" == order_type_text:
             # if its a sell limit order
             alpaca_type = "stop_limit"
-            precision = self.get_precision(symbol=symbol)
+            precision = self.get_precision(yf_symbol=symbol)
             limit_price = round(limit_unit_price, precision)
             sell_stop_price_rounded = round(sell_stop_price, precision)
             sell_stop_dict = {
@@ -359,7 +367,7 @@ class AlpacaAPI(ITradeAPI):
             alpaca_type = "limit"
             # if its a crypto symbol, we can go to ridiculous degrees of precision
             # but if its a normal symbol, it needs to be clipped at a precision of thousandth's (0.000)
-            precision = self.get_precision(symbol=symbol)
+            precision = self.get_precision(yf_symbol=symbol)
             limit_price = round(limit_unit_price, precision)
             # sell_stop_price_rounded = round(sell_stop_price, precision)
             # sell_stop_dict = {
@@ -496,8 +504,8 @@ class AlpacaAPI(ITradeAPI):
         alpaca_symbol = self._to_alpaca(yf_symbol=symbol)
         return self.api.close_position(symbol=alpaca_symbol)
 
-    def get_precision(self, symbol: str) -> int:
-        if symbol not in self.supported_crypto_symbols:
+    def get_precision(self, yf_symbol: str) -> int:
+        if yf_symbol not in self.supported_crypto_symbols_yf:
             return 3
         else:
             return 15

@@ -436,7 +436,7 @@ class Symbol:
             balance = account.assets["USD"]
 
             # next check precision on order - normal stocks are only to the thousandth, crypto is huge
-            precision = self.api.get_precision(symbol=self.symbol)
+            precision = self.api.get_precision(yf_symbol=self.symbol)
 
             buy_plan = BuyPlan(symbol=self.symbol, df=bars_slice, precision=precision)
 

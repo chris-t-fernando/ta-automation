@@ -323,6 +323,21 @@ class MacdBot:
             {"symbol": "INFY", "api": "alpaca"},
             {"symbol": "RTX", "api": "alpaca"},
             {"symbol": "GME", "api": "alpaca"},
+            # {"symbol": "ADA-USD", "api": "alpaca"},
+            {"symbol": "ETH-USD", "api": "alpaca"},
+            {"symbol": "SOL-USD", "api": "alpaca"},
+            # {"symbol": "XRP-USD", "api": "alpaca"},
+            {"symbol": "DOGE-USD", "api": "alpaca"},
+            {"symbol": "SHIB-USD", "api": "alpaca"},
+            {"symbol": "MATIC-USD", "api": "alpaca"},
+            # {"symbol": "ATOM-USD", "api": "alpaca"},
+            # {"symbol": "FTT-USD", "api": "alpaca"},
+            # {"symbol": "BNB-USD", "api": "alpaca"},
+            {"symbol": "WBTC-USD", "api": "alpaca"},
+            {"symbol": "TRX-USD", "api": "alpaca"},
+            {"symbol": "UNI-USD", "api": "alpaca"},
+            {"symbol": "BAT-USD", "api": "alpaca"},
+            {"symbol": "PAXG-USD", "api": "alpaca"},
         ]
 
         nyse_symbols_medium = [
@@ -515,8 +530,9 @@ class MacdBot:
             ]
 
         # TODO once you work out why we aren't analysing the most recent data, drop this to level 9
-        log_wp.debug(
-            f"Range of all symbol bars: latest start date {latest_start} (for {latest_symbol}), latest end date {end_date}"
+        log_wp.log(
+            9,
+            f"Range of all symbol bars: latest start date {latest_start} (for {latest_symbol}), latest end date {end_date}",
         )
         return start_date, end_date
 
@@ -617,8 +633,9 @@ def main():
         while True:
             bot_handler.process_bars()
             bot_handler.bot_telemetry.generate_df()
+            start, end = bot_handler.get_date_range()
             pause = get_pause(interval)
-            log_wp.log(9, f"Sleeping for {round(pause,0)}s")
+            log_wp.debug(f"Finished analysing {end}, sleeping for {round(pause,0)}s")
             time.sleep(pause)
 
     global df_trade_report
