@@ -5,8 +5,12 @@ import pandas as pd
 import logging
 import jsonpickle
 from datetime import datetime
-import warnings
 import uuid
+import pytz
+import yfinance as yf
+import boto3
+from numpy import NaN
+import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -87,22 +91,66 @@ def add_signals(bars, interval):
     interval_delta, max_range = get_interval_settings(interval)
 
     start_time = time.time()
-    macd = btalib.macd(bars)
-    bars["macd_macd"] = macd["macd"]
-    bars["macd_signal"] = macd["signal"]
-    bars["macd_histogram"] = macd["histogram"]
 
-    bars["macd_crossover"] = False
-    bars["macd_signal_crossover"] = False
-    bars["macd_above_signal"] = False
-    bars["macd_cycle"] = None
+    # first check if this is a brand new data frame or if we're just freshening an existing on
+    if "macd_macd" not in bars.columns:
+        # this is a new dataframe
+        # add the new columns to it
+        bars = bars.assign(
+            macd_macd=NaN,
+            macd_signal=NaN,
+            macd_histogram=NaN,
+            macd_crossover=False,
+            macd_signal_crossover=False,
+            macd_above_signal=False,
+            macd_cycle="",
+        )
+        analyse_bars = bars
+    else:
+        # ignore the first couple hundred rows because they can't be analysed
+        ignore_date = bars.index[200]
+        # get position of first nan
+        if len(bars.loc[(bars.macd_macd.isnull()) & (bars.index > ignore_date)]) == 0:
+            merge_from = 300
+        else:
+            merge_from = bars.index.get_loc(
+                bars.loc[(bars.macd_macd.isnull()) & (bars.index > ignore_date)].index[
+                    0
+                ]
+            )
+
+        length_of_new_bars = len(bars) - merge_from
+
+        # 300 for SMA plus some historical data/fat
+        if length_of_new_bars < 300:
+            analyse_bar_length = 300
+        else:
+            analyse_bar_length = length_of_new_bars
+
+        analyse_bars = bars.iloc[-analyse_bar_length:]
+
+    # do ta against the relevant rows
+    macd = btalib.macd(analyse_bars)
+
+    # i don't like the default column names that come back from btalib
+    renamed_macd = macd.df.rename(
+        columns={
+            "macd": "macd_macd",
+            "signal": "macd_signal",
+            "histogram": "macd_histogram",
+        }
+    )
+
+    # merge any actual values in where there were NaNs before
+    bars = bars.fillna(renamed_macd)
 
     # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
     cycle = None
 
-    for d in bars.index:
+    # for d in bars.index:
+    for d in analyse_bars.index:
         # start with crossover search
-        # convert index to a datetime so we can do a delta against it                           ****************
+        # convert index to a datetime so we can do a delta against it
         previous_key = d - interval_delta
         # previous key had macd less than or equal to signal
         if bars["macd_macd"].loc[d] > bars["macd_signal"].loc[d]:
@@ -492,3 +540,69 @@ def pickle(object):
 
 def unpickle(object):
     return jsonpickle.decode(object)
+
+
+def save_bars(symbols: list, interval: str, max_range) -> bool:
+    s3 = boto3.resource("s3")
+
+    for symbol in symbols:
+        existing_bars = load_bars([symbol])
+        if type(existing_bars[symbol]) == pd.core.frame.DataFrame:
+            start = existing_bars[symbol].index[-1]
+            print(f"{symbol}: Saved data found")
+        else:
+            start = datetime.now() - max_range
+            print(f"{symbol}: No saved data found")
+
+        bars = yf.Ticker(symbol).history(
+            start=start,
+            interval=interval,
+            actions=False,
+        )
+
+        if len(bars) == 0:
+            print(f"{symbol}: No YF data - skipping symbol")
+            continue
+
+        bars = bars.tz_convert(pytz.utc)
+
+        # trim bars because the last ~3 are weird timestamps with big missing data
+        trimmed_bars = bars.iloc[:-4]
+
+        # need to merge old bars with new bars
+        if type(existing_bars[symbol]) == pd.core.frame.DataFrame:
+            trimmed_bars = merge_bars(bars=existing_bars[symbol], new_bars=trimmed_bars)
+
+        bars_with_signals = add_signals(bars=trimmed_bars, interval=interval)
+
+        # pickled_bars = utils.pickle(bars)
+        pickled_bars = bars_with_signals.to_csv()
+        try:
+            s3object = s3.Object("mfers-tabot", f"symbol_data/{symbol}.csv")
+
+            s3object.put(
+                Body=bytes(pickled_bars.encode("UTF-8")),
+                StorageClass="ONEZONE_IA",
+            )
+        except:
+            return False
+        print(f"{symbol}: Saved bars ")
+    return True
+
+
+def load_bars(symbols: list) -> dict:
+    returned_bars = {}
+    for symbol in symbols:
+        try:
+            loaded_csv = pd.read_csv(
+                f"s3://mfers-tabot/symbol_data/{symbol}.csv",
+                index_col=0,
+                parse_dates=True,
+                infer_datetime_format=True,
+            )
+        except FileNotFoundError as e:
+            loaded_csv = None
+
+        returned_bars[symbol] = loaded_csv
+
+    return returned_bars

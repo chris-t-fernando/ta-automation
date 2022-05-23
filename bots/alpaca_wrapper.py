@@ -369,6 +369,7 @@ class AlpacaAPI(ITradeAPI):
             # but if its a normal symbol, it needs to be clipped at a precision of thousandth's (0.000)
             precision = self.get_precision(yf_symbol=symbol)
             limit_price = round(limit_unit_price, precision)
+            sell_stop_dict = None
             # sell_stop_price_rounded = round(sell_stop_price, precision)
             # sell_stop_dict = {
             #    "stop_price": sell_stop_price_rounded,
@@ -376,15 +377,28 @@ class AlpacaAPI(ITradeAPI):
             # }
 
         # do the order
-        response = self.api.submit_order(
-            symbol=alpaca_symbol,
-            qty=math.floor(units),
-            side=side,
-            type=alpaca_type,
-            limit_price=limit_price,
-            time_in_force="day",
-            stop_loss=sell_stop_dict,
-        )
+        try:
+            response = self.api.submit_order(
+                symbol=alpaca_symbol,
+                qty=math.floor(units),
+                side=side,
+                type=alpaca_type,
+                limit_price=limit_price,
+                time_in_force="day",
+                stop_loss=sell_stop_dict,
+            )
+        except Exception as e:
+            if e == "qty must be >= 10 with trade increment 10":
+                updated_units = math.floor(units / 10)
+                response = self.api.submit_order(
+                    symbol=alpaca_symbol,
+                    qty=updated_units,
+                    side=side,
+                    type=alpaca_type,
+                    limit_price=limit_price,
+                    time_in_force="day",
+                    stop_loss=sell_stop_dict,
+                )
 
         # get the order so we have all the info about it
         return self.get_order(order_id=response.id)

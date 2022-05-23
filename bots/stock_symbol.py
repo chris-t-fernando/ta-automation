@@ -328,10 +328,16 @@ class Symbol:
 
     # START BAR FUNCTIONS
     def _get_bars(self, from_date=None, to_date=None, initialised: bool = True):
-
+        saved_data = False
         if initialised == False:
             # we actually need to grab everything
-            yf_start = datetime.now() - self.max_range
+            # first check to see if we have any data in s3
+            saved_bars = utils.load_bars([self.symbol])[self.symbol]
+            if type(saved_bars) == pd.core.frame.DataFrame:
+                yf_start = saved_bars.index[-1]
+                saved_data = True
+            else:
+                yf_start = datetime.now() - self.max_range
         else:
             # if we've specified a date, we're probably refreshing our dataset over time
             if from_date:
@@ -356,6 +362,11 @@ class Symbol:
             actions=False,
         )
 
+        bars = bars.tz_convert(pytz.utc)
+
+        if saved_data:
+            bars = utils.merge_bars(saved_bars, bars)
+
         if len(bars) == 0:
             # something went wrong - usually bad symbol and search parameters
             log_wp.debug(
@@ -373,7 +384,6 @@ class Symbol:
 
         bars = trimmed_new_bars
 
-        bars = bars.tz_convert(pytz.utc)
         # bars = bars.loc[bars.index <= yf_end]
 
         if self.back_testing:
@@ -401,9 +411,9 @@ class Symbol:
         if len(new_bars) > 0:
             # pad new bars to 200 rows so that macd and sma200 work
             # TODO merge these bars in before running add_signals - this way we're doing signals for only a couple rows instead of 200
-            if len(new_bars) < 200:
+            if len(new_bars) < 300:
                 new_bars = utils.merge_bars(
-                    new_bars=new_bars, bars=self.bars.iloc[-200:]
+                    new_bars=new_bars, bars=self.bars.iloc[-300:]
                 )
 
             new_bars = utils.add_signals(new_bars, interval=self.interval)
