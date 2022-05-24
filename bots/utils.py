@@ -247,7 +247,8 @@ def clean(number):
 
 
 # simple function to check if a pandas series contains a macd buy signal
-def check_buy_signal(df, symbol):
+def check_buy_signal(df, symbol, bot_telemetry):
+    telemetry_reasons = []
     crossover = False
     macd_negative = False
     sma_trending_up = False
@@ -256,16 +257,61 @@ def check_buy_signal(df, symbol):
     if row.macd_crossover == True:
         crossover = True
         # log_wp.debug(f"MACD crossover found")
+        telemetry_reasons.append("MACD crossover found")
+    else:
+        telemetry_reasons.append("MACD crossover was not found")
 
     if row.macd_macd < 0:
         macd_negative = True
         # log_wp.debug(f"MACD is less than 0: {row.macd_macd}")
+        telemetry_reasons.append("MACD is negative")
+    else:
+        telemetry_reasons.append("MACD is not negative")
 
     last_sma = get_last_sma(df=df)
     recent_average_sma = get_recent_average_sma(df=df)
     sma_trending_up = check_sma(
         last_sma=last_sma, recent_average_sma=recent_average_sma
     )
+
+    if sma_trending_up:
+        telemetry_reasons.append("SMA is upward")
+    else:
+        telemetry_reasons.append("SMA not trending upward")
+
+    # only bother writing to telemetry if we find a signal crossover - otherwise there's too much noise
+    if row.macd_crossover:
+        # string summary of what we found
+        if crossover and macd_negative and sma_trending_up:
+            outcome = "buy signal found"
+        else:
+            outcome = "no signal"
+
+        # flatten the list of reasons why we chose this outcome
+        telemetry_reason_string = ", ".join(telemetry_reasons)
+
+        # for insertion into telemetry
+        telemetry_row = {
+            "symbol": symbol,
+            "Open": row.Open,
+            "High": row.High,
+            "Low": row.Low,
+            "Close": row.Close,
+            "macd_macd": row.macd_macd,
+            "macd_signal": row.macd_signal,
+            "macd_histogram": row.macd_histogram,
+            "macd_crossover": row.macd_crossover,
+            "macd_signal_crossover": row.macd_signal_crossover,
+            "macd_above_signal": row.macd_above_signal,
+            "macd_cycle": row.macd_cycle,
+            "sma_200": row.sma_200,
+            "recent_average_sma": recent_average_sma,
+            "outcome": outcome,
+            "outcome_reason": telemetry_reason_string,
+        }
+
+        bot_telemetry.add_cycle_data(telemetry_row)
+
     # if sma_trending_up:
     # log_wp.debug(
     #    f"SMA trending up: last {last_sma}, recent average {recent_average_sma}"
@@ -586,16 +632,33 @@ def save_bars(symbols: list, interval: str, max_range) -> bool:
 
         # pickled_bars = utils.pickle(bars)
         pickled_bars = bars_with_signals.to_csv()
-        try:
-            s3object = s3.Object("mfers-tabot", f"symbol_data/{symbol}.csv")
+        return save_to_s3(
+            bucket="mfers-tabot", key=f"symbol_data/{symbol}.csv", pickle=pickled_bars
+        )
+        # try:
+        #    s3object = s3.Object("mfers-tabot", f"symbol_data/{symbol}.csv")
+        #    s3object.put(
+        #        Body=bytes(pickled_bars.encode("UTF-8")),
+        #        StorageClass="ONEZONE_IA",
+        #    )
+        # except:
+        #    return False
 
-            s3object.put(
-                Body=bytes(pickled_bars.encode("UTF-8")),
-                StorageClass="ONEZONE_IA",
-            )
-        except:
-            return False
-        print(f"{symbol}: Saved bars ")
+    return True
+
+
+def save_to_s3(bucket, key, pickle):
+    s3 = boto3.resource("s3")
+    try:
+        s3object = s3.Object(bucket, key)
+
+        s3object.put(
+            Body=bytes(pickle),
+            StorageClass="ONEZONE_IA",
+        )
+    except:
+        return False
+
     return True
 
 

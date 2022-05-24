@@ -11,10 +11,13 @@ from itradeapi import (
 )
 import utils
 import logging
-import warnings
+
 from buyplan import BuyPlan
 from math import floor
 import pandas as pd
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -57,6 +60,9 @@ class Symbol:
         store,
         bot_telemetry,
         market_data_source,
+        slack_token: str,
+        slack_heartbeat_channel: str,
+        slack_announcements_channel: str,
         real_money_trading: bool = False,
         to_date: str = None,
         back_testing: bool = False,
@@ -70,6 +76,9 @@ class Symbol:
         self.store = store
         self.market_data_source = market_data_source
         self.initialised = False
+        self.slack_token = slack_token
+        self.slack_heartbeat_channel = slack_heartbeat_channel
+        self.slack_announcements_channel = slack_announcements_channel
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
         # next check precision on order - normal stocks are only to the thousandth, crypto is huge
@@ -462,13 +471,16 @@ class Symbol:
     def check_state_no_position_taken(self):
         # get iloc of analyse_index
 
+        # TODO - if the last data is too far in the past, bail out here!
         bars_slice = self.get_data_window()
 
         if len(bars_slice) < 200:
             print("banana")
 
         # check to see if the signal was found in the last record in bars_slice
-        buy_signal_found = utils.check_buy_signal(df=bars_slice, symbol=self.symbol)
+        buy_signal_found = utils.check_buy_signal(
+            df=bars_slice, symbol=self.symbol, bot_telemetry=self.bot_telemetry
+        )
 
         # if we found a buy signal, return the transition function to run
         if buy_signal_found:
@@ -849,6 +861,12 @@ class Symbol:
         # set current check
         self.current_check = self.check_state_position_taken
 
+        client = WebClient(token=self.slack_token)
+        client.chat_postMessage(
+            channel=self.slack_announcements_channel,
+            text=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit} entry price | {self.buy_plan.stop_unit} stop loss price | {self.buy_plan.units} units bought",
+        )
+
         return True
 
     def trans_take_profit(self):
@@ -1104,6 +1122,16 @@ class Symbol:
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )
+
+        client = WebClient(token=self.slack_token)
+        client.chat_postMessage(
+            channel=self.slack_announcements_channel,
+            text=f"MACD algo took profit on {self.symbol} | {filled_order.filled_unit_price} sold price | {filled_order.filled_unit_quantity} units sold | {filled_order.filled_unit_quantity * filled_order.filled_unit_price} total sale value",
+        )
+        client.chat_postMessage(
+            channel=self.slack_announcements_channel,
+            text=f"I still hold {new_units_held} units of {self.symbol} | {new_target_unit_price} is new target price | {new_stop_loss} is new stop loss",
+        )
 
         self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 

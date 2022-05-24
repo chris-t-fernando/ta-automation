@@ -1,9 +1,11 @@
 import logging
 import boto3
 import parameter_stores
+from iparameter_store import IParameterStore
 from alpaca_wrapper import AlpacaAPI
 from swyftx_wrapper import SwyftxAPI
 from back_test_wrapper import BackTestAPI
+from datetime import datetime
 import sample_symbols
 import yfinance as yf
 import pandas as pd
@@ -18,20 +20,24 @@ from stock_symbol import (
     TAKING_PROFIT,
     STOP_LOSS_ACTIVE,
 )
-from utils import get_pause, get_interval_settings
+import utils
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
+# add heartbeating
 # do reporting
-# put reporting into S3 or something
+#  - handle open positions at end of run better - currently these are marked as losses
+# backtest wrapper - stop loss issues - either 99% is wrong or i'm calculating it wrong in stop loss
 # notify to Slack
 # 300 df merge update bring down to just changes - faster faster
 # better stop loss pct figures
 # command line parameters
 
-global_back_testing = True
-global_override_broker = True
+global_back_testing = False
+global_override_broker = False
+
+BUCKET = "mfers-tabot"
 
 bot_telemetry = None
 
@@ -63,6 +69,25 @@ class BotTelemetry:
         "filled_total_value",
         "fees",
         "success",
+    ]
+
+    cycle_columns = [
+        "symbol",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "macd_macd",
+        "macd_signal",
+        "macd_histogram",
+        "macd_crossover",
+        "macd_signal_crossover",
+        "macd_above_signal",
+        "macd_cycle",
+        "sma_200",
+        "recent_average_sma",
+        "outcome",
+        "outcome_reason",
     ]
 
     def __init__(self):
@@ -110,7 +135,7 @@ class BotTelemetry:
             "duration",
         ]
         # set up the destination dataframe
-        play_df = pd.DataFrame(columns=columns)
+        plays_df = pd.DataFrame(columns=columns)
 
         # the broker api may fill an order automatically or it may queue it (market closed, price condition not met etc)
         # the state machine submits, and then gets the order details automatically so it might come back as filled immediately
@@ -166,11 +191,11 @@ class BotTelemetry:
                 columns=columns,
                 index=[0],
             )
-            play_df = pd.concat([play_df, new_row], ignore_index=True)
+            plays_df = pd.concat([plays_df, new_row], ignore_index=True)
 
             print(f"Play ID {play} made {profit} profit")
 
-        self.play_df = play_df
+        self.plays_df = plays_df
 
         print("banana")
 
@@ -187,36 +212,111 @@ class BotTelemetry:
     def _convert_orders_to_df(self):
         ...
 
+    def next_cycle(self, timestamp):
+        # set up the destination dataframe
+        self.cycle_df = pd.DataFrame(columns=BotTelemetry.cycle_columns)
+        self.cycle_timestamp = timestamp
+
+    def add_cycle_data(self, row):
+        new_row = pd.DataFrame(
+            {
+                "symbol": row["symbol"],
+                "Open": row["Open"],
+                "High": row["High"],
+                "Low": row["Low"],
+                "Close": row["Close"],
+                "macd_macd": row["macd_macd"],
+                "macd_signal": row["macd_signal"],
+                "macd_histogram": row["macd_histogram"],
+                "macd_crossover": row["macd_crossover"],
+                "macd_signal_crossover": row["macd_signal_crossover"],
+                "macd_above_signal": row["macd_above_signal"],
+                "macd_cycle": row["macd_cycle"],
+                "sma_200": row["sma_200"],
+                "recent_average_sma": row["recent_average_sma"],
+                "outcome": row["outcome"],
+                "outcome_reason": row["outcome_reason"],
+            },
+            columns=BotTelemetry.cycle_columns,
+            index=[0],
+        )
+        self.cycle_df = pd.concat([self.cycle_df, new_row], ignore_index=True)
+
+    def save_cycle(self):
+        if len(self.cycle_df) > 0:
+            dyn = boto3.resource("dynamodb")
+            table = dyn.Table("bot_telemetry_macd_cycles")
+            cycle_json = self.cycle_df.to_json()
+            # formatted_cycle_json = json.dumps(cycle_json, indent=4, sort_keys=True)
+            table.put_item(
+                Item={
+                    "cycle_date": str(self.cycle_timestamp),
+                    "signal_data": cycle_json,
+                }
+            )
+        return True
+
 
 class MacdBot:
     jobs = None
 
     def __init__(
         self,
-        ssm,
+        ssm: IParameterStore,
         market_data_source,
         bot_telemetry: BotTelemetry,
-        interval="5m",
-        back_testing=False,
+        slack_token: str,
+        slack_heartbeat_channel: str,
+        slack_announcements_channel: str,
+        interval: str = "5m",
+        real_money_trading: bool = False,
+        back_testing: bool = False,
         back_testing_balance: float = None,
     ):
         self.interval = interval
-        self.interval_delta, max_range = get_interval_settings(self.interval)
-        self.real_money_trading = False
+        self.interval_delta, max_range = utils.get_interval_settings(self.interval)
+        self.real_money_trading = real_money_trading
         self.ssm = ssm
         self.market_data_source = market_data_source
         self.back_testing = back_testing
         self.back_testing_balance = back_testing_balance
         self.bot_telemetry = bot_telemetry
+        self.slack_token = slack_token
+        self.slack_heartbeat_channel = slack_heartbeat_channel
+        self.slack_announcements_channel = slack_announcements_channel
 
         # TODO take this as parameter input
-        symbols = sample_symbols.everything
+        # symbols = sample_symbols.everything
+        # symbols = sample_symbols.crypto_symbols_all
+        symbols = sample_symbols.crypto_symbol
 
         if back_testing:
             # override broker to back_test
             if global_override_broker:
                 for s in symbols:
                     s["api"] = "back_test"
+
+        # get slack config
+
+        slack_token = (
+            ssm.get_parameter(Name="/tabot/slack/bot_key", WithDecryption=True)
+            .get("Parameter")
+            .get("Value")
+        )
+        slack_heartbeat_channel = (
+            ssm.get_parameter(
+                Name="/tabot/slack/heartbeat_channel", WithDecryption=False
+            )
+            .get("Parameter")
+            .get("Value")
+        )
+        slack_announcements_channel = (
+            ssm.get_parameter(
+                Name="/tabot/slack/announcements_channel", WithDecryption=False
+            )
+            .get("Parameter")
+            .get("Value")
+        )
 
         # get brokers and then set them up
         self.api_list = []
@@ -243,6 +343,9 @@ class MacdBot:
                 store=ssm,
                 market_data_source=market_data_source,
                 back_testing=back_testing,
+                slack_token=slack_token,
+                slack_heartbeat_channel=slack_heartbeat_channel,
+                slack_announcements_channel=slack_announcements_channel,
             )
             if new_symbol._init_complete:
                 self.symbols[s["symbol"]] = new_symbol
@@ -372,6 +475,8 @@ class MacdBot:
         # initialise state for each symbol - check which state each symbol is in, read open order numbers etc
         # self.set_state()
 
+        bot_telemetry.next_cycle(timestamp=datetime.now())
+
         # iterate through the data until we reach the end
         while current_record <= data_end_date:
             # log_wp.debug(f"Started processing {current_record}")
@@ -386,19 +491,47 @@ class MacdBot:
                     log_wp.log(9, f"{s}: No new data")
             current_record = current_record + self.interval_delta
 
+        bot_telemetry.save_cycle()
+
         # log_wp.debug(f"Finished processing all records")
 
 
 def main():
     back_testing = global_back_testing
     interval = "5m"
+    real_money_trading = False
+    run_id = utils.generate_id()
     log_wp.debug(
-        f"Starting up, poll time is {interval}, back testing is {back_testing}"
+        f"Starting up run ID {run_id}, poll time is {interval}, back testing is {back_testing}"
     )
     global bot_telemetry
     bot_telemetry = BotTelemetry()
     ssm = boto3.client("ssm")
     market_data_source = yf
+
+    if real_money_trading:
+        heartbeat_path = "/tabot/heartbeat/live"
+    else:
+        # no need for checking backtesting, since I don't heartbeat it
+        heartbeat_path = "/tabot/heartbeat/paper"
+
+    slack_token = (
+        ssm.get_parameter(Name="/tabot/slack/bot_key", WithDecryption=True)
+        .get("Parameter")
+        .get("Value")
+    )
+    slack_heartbeat_channel = (
+        ssm.get_parameter(Name="/tabot/slack/heartbeat_channel", WithDecryption=False)
+        .get("Parameter")
+        .get("Value")
+    )
+    slack_announcements_channel = (
+        ssm.get_parameter(
+            Name="/tabot/slack/announcements_channel", WithDecryption=False
+        )
+        .get("Parameter")
+        .get("Value")
+    )
 
     # reset back testing rules before we start the run
     if back_testing:
@@ -409,6 +542,8 @@ def main():
             Type="String",
             Overwrite=True,
         )
+
+        # also put the alpaca API keys into the local store
         api_key = (
             ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
             .get("Parameter")
@@ -429,6 +564,14 @@ def main():
             Value=secret_key,
         )
 
+        store.put_parameter(Name="/tabot/slack/bot_key", Value=slack_token)
+        store.put_parameter(
+            Name="slack_heartbeat_channel", Value=slack_heartbeat_channel
+        )
+        store.put_parameter(
+            Name="/tabot/slack/announcements_channel", Value=slack_announcements_channel
+        )
+
     else:
         store = ssm
 
@@ -436,9 +579,13 @@ def main():
         ssm=store,
         market_data_source=market_data_source,
         bot_telemetry=bot_telemetry,
+        real_money_trading=real_money_trading,
         interval=interval,
         back_testing=back_testing,
         back_testing_balance=100000,
+        slack_token=slack_token,
+        slack_heartbeat_channel=slack_heartbeat_channel,
+        slack_announcements_channel=slack_announcements_channel,
     )
 
     if len(bot_handler.symbols) == 0:
@@ -447,17 +594,54 @@ def main():
 
     if back_testing:
         bot_handler.process_bars()
+        bot_handler.bot_telemetry.generate_df()
+        utils.save_to_s3(
+            bucket=BUCKET,
+            key=f"telemetry/backtests/{run_id}_plays.csv",
+            pickle=bot_handler.bot_telemetry.plays_df.to_csv(),
+        )
+        utils.save_to_s3(
+            bucket=BUCKET,
+            key=f"telemetry/backtests/{run_id}_orders.csv",
+            pickle=bot_handler.bot_telemetry.orders_df.to_csv(),
+        )
+
     else:
+        last_orders_df = []
         while True:
+            # do heartbeating
+            store.put_parameter(
+                Name=heartbeat_path,
+                Value=str(datetime.now()),
+                Type="String",
+                Overwrite=True,
+            )
+
+            # process data
             bot_handler.process_bars()
+
+            # update report and if its changed upload it to S3
             bot_handler.bot_telemetry.generate_df()
+            new_orders_df = bot_handler.bot_telemetry.orders_df
+            if len(new_orders_df) != len(last_orders_df):
+                utils.save_to_s3(
+                    bucket=BUCKET,
+                    key=f"telemetry/{run_id}_plays.csv",
+                    pickle=bot_handler.bot_telemetry.plays_df,
+                )
+                utils.save_to_s3(
+                    bucket=BUCKET,
+                    key=f"telemetry/{run_id}_orders.csv",
+                    pickle=bot_handler.bot_telemetry.orders_df,
+                )
+            last_orders_df = new_orders_df
+
+            # and now sleep til the next interval
             start, end = bot_handler.get_date_range()
-            pause = get_pause(interval)
+            pause = utils.get_pause(interval)
             log_wp.debug(f"Finished analysing {end}, sleeping for {round(pause,0)}s")
             time.sleep(pause)
 
-    bot_handler.bot_telemetry.play_df.to_csv("play_report.csv")
-    bot_handler.bot_telemetry.orders_df.to_csv("order_report.csv")
     print("banana")
 
 

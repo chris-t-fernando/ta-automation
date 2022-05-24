@@ -492,7 +492,10 @@ class BackTestAPI(ITradeAPI):
                     f"{symbol}: Starting fill for MARKET_BUY order {this_order.order_id}"
                 )
 
-                unit_price = round(self._bars[symbol].Low.loc[back_testing_date], 2)
+                unit_price = round(
+                    self._bars[symbol].Low.loc[back_testing_date],
+                    self.get_precision(yf_symbol=symbol),
+                )
                 units_purchased = this_order.ordered_unit_quantity
                 order_value = unit_price * units_purchased
 
@@ -531,7 +534,7 @@ class BackTestAPI(ITradeAPI):
                 self._balance = round(
                     self._balance
                     - (this_order.filled_unit_price * this_order.filled_unit_quantity),
-                    2,
+                    15,
                 )
 
                 filled_symbols.append(symbol)
@@ -558,7 +561,10 @@ class BackTestAPI(ITradeAPI):
                     #    f"{symbol}: Hold {held} so can't sell {this_order.ordered_unit_quantity} units"
                     # )
 
-                unit_price = round(self._bars[symbol].High.loc[back_testing_date], 2)
+                unit_price = round(
+                    self._bars[symbol].High.loc[back_testing_date],
+                    self.get_precision(yf_symbol=symbol),
+                )
 
                 # mark this order as filled
                 this_order.status = 4
@@ -578,7 +584,7 @@ class BackTestAPI(ITradeAPI):
 
                 # update balance
                 self._balance = round(
-                    self._balance + round(this_order.filled_total_value, 2), 2
+                    self._balance + round(this_order.filled_total_value, 2), 15
                 )
 
                 filled_symbols.append(symbol)
@@ -618,7 +624,8 @@ class BackTestAPI(ITradeAPI):
                     ]
                     this_order.filled_unit_quantity = this_order.ordered_unit_quantity
                     this_order.filled_unit_price = round(
-                        this_order.ordered_unit_price, 2
+                        this_order.ordered_unit_price,
+                        self.get_precision(yf_symbol=symbol),
                     )
                     this_order.filled_total_value = (
                         this_order.filled_unit_quantity * this_order.filled_unit_price
@@ -642,7 +649,7 @@ class BackTestAPI(ITradeAPI):
                             this_order.filled_unit_price
                             * this_order.filled_unit_quantity
                         ),
-                        2,
+                        15,
                     )
 
                     filled_symbols.append(symbol)
@@ -680,7 +687,8 @@ class BackTestAPI(ITradeAPI):
                     ]
                     this_order.filled_unit_quantity = this_order.ordered_unit_quantity
                     this_order.filled_unit_price = round(
-                        self._bars[symbol].High.loc[back_testing_date], 2
+                        self._bars[symbol].High.loc[back_testing_date],
+                        self.get_precision(yf_symbol=symbol),
                     )
                     this_order.filled_total_value = (
                         this_order.filled_unit_quantity * this_order.filled_unit_price
@@ -692,7 +700,7 @@ class BackTestAPI(ITradeAPI):
 
                     # update balance
                     self._balance = round(
-                        self._balance + this_order.filled_total_value, 2
+                        self._balance + this_order.filled_total_value, 15
                     )
 
                     filled_symbols.append(symbol)

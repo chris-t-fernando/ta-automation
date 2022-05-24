@@ -113,7 +113,7 @@ mixed_symbols_small = [
 ]
 
 crypto_symbol = [
-    {"symbol": "SOL-USD", "api": "alpaca"},
+    {"symbol": "DOGE-USD", "api": "alpaca"},
 ]
 
 crypto_symbols_all = [
