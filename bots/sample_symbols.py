@@ -132,6 +132,16 @@ crypto_symbols_all = [
     {"symbol": "UNI-USD", "api": "alpaca"},
     {"symbol": "BAT-USD", "api": "alpaca"},
     {"symbol": "PAXG-USD", "api": "alpaca"},
+    {"symbol": "AAVE-USD", "api": "alpaca"},
+    {"symbol": "AVAX-USD", "api": "alpaca"},
+    {"symbol": "BCH-USD", "api": "alpaca"},
+    {"symbol": "LINK-USD", "api": "alpaca"},
+    {"symbol": "DAI-USD", "api": "alpaca"},
+    {"symbol": "GRT-USD", "api": "alpaca"},
+    {"symbol": "LTC-USD", "api": "alpaca"},
+    {"symbol": "MKR-USD", "api": "alpaca"},
+    {"symbol": "SUSHI-USD", "api": "alpaca"},
+    {"symbol": "YFI-USD", "api": "alpaca"},
 ]
 
 everything = crypto_symbols_all + nyse_symbols_big

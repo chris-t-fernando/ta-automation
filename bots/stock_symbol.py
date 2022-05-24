@@ -400,6 +400,7 @@ class Symbol:
             start=yf_start,
             interval=self.interval,
             actions=False,
+            debug=False,
         )
 
         bars = bars.tz_convert(pytz.utc)

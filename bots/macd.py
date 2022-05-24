@@ -90,7 +90,8 @@ class BotTelemetry:
         "outcome_reason",
     ]
 
-    def __init__(self):
+    def __init__(self, back_testing: bool):
+        self.back_testing = back_testing
         self.orders = []
         self.win_count = 0
         self.loss_count = 0
@@ -218,6 +219,10 @@ class BotTelemetry:
         self.cycle_timestamp = timestamp
 
     def add_cycle_data(self, row):
+        # don't bother writing this stuff if we're backtesting
+        if self.back_testing:
+            return
+
         new_row = pd.DataFrame(
             {
                 "symbol": row["symbol"],
@@ -287,8 +292,8 @@ class MacdBot:
 
         # TODO take this as parameter input
         # symbols = sample_symbols.everything
-        # symbols = sample_symbols.crypto_symbols_all
-        symbols = sample_symbols.crypto_symbol
+        symbols = sample_symbols.crypto_symbols_all
+        # symbols = sample_symbols.crypto_symbol
 
         if back_testing:
             # override broker to back_test
@@ -505,7 +510,7 @@ def main():
         f"Starting up run ID {run_id}, poll time is {interval}, back testing is {back_testing}"
     )
     global bot_telemetry
-    bot_telemetry = BotTelemetry()
+    bot_telemetry = BotTelemetry(back_testing=back_testing)
     ssm = boto3.client("ssm")
     market_data_source = yf
 
