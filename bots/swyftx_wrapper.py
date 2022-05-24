@@ -2,10 +2,10 @@ import pyswyft
 from pyswyft.endpoints import accounts, history, markets, orders
 from itradeapi import (
     ITradeAPI,
-    IAsset,
+    Asset,
     IOrderResult,
-    IAccount,
-    IPosition,
+    Account,
+    Position,
     NotImplementedException,
 )
 from math import floor
@@ -165,33 +165,6 @@ class OrderResult(IOrderResult):
 
 
 # return objects
-class Asset(IAsset):
-    symbol: str
-    balance: float
-
-    def __init__(self, symbol, balance):
-        self.symbol = symbol
-        self.balance = balance
-
-
-class Account(IAccount):
-    assets: dict
-
-    def __init__(self, assets: dict):
-        self.assets = assets
-
-    def __str__(self):
-        print("banana")
-
-
-class Position(IPosition):
-    symbol: str
-    quantity: float
-
-    def __init__(self, symbol, quantity):
-        self.symbol = symbol
-        self.quantity = float(quantity)
-
 
 # concrete class
 class SwyftxAPI(ITradeAPI):

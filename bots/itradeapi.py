@@ -13,30 +13,30 @@ class NotImplementedException(Exception):
     ...
 
 
-class IAsset(ABC):
-    symbol: str
-    balance: float
+class Account:
+    assets: dict
 
-    @abstractmethod
-    def __init__(self, symbol, balance):
-        ...
+    def __init__(self, assets: dict):
+        self.assets = assets
 
 
-class IAccount(ABC):
-    assets: list
-
-    @abstractmethod
-    def __init__(self, assets: list):
-        ...
-
-
-class IPosition(ABC):
+class Position:
     symbol: str
     quantity: float
 
-    @abstractmethod
     def __init__(self, symbol, quantity):
-        ...
+        self.symbol = symbol
+        self.quantity = float(quantity)
+
+
+class Asset:
+    def __init__(
+        self, symbol, min_order_size, min_trade_increment, min_price_increment
+    ):
+        self.symbol = symbol
+        self.min_order_size = min_order_size
+        self.min_trade_increment = min_trade_increment
+        self.min_price_increment = min_price_increment
 
 
 class IOrderResult(ABC):
@@ -78,11 +78,11 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def get_account(self) -> IAccount:
+    def get_account(self) -> Account:
         ...
 
     @abstractmethod
-    def list_positions(self) -> IPosition:
+    def list_positions(self) -> Position:
         ...
 
     @abstractmethod
@@ -126,9 +126,13 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def get_position(self, symbol:str) -> IPosition:
+    def get_position(self, symbol: str) -> Position:
         ...
 
     @abstractmethod
-    def get_precision(self, symbol:str) -> int:
+    def get_precision(self, symbol: str) -> int:
+        ...
+
+    @abstractmethod
+    def get_asset(self, symbol: str) -> Asset:
         ...

@@ -3,13 +3,13 @@ import boto3
 import parameter_stores
 from alpaca_wrapper import AlpacaAPI
 from swyftx_wrapper import SwyftxAPI
-from back_test_wrapper import BackTestAPI, Position
-from itradeapi import ITradeAPI, IPosition
+from back_test_wrapper import BackTestAPI
+
+# from itradeapi import ITradeAPI, IPosition
 import yfinance as yf
 import pandas as pd
 import time
 import json
-from datetime import datetime
 from stock_symbol import (
     Symbol,
     NO_POSITION_TAKEN,
@@ -19,7 +19,6 @@ from stock_symbol import (
     TAKING_PROFIT,
     STOP_LOSS_ACTIVE,
 )
-from buyplan import BuyPlan
 from utils import get_pause, get_interval_settings
 from dateutil.relativedelta import relativedelta
 import warnings
@@ -27,13 +26,12 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # do reporting
-# 200 df merge update bring down to just changes - faster faster
+# 300 df merge update bring down to just changes - faster faster
 # check if market is closed and don't query
-# why are weird dataframe end dates occurring?!
 # better stop loss pct figures
 
-global_back_testing = False
-global_override_broker = False
+global_back_testing = True
+global_override_broker = True
 
 bot_telemetry = None
 
@@ -117,6 +115,11 @@ class BotTelemetry:
         self.peak_capital_balance = 0
 
     def add_order(self, order_result, play_id):
+        # TODO - this is a dumb error specific to back testing that I don't care enough about to fix
+        # sometimes orders fail and return a bool. not interested in these guys
+        if type(order_result) == bool:
+            return
+
         order_result.play_id = play_id
         self.orders.append(order_result)
         self._update_counters()
@@ -273,6 +276,7 @@ class MacdBot:
 
         nyse_symbols_big = [
             {"symbol": "C", "api": "alpaca"},
+            {"symbol": "SHIB-USD", "api": "alpaca"},
             {"symbol": "PFE", "api": "alpaca"},
             {"symbol": "GE", "api": "alpaca"},
             {"symbol": "AIG", "api": "alpaca"},
@@ -328,7 +332,6 @@ class MacdBot:
             {"symbol": "SOL-USD", "api": "alpaca"},
             # {"symbol": "XRP-USD", "api": "alpaca"},
             {"symbol": "DOGE-USD", "api": "alpaca"},
-            {"symbol": "SHIB-USD", "api": "alpaca"},
             {"symbol": "MATIC-USD", "api": "alpaca"},
             # {"symbol": "ATOM-USD", "api": "alpaca"},
             # {"symbol": "FTT-USD", "api": "alpaca"},

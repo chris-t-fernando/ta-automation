@@ -29,12 +29,20 @@ class BuyPlan:
         self,
         symbol: str,
         df,
+        balance: float,
         profit_target: float = 1.5,
         notional_units: bool = False,
         precision: int = 3,
+        min_trade_increment: float = 1,
+        min_order_size: float = 1,
+        min_price_increment: float = 0.001,
     ):
+        self.success = False
         self.symbol = symbol
-        self.capital = BuyPlan.ORDER_SIZE
+        if balance < BuyPlan.ORDER_SIZE:
+            self.capital = balance
+        else:
+            self.capital = BuyPlan.ORDER_SIZE
 
         self.blue_cycle_start = get_blue_cycle_start(df=df)
         self.red_cycle_start = get_red_cycle_start(
@@ -70,10 +78,33 @@ class BuyPlan:
         self.entry_unit = round(df.Close.iloc[-1], precision)
         self.stop_unit = round(stop_unit, precision)
 
-        if notional_units:
-            self.units = self.capital / self.entry_unit
-        else:
-            self.units = floor(self.capital / self.entry_unit)
+        # if notional_units:
+        #    self.units = self.capital / self.entry_unit
+        # else:
+        #    self.units = floor(self.capital / self.entry_unit)
+
+        if BuyPlan.ORDER_SIZE < self.entry_unit:
+            # we're not buying any units
+            self.error_message = "entry_larger_than_order_size"
+            return
+
+        units = self.capital / self.entry_unit
+        if units < min_order_size:
+            # too few - failed order
+            self.error_message = "min_order_size"
+            return
+
+        self.units = floor(units - (units % min_trade_increment))
+
+        if self.units == 0:
+            # we're not buying any units
+            self.error_message = "zero_units"
+            return
+
+        # if we don't have enough money, bail out
+        if self.entry_unit * self.units > balance:
+            self.error_message = "insufficient_balance"
+            return
 
         self.steps = 0
         self.risk_unit = round(self.entry_unit - self.stop_unit, precision)
@@ -102,3 +133,5 @@ class BuyPlan:
         log_wp.info(f"{self.symbol} - Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)")
         log_wp.info(f"{self.symbol} - Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)")
         # fmt: on
+
+        self.success = True

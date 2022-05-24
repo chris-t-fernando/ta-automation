@@ -74,6 +74,10 @@ class Symbol:
         self.initialised = False
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
+        # next check precision on order - normal stocks are only to the thousandth, crypto is huge
+        self.precision = self.api.get_precision(yf_symbol=self.symbol)
+        self._set_order_size_and_increment()
+
         # state machine config
         self.current_check = self.check_state_no_position_taken
         self.active_order_id = None
@@ -101,6 +105,17 @@ class Symbol:
         else:
             self.bars = utils.add_signals(bars, interval)
             self._init_complete = True
+
+    def _set_order_size_and_increment(self):
+        asset = self.api.get_asset(symbol=self.symbol)
+        if hasattr(asset, "min_order_size"):
+            self.min_order_size = float(asset.min_order_size)
+            self.min_trade_increment = float(asset.min_trade_increment)
+            self.min_price_increment = float(asset.min_price_increment)
+        else:
+            self.min_order_size = 1
+            self.min_trade_increment = 1
+            self.min_price_increment = 0.001
 
     def process(self, datestamp):
         # i'm too lazy to pass datestamp around so save it in object
@@ -445,22 +460,62 @@ class Symbol:
             account = self.api.get_account()
             balance = account.assets["USD"]
 
-            # next check precision on order - normal stocks are only to the thousandth, crypto is huge
-            precision = self.api.get_precision(yf_symbol=self.symbol)
+            buy_plan = BuyPlan(
+                symbol=self.symbol,
+                df=bars_slice,
+                balance=balance,
+                precision=self.precision,
+                min_trade_increment=self.min_trade_increment,
+                min_order_size=self.min_order_size,
+                min_price_increment=self.min_price_increment,
+            )
 
-            buy_plan = BuyPlan(symbol=self.symbol, df=bars_slice, precision=precision)
+            if not buy_plan.success:
+                if buy_plan.error_message == "entry_larger_than_order_size":
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but max play size is {buy_plan.ORDER_SIZE} vs entry price of {buy_plan.entry_unit}"
+                    )
+                    return False
+                elif buy_plan.error_message == "min_order_size":
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but insufficient balance to purchase at least the minimum order quantity. Balance {balance}, minimum order size {self.min_order_size}, minimum order value {self.min_order_size * buy_plan.entry_unit}"
+                    )
+                    return False
+                elif buy_plan.error_message == "zero_units":
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but insufficient balance to purchase at least one unit. Balance {balance}, entry unit price {buy_plan.entry_unit}"
+                    )
+                    return False
+                elif buy_plan.error_message == "insufficient_balance":
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but insufficient balance to purchase at least one unit. Balance {balance}, entry unit price {buy_plan.entry_unit}"
+                    )
+                    return False
+                else:
+                    log_wp.critical(
+                        f"{self.symbol}: Found buy signal, but something went wrong in buy_plan. Balance {balance}, entry unit price {buy_plan.entry_unit}"
+                    )
+                    return False
 
-            if balance <= buy_plan.entry_unit:
-                log_wp.info(
-                    f"{self.symbol}: Found buy signal, but insufficient balance to execute. Balance {balance} vs unit price {buy_plan.entry_unit} - skipping"
-                )
-                return False
+                if hasattr(buy_plan, "entry_unit") and balance <= buy_plan.entry_unit:
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but insufficient balance to execute. Balance {balance} vs unit price {buy_plan.entry_unit} - skipping"
+                    )
+                    return False
 
-            if BuyPlan.ORDER_SIZE < buy_plan.entry_unit:
-                log_wp.info(
-                    f"{self.symbol}: Found buy signal, but price {buy_plan.entry_unit} exceeds BuyOrder max size {BuyPlan.ORDER_SIZE} - skipping"
-                )
-                return False
+                elif (
+                    hasattr(buy_plan, "entry_unit")
+                    and BuyPlan.ORDER_SIZE < buy_plan.entry_unit
+                ):
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but price {buy_plan.entry_unit} exceeds BuyOrder max size {BuyPlan.ORDER_SIZE} - skipping"
+                    )
+                    return False
+                else:
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but failed to create BuyPlan"
+                    )
+                    return False
 
             self.buy_plan = buy_plan
             log_wp.debug(
@@ -684,7 +739,7 @@ class Symbol:
         # hold on to order ID
         self.active_order_id = order_result.order_id
 
-        self.bot_telemetry.add_order(order_result, play_id=self.play_id)
+        self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
 
         # write state
         self._write_to_state(order_result)
@@ -713,7 +768,7 @@ class Symbol:
                 order_id=state["order_id"], back_testing_date=self._analyse_date
             )
 
-        self.bot_telemetry.add_order(order_result, self.play_id)
+        self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -743,7 +798,7 @@ class Symbol:
         order_result = self.api.cancel_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_telemetry.add_order(order_result, self.play_id)
+        self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -770,7 +825,7 @@ class Symbol:
         order_result = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_telemetry.add_order(order_result, self.play_id)
+        self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
 
         # update active_order_id
         self.active_order_id = None
@@ -797,7 +852,7 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # hold on to active_order_id
         self.active_order_id = order.order_id
@@ -819,7 +874,7 @@ class Symbol:
             f"{self.symbol}: Successfully cancelled take_profit order {cancelled_order.order_id}"
         )
 
-        self.bot_telemetry.add_order(cancelled_order, self.play_id)
+        self.bot_telemetry.add_order(order_result=cancelled_order, play_id=self.play_id)
 
         # submit stop loss
         order = self.api.sell_order_market(
@@ -837,7 +892,7 @@ class Symbol:
         log_wp.warning(
             f"{self.symbol}: Successfully submitted stop_loss order {order.order_id}"
         )
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # update active_order_id
         self.active_order_id = order.order_id
@@ -863,7 +918,7 @@ class Symbol:
             )
             return False
 
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # update active_order_id
         self.active_order_id = order.order_id
@@ -877,7 +932,7 @@ class Symbol:
         order = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # already don't hold any, so no need to delete orders
         # just need to clean up the object and delete rules
@@ -895,7 +950,7 @@ class Symbol:
         order = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # clear active order details
         self.active_order_id = None
@@ -920,7 +975,7 @@ class Symbol:
             symbol=self.symbol, back_testing_date=self._back_testing_date
         )
 
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         self.active_order_id = order.order_id
 
@@ -947,7 +1002,7 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # hold on to active_order_id
         self.active_order_id = order.order_id
@@ -970,7 +1025,7 @@ class Symbol:
         filled_value = (
             filled_order.filled_unit_quantity * filled_order.filled_unit_price
         )
-        self.bot_telemetry.add_order(filled_order, self.play_id)
+        self.bot_telemetry.add_order(order_result=filled_order, play_id=self.play_id)
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Successfully took profit: order ID {filled_order.order_id} sold {filled_order.filled_unit_quantity} at {filled_order.filled_unit_price} for value {filled_value}"
         )
@@ -979,11 +1034,18 @@ class Symbol:
         pct = self.active_rule["risk_point_sell_down_pct"]
         units = self.position.quantity
 
-        units_to_sell = floor(pct * units)
+        # units_to_sell = floor(pct * units)
 
         # units_to_sell might be less than 1 whole unit - in this case, just sell 1 unit? TODO nominal/fractional shares
-        if units_to_sell == 0:
-            units_to_sell = 1
+        # if units_to_sell == 0:
+        #    units_to_sell = 1
+
+        units_to_sell = pct * units
+
+        units_to_sell -= units % self.min_trade_increment
+
+        if units_to_sell < self.min_order_size:
+            units_to_sell = self.min_order_size
 
         new_steps = self.active_rule["steps"] + 1
         new_target_profit = self.active_rule["original_risk"] * new_steps
@@ -1027,7 +1089,7 @@ class Symbol:
                 f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )
 
-        self.bot_telemetry.add_order(order, self.play_id)
+        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # set current check
         self.current_check = self.check_state_take_profit

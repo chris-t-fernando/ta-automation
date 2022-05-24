@@ -1,9 +1,9 @@
 from itradeapi import (
     ITradeAPI,
     IOrderResult,
-    IAccount,
-    IPosition,
-    IAsset,
+    Account,
+    Position,
+    Asset,
     NotImplementedException,
 )
 from pandas import Timestamp
@@ -90,31 +90,6 @@ INTERVAL_MAP = {
 }
 
 
-class Asset(IAsset):
-    symbol: str
-    balance: float
-
-    def __init__(self, symbol, balance):
-        self.symbol = symbol
-        self._balance = balance
-
-
-class Account(IAccount):
-    assets: dict
-
-    def __init__(self, assets: dict):
-        self.assets = assets
-
-
-class Position(IPosition):
-    symbol: str
-    quantity: float
-
-    def __init__(self, symbol, quantity):
-        self.symbol = symbol
-        self.quantity = quantity
-
-
 class OrderResult(IOrderResult):
     def __init__(self, response: dict):
         self._raw_response = response
@@ -157,8 +132,6 @@ class OrderResult(IOrderResult):
 
 # concrete implementation of trade api for alpaca
 class BackTestAPI(ITradeAPI):
-    supported_crypto_symbols = []
-
     def __init__(
         self,
         real_money_trading=False,
@@ -191,7 +164,32 @@ class BackTestAPI(ITradeAPI):
         return "back_test"
 
     def _get_crypto_symbols(self):
-        crypto_symbols = ["BTC", "SOL", "ADA", "SHIB"]
+        # crypto_symbols = ["BTC", "SOL", "ADA", "SHIB"]
+        crypto_symbols = [
+            "AAVE-USD",
+            "AVAX-USD",
+            "BAT-USD",
+            "BTC-USD",
+            "BCH-USD",
+            "LINK-USD",
+            "DAI-USD",
+            "DOGE-USD",
+            "ETH-USD",
+            "GRT-USD",
+            "LTC-USD",
+            "MKR-USD",
+            "MATIC-USD",
+            "PAXG-USD",
+            "SHIB-USD",
+            "SOL-USD",
+            "SUSHI-USD",
+            "USDT-USD",
+            "TRX-USD",
+            "UNI-USD",
+            "WBTC-USD",
+            "YFI-USD",
+        ]
+
         return crypto_symbols
 
     # not implemented
@@ -606,7 +604,10 @@ class BackTestAPI(ITradeAPI):
                         log_wp.warning(
                             f"{symbol}: Unable to fill {this_order.order_id} - order value is {order_value} but balance is only {self._balance}"
                         )
-                        self.cancel_order(order_id=this_order.order_id)
+                        self.cancel_order(
+                            order_id=this_order.order_id,
+                            back_testing_date=back_testing_date,
+                        )
                         continue
 
                     # mark this order as filled
@@ -735,8 +736,142 @@ class BackTestAPI(ITradeAPI):
 
         return True
 
-    def get_precision(self, symbol: str) -> int:
+    def get_precision(self, yf_symbol: str) -> int:
+        if yf_symbol in self.supported_crypto_symbols:
+            return 15
         return 3
+
+    def get_asset(self, symbol: str):
+        hardcoded_assets = {}
+        hardcoded_assets["AAVE-USD"] = {
+            "min_order_size": 0.01,
+            "min_quantity_increment": 0.01,
+            "min_price_increment": 0.1,
+        }
+        hardcoded_assets["AVAX-USD"] = {
+            "min_order_size": 0.1,
+            "min_quantity_increment": 0.1,
+            "min_price_increment": 0.0005,
+        }
+        hardcoded_assets["BAT-USD"] = {
+            "min_order_size": 1,
+            "min_quantity_increment": 1,
+            "min_price_increment": 0.000025,
+        }
+        hardcoded_assets["BTC-USD"] = {
+            "min_order_size": 0.0001,
+            "min_quantity_increment": 0.0001,
+            "min_price_increment": 1,
+        }
+        hardcoded_assets["BCH-USD"] = {
+            "min_order_size": 0.001,
+            "min_quantity_increment": 0.0001,
+            "min_price_increment": 0.025,
+        }
+        hardcoded_assets["LINK-USD"] = {
+            "min_order_size": 0.1,
+            "min_quantity_increment": 0.1,
+            "min_price_increment": 0.0005,
+        }
+        hardcoded_assets["DAI-USD"] = {
+            "min_order_size": 0.1,
+            "min_quantity_increment": 0.1,
+            "min_price_increment": 0.0001,
+        }
+        hardcoded_assets["DOGE-USD"] = {
+            "min_order_size": 1,
+            "min_quantity_increment": 1,
+            "min_price_increment": 0.0000005,
+        }
+        hardcoded_assets["ETH-USD"] = {
+            "min_order_size": 0.001,
+            "min_quantity_increment": 0.001,
+            "min_price_increment": 0.1,
+        }
+        hardcoded_assets["GRT-USD"] = {
+            "min_order_size": 1,
+            "min_quantity_increment": 1,
+            "min_price_increment": 0.00005,
+        }
+        hardcoded_assets["LTC-USD"] = {
+            "min_order_size": 0.01,
+            "min_quantity_increment": 0.01,
+            "min_price_increment": 0.005,
+        }
+        hardcoded_assets["MKR-USD"] = {
+            "min_order_size": 0.001,
+            "min_quantity_increment": 0.001,
+            "min_price_increment": 0.5,
+        }
+        hardcoded_assets["MATIC-USD"] = {
+            "min_order_size": 10,
+            "min_quantity_increment": 10,
+            "min_price_increment": 0.000001,
+        }
+        hardcoded_assets["PAXG-USD"] = {
+            "min_order_size": 0.0001,
+            "min_quantity_increment": 0.0001,
+            "min_price_increment": 0.1,
+        }
+        hardcoded_assets["SHIB-USD"] = {
+            "min_order_size": 100000,
+            "min_quantity_increment": 100000,
+            "min_price_increment": 0.00000001,
+        }
+        hardcoded_assets["SOL-USD"] = {
+            "min_order_size": 0.01,
+            "min_quantity_increment": 0.01,
+            "min_price_increment": 0.0025,
+        }
+        hardcoded_assets["SUSHI-USD"] = {
+            "min_order_size": 0.5,
+            "min_quantity_increment": 0.5,
+            "min_price_increment": 0.0001,
+        }
+        hardcoded_assets["USDT-USD"] = {
+            "min_order_size": 0.01,
+            "min_quantity_increment": 0.01,
+            "min_price_increment": 0.0001,
+        }
+        hardcoded_assets["TRX-USD"] = {
+            "min_order_size": 1,
+            "min_quantity_increment": 1,
+            "min_price_increment": 0.0000025,
+        }
+        hardcoded_assets["UNI-USD"] = {
+            "min_order_size": 0.1,
+            "min_quantity_increment": 0.1,
+            "min_price_increment": 0.001,
+        }
+        hardcoded_assets["WBTC-USD"] = {
+            "min_order_size": 0.0001,
+            "min_quantity_increment": 0.0001,
+            "min_price_increment": 1,
+        }
+        hardcoded_assets["YFI-USD"] = {
+            "min_order_size": 0.001,
+            "min_quantity_increment": 0.001,
+            "min_price_increment": 5,
+        }
+
+        # asset = self.get_asset(symbol=symbol)
+
+        # if hasattr(asset, "min_order_size"):
+        if symbol in hardcoded_assets.keys():
+            min_order_size = hardcoded_assets[symbol]["min_order_size"]
+            min_trade_increment = hardcoded_assets[symbol]["min_quantity_increment"]
+            min_price_increment = hardcoded_assets[symbol]["min_price_increment"]
+        else:
+            min_order_size = 1
+            min_trade_increment = 1
+            min_price_increment = 0.001
+
+        return Asset(
+            symbol=symbol,
+            min_order_size=min_order_size,
+            min_trade_increment=min_trade_increment,
+            min_price_increment=min_price_increment,
+        )
 
 
 if __name__ == "__main__":

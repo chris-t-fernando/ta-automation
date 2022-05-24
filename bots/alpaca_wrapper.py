@@ -1,14 +1,15 @@
 from itradeapi import (
     ITradeAPI,
     IOrderResult,
-    IAccount,
-    IPosition,
-    IAsset,
+    Account,
+    Position,
+    Asset,
     NotImplementedException,
 )
 import yfinance as yf
 from datetime import datetime
 from alpaca_trade_api import REST, entity
+from alpaca_trade_api.rest import APIError
 import pandas as pd
 import boto3
 import logging
@@ -96,31 +97,6 @@ INTERVAL_MAP = {
     "15m": "15Min",
     "1d": "1Day",
 }
-
-
-class Asset(IAsset):
-    symbol: str
-    balance: float
-
-    def __init__(self, symbol, balance):
-        self.symbol = symbol
-        self.balance = balance
-
-
-class Account(IAccount):
-    assets: dict
-
-    def __init__(self, assets: dict):
-        self.assets = assets
-
-
-class Position(IPosition):
-    symbol: str
-    quantity: float
-
-    def __init__(self, symbol, quantity):
-        self.symbol = symbol
-        self.quantity = float(quantity)
 
 
 class OrderResult(IOrderResult):
@@ -387,7 +363,7 @@ class AlpacaAPI(ITradeAPI):
                 time_in_force="day",
                 stop_loss=sell_stop_dict,
             )
-        except Exception as e:
+        except APIError as e:
             if e == "qty must be >= 10 with trade increment 10":
                 updated_units = math.floor(units / 10)
                 response = self.api.submit_order(
@@ -399,6 +375,8 @@ class AlpacaAPI(ITradeAPI):
                     time_in_force="day",
                     stop_loss=sell_stop_dict,
                 )
+            else:
+                raise
 
         # get the order so we have all the info about it
         return self.get_order(order_id=response.id)
@@ -523,6 +501,24 @@ class AlpacaAPI(ITradeAPI):
             return 3
         else:
             return 15
+
+    # def get_asset(self, symbol):
+    #    return self.api.get_asset(symbol=self._to_alpaca(symbol))
+
+    def get_asset(self, symbol: str):
+        asset = self.api.get_asset(symbol=self._to_alpaca(symbol))
+        if hasattr(asset, "min_order_size"):
+            min_order_size = float(asset.min_order_size)
+            min_trade_increment = float(asset.min_trade_increment)
+        else:
+            min_order_size = 1
+            min_trade_increment = 1
+
+        return Asset(
+            symbol=symbol,
+            min_order_size=min_order_size,
+            min_trade_increment=min_trade_increment,
+        )
 
 
 if __name__ == "__main__":

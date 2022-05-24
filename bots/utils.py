@@ -142,9 +142,18 @@ def add_signals(bars, interval):
     )
 
     # merge any actual values in where there were NaNs before
-    bars = bars.fillna(renamed_macd)
+    bars.fillna(renamed_macd, inplace=True)
 
+    # now do my hacky one by one iteration looking for crossovers etc
     # loops looking for three things - macd-signal crossover, signal-macd crossover, and whether macd is above signal
+    # first default crossovers to False
+    bars.macd_crossover.fillna(False, inplace=True)
+    bars.macd_above_signal.fillna(False, inplace=True)
+    bars.macd_signal_crossover.fillna(False, inplace=True)
+    # bars.macd_crossover.loc[bars.macd_crossover.isnull()] = False
+    # bars.macd_above_signal.loc[bars.macd_above_signal.isnull()] = False
+    # bars.macd_signal_crossover.loc[bars.macd_signal_crossover.isnull()] = False
+
     cycle = None
 
     # for d in bars.index:
