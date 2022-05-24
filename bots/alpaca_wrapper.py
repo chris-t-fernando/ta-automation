@@ -510,14 +510,17 @@ class AlpacaAPI(ITradeAPI):
         if hasattr(asset, "min_order_size"):
             min_order_size = float(asset.min_order_size)
             min_trade_increment = float(asset.min_trade_increment)
+            min_price_increment = float(asset.price_increment)
         else:
             min_order_size = 1
             min_trade_increment = 1
+            min_price_increment = 0.001
 
         return Asset(
             symbol=symbol,
             min_order_size=min_order_size,
             min_trade_increment=min_trade_increment,
+            min_price_increment=min_price_increment,
         )
 
 

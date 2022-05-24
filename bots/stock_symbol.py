@@ -1,5 +1,4 @@
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import pytz
 from itradeapi import (
     ITradeAPI,
@@ -11,7 +10,6 @@ from itradeapi import (
     STOP_LIMIT_SELL,
 )
 import utils
-import yfinance as yf
 import logging
 import warnings
 from buyplan import BuyPlan
@@ -58,7 +56,7 @@ class Symbol:
         interval: str,
         store,
         bot_telemetry,
-        data_source,
+        market_data_source,
         real_money_trading: bool = False,
         to_date: str = None,
         back_testing: bool = False,
@@ -70,13 +68,16 @@ class Symbol:
         self.interval = interval
         self.real_money_trading = real_money_trading
         self.store = store
-        self.data_source = data_source
+        self.market_data_source = market_data_source
         self.initialised = False
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
         # next check precision on order - normal stocks are only to the thousandth, crypto is huge
         self.precision = self.api.get_precision(yf_symbol=self.symbol)
         self._set_order_size_and_increment()
+
+        # work out if this symbol is only traded in certain hours
+        self.market = self.get_market()
 
         # state machine config
         self.current_check = self.check_state_no_position_taken
@@ -105,6 +106,17 @@ class Symbol:
         else:
             self.bars = utils.add_signals(bars, interval)
             self._init_complete = True
+
+    def get_market(self):
+        # there's the right way and the fast way to do this
+        # we're doing the fast way
+        if self.symbol[-4:] == "-USD":
+            return "ccc_market"
+        else:
+            return "us_market"
+
+        return
+        self.market = self.market_data_source.Ticker("ACN").info["market"]
 
     def _set_order_size_and_increment(self):
         asset = self.api.get_asset(symbol=self.symbol)
@@ -348,11 +360,15 @@ class Symbol:
             # we actually need to grab everything
             # first check to see if we have any data in s3
             saved_bars = utils.load_bars([self.symbol])[self.symbol]
+
+            # this means we got data from s3
             if type(saved_bars) == pd.core.frame.DataFrame:
                 yf_start = saved_bars.index[-1]
                 saved_data = True
             else:
+                # this means we didn't get data from s3
                 yf_start = datetime.now() - self.max_range
+
         else:
             # if we've specified a date, we're probably refreshing our dataset over time
             if from_date:
@@ -371,7 +387,7 @@ class Symbol:
             yf_end = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
 
         # no end required - we want all of the data
-        bars = yf.Ticker(self.symbol).history(
+        bars = self.market_data_source.Ticker(self.symbol).history(
             start=yf_start,
             interval=self.interval,
             actions=False,

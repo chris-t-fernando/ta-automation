@@ -4,8 +4,7 @@ import parameter_stores
 from alpaca_wrapper import AlpacaAPI
 from swyftx_wrapper import SwyftxAPI
 from back_test_wrapper import BackTestAPI
-
-# from itradeapi import ITradeAPI, IPosition
+import sample_symbols
 import yfinance as yf
 import pandas as pd
 import time
@@ -20,15 +19,16 @@ from stock_symbol import (
     STOP_LOSS_ACTIVE,
 )
 from utils import get_pause, get_interval_settings
-from dateutil.relativedelta import relativedelta
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 # do reporting
+# put reporting into S3 or something
+# notify to Slack
 # 300 df merge update bring down to just changes - faster faster
-# check if market is closed and don't query
 # better stop loss pct figures
+# command line parameters
 
 global_back_testing = True
 global_override_broker = True
@@ -45,41 +45,6 @@ hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
 log_wp.setLevel(logging.DEBUG)
-
-df_report = pd.DataFrame()
-df_report_columns = [
-    "start",
-    "end",
-    "capital_start",
-    "capital_end",
-    "capital_change",
-    "capital_change_pct",
-    "intervals",
-    "trades_total",
-    "trades_won",
-    "trades_won_rate",
-    "trades_lost",
-    "trades_lost_rate",
-    "trades_skipped",
-    "hold_units",
-    "hold_start_buy",
-    "hold_end_buy",
-    "hold_change",
-    "hold_change_pct",
-    "better_strategy",
-]
-
-
-df_trade_report_columns = [
-    "date",
-    "symbol",
-    "side",
-    "order_type",
-    "units",
-    "unit_price",
-    "total_value",
-]
-df_trade_report = pd.DataFrame(columns=df_trade_report_columns)
 
 
 class BotTelemetry:
@@ -205,6 +170,8 @@ class BotTelemetry:
 
             print(f"Play ID {play} made {profit} profit")
 
+        self.play_df = play_df
+
         print("banana")
 
     # add in timestamps and use it for order by
@@ -227,7 +194,8 @@ class MacdBot:
     def __init__(
         self,
         ssm,
-        data_source,
+        market_data_source,
+        bot_telemetry: BotTelemetry,
         interval="5m",
         back_testing=False,
         back_testing_balance: float = None,
@@ -236,172 +204,16 @@ class MacdBot:
         self.interval_delta, max_range = get_interval_settings(self.interval)
         self.real_money_trading = False
         self.ssm = ssm
-        self.data_source = data_source
+        self.market_data_source = market_data_source
         self.back_testing = back_testing
         self.back_testing_balance = back_testing_balance
-        global bot_telemetry
         self.bot_telemetry = bot_telemetry
-        # get interval delta - used at the end of each iteration to work out what to do next
 
-        # get jobs
-        mixed_symbols = [
-            {"symbol": "AAPL", "api": "alpaca"},
-            {"symbol": "AXS", "api": "alpaca"},
-            {"symbol": "TSLA", "api": "alpaca"},
-            {"symbol": "FB", "api": "alpaca"},
-            {"symbol": "GOOG", "api": "alpaca"},
-            {"symbol": "MSFT", "api": "alpaca"},
-            {"symbol": "NVDA", "api": "alpaca"},
-            {"symbol": "NVAX", "api": "alpaca"},
-            {"symbol": "BUD", "api": "alpaca"},
-            {"symbol": "AMZN", "api": "alpaca"},
-            {"symbol": "INFY", "api": "alpaca"},
-            {"symbol": "RTX", "api": "alpaca"},
-            # {"symbol": "ADA-USD", "api": "alpaca"},
-            {"symbol": "ETH-USD", "api": "alpaca"},
-            {"symbol": "SOL-USD", "api": "alpaca"},
-            # {"symbol": "XRP-USD", "api": "alpaca"},
-            {"symbol": "DOGE-USD", "api": "alpaca"},
-            {"symbol": "SHIB-USD", "api": "alpaca"},
-            {"symbol": "MATIC-USD", "api": "alpaca"},
-            # {"symbol": "ATOM-USD", "api": "alpaca"},
-            # {"symbol": "FTT-USD", "api": "alpaca"},
-            # {"symbol": "BNB-USD", "api": "alpaca"},
-            {"symbol": "WBTC-USD", "api": "alpaca"},
-            {"symbol": "TRX-USD", "api": "alpaca"},
-            {"symbol": "UNI-USD", "api": "alpaca"},
-            {"symbol": "BAT-USD", "api": "alpaca"},
-            {"symbol": "PAXG-USD", "api": "alpaca"},
-        ]
-
-        nyse_symbols_big = [
-            {"symbol": "C", "api": "alpaca"},
-            {"symbol": "SHIB-USD", "api": "alpaca"},
-            {"symbol": "PFE", "api": "alpaca"},
-            {"symbol": "GE", "api": "alpaca"},
-            {"symbol": "AIG", "api": "alpaca"},
-            {"symbol": "WMT", "api": "alpaca"},
-            {"symbol": "IBM", "api": "alpaca"},
-            {"symbol": "BAC", "api": "alpaca"},
-            {"symbol": "JNJ", "api": "alpaca"},
-            {"symbol": "GS", "api": "alpaca"},
-            {"symbol": "CVX", "api": "alpaca"},
-            {"symbol": "PG", "api": "alpaca"},
-            {"symbol": "MO", "api": "alpaca"},
-            {"symbol": "JPM", "api": "alpaca"},
-            {"symbol": "COP", "api": "alpaca"},
-            {"symbol": "VLO", "api": "alpaca"},
-            {"symbol": "TXN", "api": "alpaca"},
-            {"symbol": "SLB", "api": "alpaca"},
-            {"symbol": "HD", "api": "alpaca"},
-            {"symbol": "UNH", "api": "alpaca"},
-            {"symbol": "MRK", "api": "alpaca"},
-            {"symbol": "VZ", "api": "alpaca"},
-            {"symbol": "CAT", "api": "alpaca"},
-            {"symbol": "PD", "api": "alpaca"},
-            {"symbol": "DNA", "api": "alpaca"},
-            {"symbol": "GM", "api": "alpaca"},
-            {"symbol": "HPQ", "api": "alpaca"},
-            {"symbol": "KO", "api": "alpaca"},
-            {"symbol": "AXP", "api": "alpaca"},
-            {"symbol": "UPS", "api": "alpaca"},
-            {"symbol": "MMM", "api": "alpaca"},
-            {"symbol": "VIA", "api": "alpaca"},
-            {"symbol": "WFC", "api": "alpaca"},
-            {"symbol": "HAL", "api": "alpaca"},
-            {"symbol": "BA", "api": "alpaca"},
-            {"symbol": "F", "api": "alpaca"},
-            {"symbol": "X", "api": "alpaca"},
-            {"symbol": "LLY", "api": "alpaca"},
-            {"symbol": "RIG", "api": "alpaca"},
-            {"symbol": "AAPL", "api": "alpaca"},
-            {"symbol": "AXS", "api": "alpaca"},
-            {"symbol": "TSLA", "api": "alpaca"},
-            {"symbol": "FB", "api": "alpaca"},
-            {"symbol": "GOOG", "api": "alpaca"},
-            {"symbol": "MSFT", "api": "alpaca"},
-            {"symbol": "NVDA", "api": "alpaca"},
-            {"symbol": "NVAX", "api": "alpaca"},
-            {"symbol": "BUD", "api": "alpaca"},
-            {"symbol": "AMZN", "api": "alpaca"},
-            {"symbol": "INFY", "api": "alpaca"},
-            {"symbol": "RTX", "api": "alpaca"},
-            {"symbol": "GME", "api": "alpaca"},
-            # {"symbol": "ADA-USD", "api": "alpaca"},
-            {"symbol": "ETH-USD", "api": "alpaca"},
-            {"symbol": "SOL-USD", "api": "alpaca"},
-            # {"symbol": "XRP-USD", "api": "alpaca"},
-            {"symbol": "DOGE-USD", "api": "alpaca"},
-            {"symbol": "MATIC-USD", "api": "alpaca"},
-            # {"symbol": "ATOM-USD", "api": "alpaca"},
-            # {"symbol": "FTT-USD", "api": "alpaca"},
-            # {"symbol": "BNB-USD", "api": "alpaca"},
-            {"symbol": "WBTC-USD", "api": "alpaca"},
-            {"symbol": "TRX-USD", "api": "alpaca"},
-            {"symbol": "UNI-USD", "api": "alpaca"},
-            {"symbol": "BAT-USD", "api": "alpaca"},
-            {"symbol": "PAXG-USD", "api": "alpaca"},
-        ]
-
-        nyse_symbols_medium = [
-            {"symbol": "C", "api": "alpaca"},
-            {"symbol": "PFE", "api": "alpaca"},
-            {"symbol": "GE", "api": "alpaca"},
-            {"symbol": "AIG", "api": "alpaca"},
-            {"symbol": "WMT", "api": "alpaca"},
-            {"symbol": "IBM", "api": "alpaca"},
-            {"symbol": "BAC", "api": "alpaca"},
-            {"symbol": "JNJ", "api": "alpaca"},
-            {"symbol": "GS", "api": "alpaca"},
-            {"symbol": "CVX", "api": "alpaca"},
-            {"symbol": "PG", "api": "alpaca"},
-            {"symbol": "MO", "api": "alpaca"},
-            {"symbol": "JPM", "api": "alpaca"},
-            {"symbol": "COP", "api": "alpaca"},
-            {"symbol": "VLO", "api": "alpaca"},
-            {"symbol": "TXN", "api": "alpaca"},
-            {"symbol": "GME", "api": "alpaca"},
-        ]
-
-        nyse_symbols = [
-            {"symbol": "MSFT", "api": "alpaca"},
-            {"symbol": "C", "api": "alpaca"},
-        ]
-
-        mixed_symbols_small = [
-            {"symbol": "C", "api": "alpaca"},
-            {"symbol": "SOL-USD", "api": "alpaca"},
-        ]
-
-        crypto_symbol = [
-            {"symbol": "SOL-USD", "api": "alpaca"},
-        ]
-
-        crypto_symbols_all = [
-            # {"symbol": "ADA-USD", "api": "alpaca"},
-            {"symbol": "ETH-USD", "api": "alpaca"},
-            {"symbol": "SOL-USD", "api": "alpaca"},
-            # {"symbol": "XRP-USD", "api": "alpaca"},
-            {"symbol": "DOGE-USD", "api": "alpaca"},
-            {"symbol": "SHIB-USD", "api": "alpaca"},
-            {"symbol": "MATIC-USD", "api": "alpaca"},
-            # {"symbol": "ATOM-USD", "api": "alpaca"},
-            # {"symbol": "FTT-USD", "api": "alpaca"},
-            # {"symbol": "BNB-USD", "api": "alpaca"},
-            {"symbol": "WBTC-USD", "api": "alpaca"},
-            {"symbol": "TRX-USD", "api": "alpaca"},
-            {"symbol": "UNI-USD", "api": "alpaca"},
-            {"symbol": "BAT-USD", "api": "alpaca"},
-            {"symbol": "PAXG-USD", "api": "alpaca"},
-        ]
-
-        symbols = crypto_symbols_all
-
-        df_report = pd.DataFrame(
-            columns=df_report_columns, index=[x["symbol"] for x in symbols]
-        )
+        # TODO take this as parameter input
+        symbols = sample_symbols.everything
 
         if back_testing:
+            # override broker to back_test
             if global_override_broker:
                 for s in symbols:
                     s["api"] = "back_test"
@@ -411,6 +223,8 @@ class MacdBot:
         for api in symbols:
             self.api_list.append(api["api"])
             log_wp.debug(f"Found broker {api}")
+
+        # configure brokers
         self.api_list = list(set(self.api_list))
         self.api_dict = self.setup_brokers(
             api_list=self.api_list, ssm=ssm, back_testing=back_testing
@@ -427,7 +241,7 @@ class MacdBot:
                 api=self.api_dict[s["api"]],
                 bot_telemetry=self.bot_telemetry,
                 store=ssm,
-                data_source=data_source,
+                market_data_source=market_data_source,
                 back_testing=back_testing,
             )
             if new_symbol._init_complete:
@@ -437,7 +251,7 @@ class MacdBot:
                 )
             else:
                 log_wp.error(
-                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF returned {len(new_symbol.bars)} {round(time.time() - start_time,1)}s'
+                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF returned {len(new_symbol.bars)} bars {round(time.time() - start_time,1)}s'
                 )
 
     def setup_brokers(self, api_list, ssm, back_testing: bool = False):
@@ -584,7 +398,7 @@ def main():
     global bot_telemetry
     bot_telemetry = BotTelemetry()
     ssm = boto3.client("ssm")
-    data_source = yf
+    market_data_source = yf
 
     # reset back testing rules before we start the run
     if back_testing:
@@ -620,10 +434,11 @@ def main():
 
     bot_handler = MacdBot(
         ssm=store,
-        data_source=data_source,
+        market_data_source=market_data_source,
+        bot_telemetry=bot_telemetry,
         interval=interval,
         back_testing=back_testing,
-        back_testing_balance=10000,
+        back_testing_balance=100000,
     )
 
     if len(bot_handler.symbols) == 0:
@@ -641,8 +456,8 @@ def main():
             log_wp.debug(f"Finished analysing {end}, sleeping for {round(pause,0)}s")
             time.sleep(pause)
 
-    global df_trade_report
-    df_trade_report.to_csv("trade_report.csv")
+    bot_handler.bot_telemetry.play_df.to_csv("play_report.csv")
+    bot_handler.bot_telemetry.orders_df.to_csv("order_report.csv")
     print("banana")
 
 

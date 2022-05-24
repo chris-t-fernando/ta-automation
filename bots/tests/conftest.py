@@ -66,7 +66,7 @@ def f_chris_symbol(monkeypatch):
         interval="5m",
         real_money_trading=False,
         store=parameter_stores.back_test_store,
-        data_source=yf,
+        market_data_source=yf,
     )
 
     return chris
