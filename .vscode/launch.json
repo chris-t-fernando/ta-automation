@@ -10,6 +10,14 @@
             "justMyCode": true
         },
         {
+            "name": "Python: tabot",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "type": "aws-sam",
             "request": "direct-invoke",
             "name": "job-scan:HelloWorldFunction (python3.8)",

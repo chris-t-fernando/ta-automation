@@ -1,15 +1,17 @@
-from dateutil.relativedelta import relativedelta
-import time
-import btalib
-import pandas as pd
-import logging
-import jsonpickle
-from datetime import datetime
-import uuid
-import pytz
-import yfinance as yf
+# external packages
 import boto3
+import btalib
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import jsonpickle
+import logging
 from numpy import NaN
+import pandas as pd
+import pytz
+import time
+import uuid
+import yfinance as yf
+
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -604,15 +606,17 @@ def save_bars(symbols: list, interval: str, max_range) -> bool:
         existing_bars = load_bars([symbol])
         if type(existing_bars[symbol]) == pd.core.frame.DataFrame:
             start = existing_bars[symbol].index[-1]
-            print(f"{symbol}: Saved data found")
+            log_wp.debug(
+                f"{symbol}: Existing bars found in S3 will be used as starting point"
+            )
         else:
             start = datetime.now() - max_range
-            print(f"{symbol}: No saved data found")
+            log_wp.debug(
+                f"{symbol}: No bars found in S3. Starting point will be YFinance start date"
+            )
 
         bars = yf.Ticker(symbol).history(
-            start=start,
-            interval=interval,
-            actions=False,
+            start=start, interval=interval, actions=False, debug=False
         )
 
         if len(bars) == 0:
@@ -632,17 +636,12 @@ def save_bars(symbols: list, interval: str, max_range) -> bool:
 
         # pickled_bars = utils.pickle(bars)
         pickled_bars = bars_with_signals.to_csv()
-        return save_to_s3(
+        if save_to_s3(
             bucket="mfers-tabot", key=f"symbol_data/{symbol}.csv", pickle=pickled_bars
-        )
-        # try:
-        #    s3object = s3.Object("mfers-tabot", f"symbol_data/{symbol}.csv")
-        #    s3object.put(
-        #        Body=bytes(pickled_bars.encode("UTF-8")),
-        #        StorageClass="ONEZONE_IA",
-        #    )
-        # except:
-        #    return False
+        ):
+            log_wp.info(f"{symbol}: Saved bars to S3")
+        else:
+            log_wp.error(f"{symbol}: Failed to save bars to S3")
 
     return True
 
@@ -653,10 +652,11 @@ def save_to_s3(bucket, key, pickle):
         s3object = s3.Object(bucket, key)
 
         s3object.put(
-            Body=bytes(pickle),
+            Body=bytes(pickle.encode("utf-8")),
             StorageClass="ONEZONE_IA",
         )
-    except:
+    except Exception as e:
+        log_wp.error(f"Unable to save {key} to {bucket}: {str(e)}")
         return False
 
     return True

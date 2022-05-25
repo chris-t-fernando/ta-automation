@@ -1,9 +1,10 @@
 from iparameter_store import IParameterStore
+import boto3
 
 
 class ssm(IParameterStore):
-    def __init__(self, store):
-        self.store = store
+    def __init__(self):
+        self.store = boto3.client("ssm")
 
     def put_parameter(self, *args, **kwargs) -> dict:
         return self.store.put_parameter(*args, **kwargs)
@@ -34,6 +35,8 @@ class back_test_store(IParameterStore):
 
     def get_parameter(self, Name: str, WithDecryption: bool = False) -> dict:
         if Name not in self.store:
-            raise self.exceptions.ParameterNotFound
+            raise self.exceptions.ParameterNotFound(
+                f"{Name} not found in Parameter Store"
+            )
 
         return self.store[Name]

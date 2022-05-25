@@ -1,3 +1,9 @@
+# external packages
+import logging
+from math import floor
+
+# my modules
+from itradeapi import IOrderResult, Position
 from utils import (
     get_blue_cycle_start,
     get_red_cycle_start,
@@ -6,11 +12,6 @@ from utils import (
     count_intervals,
     clean,
 )
-from math import floor
-import logging
-import warnings
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger("buyplan")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -23,8 +24,6 @@ log_wp.addHandler(hdlr)
 
 
 class BuyPlan:
-    ORDER_SIZE = 2000
-
     def __init__(
         self,
         symbol: str,
@@ -36,13 +35,20 @@ class BuyPlan:
         min_trade_increment: float = 1,
         min_order_size: float = 1,
         min_price_increment: float = 0.001,
+        max_play_value: float = 2000,
     ):
         self.success = False
+        self.min_trade_increment = min_trade_increment
+        self.min_order_size = min_order_size
+        self.min_price_increment = min_price_increment
+        self.precision = precision
+        self.max_play_value = max_play_value
+
         self.symbol = symbol
-        if balance < BuyPlan.ORDER_SIZE:
+        if balance < max_play_value:
             self.capital = balance
         else:
-            self.capital = BuyPlan.ORDER_SIZE
+            self.capital = max_play_value
 
         self.blue_cycle_start = get_blue_cycle_start(df=df)
         self.red_cycle_start = get_red_cycle_start(
@@ -83,7 +89,7 @@ class BuyPlan:
         # else:
         #    self.units = floor(self.capital / self.entry_unit)
 
-        if BuyPlan.ORDER_SIZE < self.entry_unit:
+        if max_play_value < self.entry_unit:
             # we're not buying any units
             self.error_message = "entry_larger_than_order_size"
             return
@@ -135,3 +141,66 @@ class BuyPlan:
         # fmt: on
 
         self.success = True
+
+    def take_profit(
+        self,
+        filled_order: IOrderResult,
+        active_rule: dict,
+        new_position_quantity: Position,
+    ):
+        filled_quantity = filled_order.filled_unit_quantity
+        filled_unit_price = filled_order.filled_unit_price
+        filled_value = filled_quantity * filled_unit_price
+
+        # raise sell order
+        pct_sell_down = active_rule["risk_point_sell_down_pct"]
+        units = new_position_quantity
+
+        units_to_sell = pct_sell_down * units
+
+        units_to_sell -= units_to_sell % self.min_trade_increment
+
+        if units_to_sell < self.min_order_size or units_to_sell == 0:
+            units_to_sell = self.min_order_size
+
+        new_steps = active_rule["steps"] + 1
+        new_target_profit = active_rule["original_risk"] * new_steps
+        new_target_unit_price = active_rule["current_target_price"] + new_target_profit
+
+        # update rules
+        new_sales_obj = {
+            "units": filled_order.filled_unit_quantity,
+            "sale_price": filled_order.filled_unit_price,
+        }
+        new_units_held = new_position_quantity
+        new_units_sold = active_rule["units_sold"] + filled_order.filled_unit_quantity
+
+        new_rule = active_rule.copy()
+        # new_stop_loss = new_target_unit_price * new_rule["risk_point_new_stop_loss_pct"]
+
+        # this will keep x% of the gain
+        # first work out the gain
+        gain = filled_unit_price - active_rule["purchase_price"]
+        protected_gain = gain * active_rule["risk_point_new_stop_loss_pct"]
+        new_stop_loss = active_rule["purchase_price"] + protected_gain
+
+        # new_stop_loss = active_rule["current_target_price"] + ()
+
+        new_rule["current_stop_loss"] = new_stop_loss
+        new_rule["current_risk"] = new_target_profit
+        new_rule["sales"].append(new_sales_obj)
+        new_rule["units_held"] = new_units_held
+        new_rule["units_sold"] = new_units_sold
+        new_rule["steps"] += new_steps
+        new_rule["current_target_price"] = new_target_unit_price
+        new_rule["play_id"] = active_rule["play_id"]
+
+        return {
+            "new_rule": new_rule,
+            "new_stop_loss": new_stop_loss,
+            "new_units_to_sell": units_to_sell,
+            "new_target_unit_price": new_target_unit_price,
+            "new_units_held": new_units_held,
+            "new_units_sold": new_units_sold,
+        }
+        print("banana")

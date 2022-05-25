@@ -1,5 +1,6 @@
 import utils
 import warnings
+import sample_symbols
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -43,6 +44,21 @@ symbols = [
     "RIG",
     "GME",
 ]
+
+all_symbols = (
+    sample_symbols.mixed_symbols
+    + sample_symbols.nyse_symbols_big
+    + sample_symbols.nyse_symbols_medium
+    + sample_symbols.nyse_symbols
+    + sample_symbols.mixed_symbols_small
+    + sample_symbols.crypto_symbol
+    + sample_symbols.crypto_symbols_all
+)
+
+symbols = []
+
+for s in all_symbols:
+    symbols.append(s["symbol"])
 
 interval = "5m"
 interval_delta, max_range = utils.get_interval_settings(interval)

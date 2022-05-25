@@ -1,5 +1,12 @@
+# external packages
 from datetime import datetime
+import logging
+from math import floor
+import pandas as pd
 import pytz
+
+# my modules
+from buyplan import BuyPlan
 from itradeapi import (
     ITradeAPI,
     MARKET_BUY,
@@ -9,17 +16,8 @@ from itradeapi import (
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
 )
+from inotification_service import INotificationService
 import utils
-import logging
-
-from buyplan import BuyPlan
-from math import floor
-import pandas as pd
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
-import warnings
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger(
     "stock_symbol"
@@ -60,9 +58,7 @@ class Symbol:
         store,
         bot_telemetry,
         market_data_source,
-        slack_token: str,
-        slack_heartbeat_channel: str,
-        slack_announcements_channel: str,
+        notification_service: INotificationService,
         real_money_trading: bool = False,
         to_date: str = None,
         back_testing: bool = False,
@@ -76,9 +72,7 @@ class Symbol:
         self.store = store
         self.market_data_source = market_data_source
         self.initialised = False
-        self.slack_token = slack_token
-        self.slack_heartbeat_channel = slack_heartbeat_channel
-        self.slack_announcements_channel = slack_announcements_channel
+        self.notification_service = notification_service
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
         # next check precision on order - normal stocks are only to the thousandth, crypto is huge
@@ -410,8 +404,13 @@ class Symbol:
 
         if len(bars) == 0:
             # something went wrong - usually bad symbol and search parameters
-            log_wp.debug(
-                f"{self.symbol}: No data returned for start {yf_start} end {yf_end}"
+            if not yf_end:
+                debug_end = "now"
+            else:
+                debug_end = yf_end
+
+            log_wp.warning(
+                f"{self.symbol}: No data returned between {yf_start} til {debug_end}"
             )
             return bars
 
@@ -464,7 +463,7 @@ class Symbol:
                 self.api._put_bars(symbol=self.symbol, bars=self.bars)
 
         else:
-            log_wp.debug(f"{self.symbol}: No new data since {from_date}")
+            log_wp.log(9, f"{self.symbol}: No new data since {from_date}")
 
     # END  BAR FUNCTIONS
 
@@ -476,7 +475,10 @@ class Symbol:
         bars_slice = self.get_data_window()
 
         if len(bars_slice) < 200:
-            print("banana")
+            log_wp.warning(
+                f"{self.symbol}: Less than 200 bar samples - high probability of exception/error so bailing out"
+            )
+            return False
 
         # check to see if the signal was found in the last record in bars_slice
         buy_signal_found = utils.check_buy_signal(
@@ -502,7 +504,7 @@ class Symbol:
             if not buy_plan.success:
                 if buy_plan.error_message == "entry_larger_than_order_size":
                     log_wp.info(
-                        f"{self.symbol}: Found buy signal, but max play size is {buy_plan.ORDER_SIZE} vs entry price of {buy_plan.entry_unit}"
+                        f"{self.symbol}: Found buy signal, but max play size is {buy_plan.max_play_value} vs entry price of {buy_plan.entry_unit}"
                     )
                     return False
                 elif buy_plan.error_message == "min_order_size":
@@ -526,28 +528,8 @@ class Symbol:
                     )
                     return False
 
-                if hasattr(buy_plan, "entry_unit") and balance <= buy_plan.entry_unit:
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but insufficient balance to execute. Balance {balance} vs unit price {buy_plan.entry_unit} - skipping"
-                    )
-                    return False
-
-                elif (
-                    hasattr(buy_plan, "entry_unit")
-                    and BuyPlan.ORDER_SIZE < buy_plan.entry_unit
-                ):
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but price {buy_plan.entry_unit} exceeds BuyOrder max size {BuyPlan.ORDER_SIZE} - skipping"
-                    )
-                    return False
-                else:
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but failed to create BuyPlan"
-                    )
-                    return False
-
             self.buy_plan = buy_plan
-            log_wp.debug(
+            log_wp.info(
                 f"{self.symbol}: Found buy signal, next step is trans_entering_position"
             )
             return self.trans_entering_position
@@ -630,8 +612,6 @@ class Symbol:
         return self.trans_take_profit
 
     def check_state_take_profit(self):
-        if self._back_testing_date == pd.Timestamp("2022-05-19 21:45:00+00:00"):
-            print("basd")
         # get current position for this symbol
         self.position = self.api.get_position(symbol=self.symbol)
 
@@ -649,14 +629,22 @@ class Symbol:
 
         # first check to see if the take profit order has been filled
         if order.status_summary == "filled":
+            self.notification_service.send(
+                message=f"MACD algo took profit on {self.symbol} | {order.filled_unit_price} sold price | {order.filled_unit_quantity} units sold | {order.filled_unit_quantity * order.filled_unit_price} total sale value",
+            )
+
             # do we have any units left?
             if self.position.quantity == 0:
                 # nothing left to sell
+                self.notification_service.send(
+                    message=f"I don't hold any more units of {self.symbol}. Play complete",
+                )
                 log_wp.warning(
                     f"{self.symbol}: No units still held, next action is trans_close_position"
                 )
                 return self.trans_close_position
             else:
+                # no slack notification needed here - I do it in trans_take_profit_again
                 # still some left to sell, so transition back to same state
                 log_wp.debug(
                     f"{self.symbol}: Units still held, next action is trans_take_profit_again"
@@ -665,6 +653,9 @@ class Symbol:
 
         # position liquidated but not using our fill order
         if self.position.quantity == 0:
+            self.notification_service.send(
+                message=f"MACD algo terminated for {self.symbol}. Hold no units but I didn't liquidate them. Did these units get liquidated outside of my workflow?",
+            )
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: No units held but liquidated outside of this sell order, next action is trans_externally_liquidated"
             )
@@ -672,6 +663,9 @@ class Symbol:
 
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
         if not self.active_rule:
+            self.notification_service.send(
+                message=f"MACD algo terminated for {self.symbol}. The rules for this play (stop loss etc) can't found in state storage. You need to liquidate this holding manually.",
+            )
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: Can't find rule for this position, next action is trans_take_profit_to_stop_loss"
             )
@@ -680,6 +674,7 @@ class Symbol:
         # stop loss hit?
         stop_loss = self.active_rule["current_stop_loss"]
         if last_close < stop_loss:
+            # no notification required here - will be handled in trans_ method
             log_wp.warning(
                 f"{self._analyse_date} {self.symbol}: Stop loss hit (last close {round(last_close,2)} < stop loss {round(stop_loss,2)}), next action is trans_take_profit_to_stop_loss"
             )
@@ -687,6 +682,7 @@ class Symbol:
 
         if order.status_summary == "cancelled":
             # the order got cancelled for some reason. we still have a position, so try to re-raise it
+            # no notification required here - will be handled in trans_ method
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: Sell order was cancelled for some reason (maybe be broker?), so trying to re-raise it. Next action is trans_take_profit_retry"
             )
@@ -747,7 +743,7 @@ class Symbol:
     # START TRANSITION FUNCTIONS
     def trans_entering_position(self):
         # submit buy order
-        log_wp.debug(f"{self.symbol}: Started trans_entering_position")
+        log_wp.log(9, f"{self.symbol}: Started trans_entering_position")
 
         self.play_id = "play-" + utils.generate_id()
 
@@ -779,7 +775,7 @@ class Symbol:
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Buy order {order_result.order_id} (state {order_result.status_summary}) at unit price {order_result.ordered_unit_price} submitted"
         )
-        log_wp.debug(f"{self.symbol}: Finished trans_entering_position")
+        log_wp.log(9, f"{self.symbol}: Finished trans_entering_position")
         return True
 
     def trans_buy_order_timed_out(self):
@@ -862,10 +858,8 @@ class Symbol:
         # set current check
         self.current_check = self.check_state_position_taken
 
-        client = WebClient(token=self.slack_token)
-        client.chat_postMessage(
-            channel=self.slack_announcements_channel,
-            text=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit} entry price | {self.buy_plan.stop_unit} stop loss price | {self.buy_plan.units} units bought",
+        self.notification_service.send(
+            message=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit} entry price | {self.buy_plan.stop_unit} stop loss price | {self.buy_plan.units} units bought",
         )
 
         return True
@@ -878,6 +872,7 @@ class Symbol:
         pct = self.active_rule["risk_point_sell_down_pct"]
         units = self.position.quantity
 
+        # TODO: THIS BIT IS BUSTED AND NEEDS FIXING ASAP
         units_to_sell = floor(pct * units)
 
         order = self.api.sell_order_limit(
@@ -1065,33 +1060,16 @@ class Symbol:
             f"{self._analyse_date} {self.symbol}: Successfully took profit: order ID {filled_order.order_id} sold {filled_order.filled_unit_quantity} at {filled_order.filled_unit_price} for value {filled_value}"
         )
 
-        # raise sell order
-        pct = self.active_rule["risk_point_sell_down_pct"]
-        units = self.position.quantity
-
-        # units_to_sell = floor(pct * units)
-
-        # units_to_sell might be less than 1 whole unit - in this case, just sell 1 unit? TODO nominal/fractional shares
-        # if units_to_sell == 0:
-        #    units_to_sell = 1
-
-        units_to_sell = pct * units
-
-        units_to_sell -= units % self.min_trade_increment
-
-        if units_to_sell < self.min_order_size:
-            units_to_sell = self.min_order_size
-
-        new_steps = self.active_rule["steps"] + 1
-        new_target_profit = self.active_rule["original_risk"] * new_steps
-        new_target_unit_price = (
-            self.active_rule["current_target_price"] + new_target_profit
+        updated_plan = self.buy_plan.take_profit(
+            filled_order=filled_order,
+            active_rule=self.active_rule,
+            new_position_quantity=self.position.quantity,
         )
 
         order = self.api.sell_order_limit(
             symbol=self.symbol,
-            units=units_to_sell,
-            unit_price=new_target_unit_price,
+            units=updated_plan["new_units_to_sell"],
+            unit_price=updated_plan["new_target_unit_price"],
             back_testing_date=self._back_testing_date,
         )
 
@@ -1099,39 +1077,22 @@ class Symbol:
         self.active_order_id = order.order_id
 
         # update rules
-        new_sales_obj = {
-            "units": filled_order.filled_unit_quantity,
-            "sale_price": filled_order.filled_unit_price,
-        }
-        new_units_held = self.api.get_position(symbol=self.symbol).quantity
-        new_units_sold = (
-            self.active_rule["units_sold"] + filled_order.filled_unit_quantity
-        )
-
-        new_rule = self.active_rule
-        new_stop_loss = new_target_unit_price * new_rule["risk_point_new_stop_loss_pct"]
-        new_rule["current_stop_loss"] = new_stop_loss
-        new_rule["current_risk"] = new_target_profit
-        new_rule["sales"].append(new_sales_obj)
-        new_rule["units_held"] = new_units_held
-        new_rule["units_sold"] = new_units_sold
-        new_rule["steps"] += new_steps
-        new_rule["current_target_price"] = new_target_unit_price
-        new_rule["play_id"] = self.play_id
+        new_target_unit_price = updated_plan["new_target_unit_price"]
+        new_units_held = updated_plan["new_units_held"]
+        new_units_sold = updated_plan["new_units_sold"]
+        new_rule = updated_plan["new_rule"]
+        new_stop_loss = updated_plan["new_stop_loss"]
 
         if not self._replace_rule(new_rule=new_rule):
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )
 
-        client = WebClient(token=self.slack_token)
-        client.chat_postMessage(
-            channel=self.slack_announcements_channel,
-            text=f"MACD algo took profit on {self.symbol} | {filled_order.filled_unit_price} sold price | {filled_order.filled_unit_quantity} units sold | {filled_order.filled_unit_quantity * filled_order.filled_unit_price} total sale value",
+        self.notification_service.send(
+            message=f"MACD algo took profit on {self.symbol} | {filled_order.filled_unit_price} sold price | {filled_order.filled_unit_quantity} units sold | {filled_order.filled_unit_quantity * filled_order.filled_unit_price} total sale value",
         )
-        client.chat_postMessage(
-            channel=self.slack_announcements_channel,
-            text=f"I still hold {new_units_held} units of {self.symbol} | {new_target_unit_price} is new target price | {new_stop_loss} is new stop loss",
+        self.notification_service.send(
+            message=f"I still hold {new_units_held} units of {self.symbol} | {new_target_unit_price} is new target price | {new_stop_loss} is new stop loss",
         )
 
         self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
