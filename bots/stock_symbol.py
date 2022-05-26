@@ -388,6 +388,7 @@ class Symbol:
             if type(saved_bars) == pd.core.frame.DataFrame:
                 yf_start = saved_bars.index[-1]
                 saved_data = True
+                bars = saved_bars
             else:
                 raise RuntimeError(
                     f"back_testing is True and back_testing_skip_bar_updates is True, but we have no data for {self.symbol}"

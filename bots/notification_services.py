@@ -23,7 +23,12 @@ log_wp.setLevel(logging.DEBUG)
 
 
 class Pushover(INotificationService):
-    def __init__(self, store: IParameterStore, back_testing: bool = False):
+    def __init__(
+        self,
+        store: IParameterStore,
+        back_testing: bool = False,
+        real_money_trading: bool = False,
+    ):
         self.back_testing = back_testing
 
         if not back_testing:
@@ -60,10 +65,15 @@ class Pushover(INotificationService):
 
 
 class Slack(INotificationService):
-    def __init__(self, store: IParameterStore, back_testing: bool = False):
+    def __init__(
+        self,
+        store: IParameterStore,
+        back_testing: bool = False,
+        real_money_trading: bool = False,
+    ):
         self.back_testing = back_testing
 
-        if not back_testing:
+        if back_testing == False:
             slack_token = (
                 store.get_parameter(Name="/tabot/slack/bot_key", WithDecryption=True)
                 .get("Parameter")
@@ -71,7 +81,22 @@ class Slack(INotificationService):
             )
             self.slack_announcements_channel = (
                 store.get_parameter(
-                    Name="/tabot/slack/announcements_channel", WithDecryption=False
+                    Name="/tabot/paper/slack/announcements_channel",
+                    WithDecryption=False,
+                )
+                .get("Parameter")
+                .get("Value")
+            )
+            self.client = WebClient(token=slack_token)
+        elif real_money_trading:
+            slack_token = (
+                store.get_parameter(Name="/tabot/slack/bot_key", WithDecryption=True)
+                .get("Parameter")
+                .get("Value")
+            )
+            self.slack_announcements_channel = (
+                store.get_parameter(
+                    Name="/tabot/prod/slack/announcements_channel", WithDecryption=False
                 )
                 .get("Parameter")
                 .get("Value")

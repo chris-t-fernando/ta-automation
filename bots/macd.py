@@ -77,7 +77,7 @@ class MacdBot:
         # configure brokers
         self.api_list = list(set(self.api_list))
         self.api_dict = self.setup_brokers(
-            api_list=self.api_list, ssm=ssm, back_testing=back_testing
+            api_list=self.api_list, store=ssm, back_testing=back_testing
         )
 
         # set up individual symbols
@@ -106,7 +106,7 @@ class MacdBot:
                     f'{s["symbol"]}: Failed to set up symbol - check spelling? YF returned {len(new_symbol.bars)} bars {round(time.time() - start_time,1)}s'
                 )
 
-    def setup_brokers(self, api_list, ssm, back_testing: bool = False):
+    def setup_brokers(self, api_list, store, back_testing: bool = False):
         api_set = set(api_list)
         api_dict = {}
 
@@ -120,13 +120,17 @@ class MacdBot:
                 break
 
             elif api == "swyftx":
+                if self.real_money_trading:
+                    access_token_path = "/tabot/prod/swyftx/access_token"
+                else:
+                    access_token_path = "/tabot/paper/swyftx/access_token"
+
                 api_key = (
-                    ssm.get_parameter(
-                        Name="/tabot/swyftx/access_token", WithDecryption=True
-                    )
+                    store.get_parameter(Name=access_token_path, WithDecryption=True)
                     .get("Parameter")
                     .get("Value")
                 )
+
                 api_dict[api] = SwyftxAPI(
                     api_key=api_key,
                     back_testing=back_testing,
@@ -134,24 +138,32 @@ class MacdBot:
                 )
 
             elif api == "alpaca":
+                if self.real_money_trading:
+                    api_key_path = "/tabot/prod/alpaca/api_key"
+                    security_key_path = "/tabot/prod/alpaca/security_key"
+                else:
+                    api_key_path = "/tabot/paper/alpaca/api_key"
+                    security_key_path = "/tabot/paper/alpaca/security_key"
+
                 api_key = (
-                    ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
+                    store.get_parameter(Name=api_key_path, WithDecryption=True)
                     .get("Parameter")
                     .get("Value")
                 )
                 secret_key = (
-                    ssm.get_parameter(
-                        Name="/tabot/alpaca/security_key", WithDecryption=True
-                    )
+                    store.get_parameter(Name=security_key_path, WithDecryption=True)
                     .get("Parameter")
                     .get("Value")
                 )
+
                 api_dict[api] = AlpacaAPI(
                     alpaca_key_id=api_key,
                     alpaca_secret_key=secret_key,
                     back_testing=back_testing,
                     back_testing_balance=self.back_testing_balance,
+                    real_money_trading=self.real_money_trading,
                 )
+
             else:
                 raise ValueError(f"Unknown broker specified {api}")
 

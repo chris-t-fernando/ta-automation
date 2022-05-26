@@ -360,7 +360,7 @@ class AlpacaAPI(ITradeAPI):
                 side=side,
                 type=alpaca_type,
                 limit_price=limit_price,
-                time_in_force="day",
+                time_in_force="gtc",
                 stop_loss=sell_stop_dict,
             )
         except APIError as e:

@@ -1,27 +1,11 @@
 # TODO
-# command line input for:
-#   - back testing
-#   - back testing broker
-#   - symbols
-#   - parameter store
-#   - notification service to use
-#   - interval
-#   - real money trading
-#   - S3 bucket to store outputs
-#   - back testing balance
 # recover active plays from state
 # better reporting
 #  - crypto vs nyse
-#  - total number of open concurrent orders
 #  - streaks
-#  - handle open positions at end of run better - currently these are marked as losses - do a market sell on them
-# backtest wrapper - stop loss issues - either 99% is wrong or i'm calculating it wrong in stop loss
-# actually just all of how I iterate over take profit - the logic has seeped out of BuyPlan and in to Stock_Symbol
 # 300 df merge update bring down to just changes - faster faster
 # swyftx wrapper is busted
-# loop detection
 # should we use high/low/close as trigger? its used all through **utils** and buyplan
-# stop infinite loops by breaking process() loop if last action was stop_loss_filled or position liquidated
 
 # external packages
 import argparse
@@ -79,11 +63,7 @@ def main(args):
     )
 
     # write heartbeat to SSM (can't use local for this since the heartbeat reader is Lambda)
-    if real_money_trading:
-        heartbeat_path = "/tabot/heartbeat/live"
-    else:
-        # no need for checking backtesting, since I don't heartbeat it
-        heartbeat_path = "/tabot/heartbeat/paper"
+    heartbeat_path = "/tabot/heartbeat/paper"
 
     ssm = boto3.client("ssm")
     slack_token = (
@@ -91,10 +71,13 @@ def main(args):
         .get("Parameter")
         .get("Value")
     )
+    if real_money_trading:
+        slack_announcements_path = "/tabot/prod/slack/announcements_channel"
+    else:
+        slack_announcements_path = "/tabot/paper/slack/announcements_channel"
+
     slack_announcements_channel = (
-        ssm.get_parameter(
-            Name="/tabot/slack/announcements_channel", WithDecryption=False
-        )
+        ssm.get_parameter(Name=slack_announcements_path, WithDecryption=False)
         .get("Parameter")
         .get("Value")
     )
@@ -111,28 +94,31 @@ def main(args):
 
         # also put the alpaca API keys into the local store
         api_key = (
-            ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
+            ssm.get_parameter(Name="/tabot/paper/alpaca/api_key", WithDecryption=True)
             .get("Parameter")
             .get("Value")
         )
         secret_key = (
-            ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=True)
+            ssm.get_parameter(
+                Name="/tabot/paper/alpaca/security_key", WithDecryption=True
+            )
             .get("Parameter")
             .get("Value")
         )
 
         store.put_parameter(
-            Name=f"/tabot/alpaca/api_key",
+            Name=f"/tabot/paper/alpaca/api_key",
             Value=api_key,
         )
         store.put_parameter(
-            Name=f"/tabot/alpaca/security_key",
+            Name=f"/tabot/paper/alpaca/security_key",
             Value=secret_key,
         )
 
         store.put_parameter(Name="/tabot/slack/bot_key", Value=slack_token)
         store.put_parameter(
-            Name="/tabot/slack/announcements_channel", Value=slack_announcements_channel
+            Name="/tabot/paper/slack/announcements_channel",
+            Value=slack_announcements_channel,
         )
 
     else:
@@ -260,6 +246,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--back_testing_skip_bar_update",
+    action=argparse.BooleanOptionalAction,
     default=False,
     help="TA bot orchestrator will attempt to download saved bars from S3 and then update them with the latest from Yahoo Finance. Setting this to False will prevent the update",
 )

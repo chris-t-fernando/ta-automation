@@ -2,14 +2,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: tabot backtest one",
+            "name": "tabot bt one",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--back_test",
+                "--back_testing",
                 "--back_testing_skip_bar_update",
                 "--back_testing_override_broker",
                 "--symbols",
@@ -17,14 +17,14 @@
             ]
         },
         {
-            "name": "Python: tabot backtest crypto",
+            "name": "tabot bt crypto",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--back_test",
+                "--back_testing",
                 "--back_testing_skip_bar_update",
                 "--back_testing_override_broker",
                 "--symbols",
@@ -32,7 +32,7 @@
             ]
         },
         {
-            "name": "Python: tabot paper one",
+            "name": "tabot paper one",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -44,7 +44,7 @@
             ]
         },
         {
-            "name": "Python: tabot paper all",
+            "name": "tabot paper all",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -53,6 +53,19 @@
             "args": [
                 "--symbols",
                 "crypto_symbols_all"
+            ]
+        },
+        {
+            "name": "tabot REAL cheap",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--real_money_trading",
+                "--symbols",
+                "crypto_symbols_cheap"
             ]
         },
         {
