@@ -11,7 +11,10 @@
 #   - back testing balance
 # recover active plays from state
 # better reporting
-#  - handle open positions at end of run better - currently these are marked as losses
+#  - crypto vs nyse
+#  - total number of open concurrent orders
+#  - streaks
+#  - handle open positions at end of run better - currently these are marked as losses - do a market sell on them
 # backtest wrapper - stop loss issues - either 99% is wrong or i'm calculating it wrong in stop loss
 # actually just all of how I iterate over take profit - the logic has seeped out of BuyPlan and in to Stock_Symbol
 # 300 df merge update bring down to just changes - faster faster
@@ -57,8 +60,8 @@ def main():
     market_data_source = yf
     notification_service_object = notification_services.Slack
 
-    symbols = sample_symbols.everything
-    # symbols = sample_symbols.crypto_symbols_all
+    # symbols = sample_symbols.everything
+    symbols = sample_symbols.crypto_symbols_all
     # symbols = sample_symbols.crypto_symbol
 
     run_id = utils.generate_id()

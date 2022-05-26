@@ -199,10 +199,10 @@ def add_signals(bars, interval):
     start_time = time.time()
     # changed to use EMA instead of SMA
     # TODO update column name - pretty shonky doing it this way
-    # sma = btalib.sma(bars, period=200)
-    # bars["sma_200"] = list(sma["sma"])
-    sma = btalib.ema(bars, period=200)
-    bars["sma_200"] = list(sma["ema"])
+    sma = btalib.sma(bars, period=200)
+    bars["sma_200"] = list(sma["sma"])
+    # sma = btalib.ema(bars, period=200)
+    # bars["sma_200"] = list(sma["ema"])
     # log_wp.debug(f"SMA complete in {round(time.time() - start_time,1)}s")
 
     return bars

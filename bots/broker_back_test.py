@@ -673,7 +673,10 @@ class BackTestAPI(ITradeAPI):
                         log_wp.debug(
                             f"{symbol}: Failed to fill order {this_order.order_id} - trying to sell {this_order.ordered_unit_quantity} units but only hold {held}"
                         )
-                        self.cancel_order(order_id=this_order.order_id)
+                        self.cancel_order(
+                            order_id=this_order.order_id,
+                            back_testing_date=back_testing_date,
+                        )
                         continue
                         # raise ValueError(
                         #    f"{symbol}: Hold {held} so can't sell {this_order.ordered_unit_quantity} units"

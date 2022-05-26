@@ -759,7 +759,7 @@ class Symbol:
             log_wp.error(
                 f"{self._analyse_date} {self.symbol}: Failed to submit buy order {order_result.order_id}: {order_result.status_text}"
             )
-            return False
+            return self.trans_buy_order_cancelled
 
         # hold on to order ID
         self.active_order_id = order_result.order_id
@@ -813,7 +813,7 @@ class Symbol:
         state = self.get_state()
 
         if state == False:
-            log_wp.critical(
+            log_wp.warning(
                 f"{self._analyse_date} {self.symbol}: Unable to find order for this symbol in state! May be an orphaned buy order!"
             )
         else:
@@ -900,9 +900,14 @@ class Symbol:
         cancelled_order = self.api.cancel_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
         )
-        log_wp.warning(
-            f"{self.symbol}: Successfully cancelled take_profit order {cancelled_order.order_id}"
-        )
+        if cancelled_order:
+            log_wp.warning(
+                f"{self.symbol}: Successfully cancelled take_profit order {cancelled_order.order_id}"
+            )
+        else:
+            log_wp.warning(
+                f"{self.symbol}: Cancelling take_profit order returned False - already deleted?"
+            )
 
         self.bot_telemetry.add_order(order_result=cancelled_order, play_id=self.play_id)
 
