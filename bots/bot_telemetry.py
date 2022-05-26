@@ -133,6 +133,11 @@ class BotTelemetry:
             sell_value = unique_orders.loc[
                 (unique_orders.order_type != 3) & (unique_orders.play_id == play)
             ].filled_total_value.sum()
+
+            # ignore orders that are still open
+            if sell_value == 0:
+                continue
+
             profit = sell_value - buy_value
 
             if profit < 0:

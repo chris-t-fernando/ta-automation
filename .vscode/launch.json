@@ -17,6 +17,21 @@
             ]
         },
         {
+            "name": "tabot bt all",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--back_testing",
+                "--back_testing_skip_bar_update",
+                "--back_testing_override_broker",
+                "--symbols",
+                "everything"
+            ]
+        },
+        {
             "name": "tabot bt crypto",
             "type": "python",
             "request": "launch",

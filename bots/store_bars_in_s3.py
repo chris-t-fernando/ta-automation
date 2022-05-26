@@ -45,19 +45,23 @@ symbols = [
     "GME",
 ]
 
-all_symbols = (
-    sample_symbols.mixed_symbols
-    + sample_symbols.nyse_symbols_big
-    + sample_symbols.nyse_symbols_medium
-    + sample_symbols.nyse_symbols
-    + sample_symbols.mixed_symbols_small
-    + sample_symbols.crypto_symbol
-    + sample_symbols.crypto_symbols_all
-)
+# all_symbols = (
+#    sample_symbols.mixed_symbols
+#    + sample_symbols.nyse_symbols_big
+#    + sample_symbols.nyse_symbols_medium
+#    + sample_symbols.nyse_symbols
+#    + sample_symbols.mixed_symbols_small
+#    + sample_symbols.crypto_symbol
+#    + sample_symbols.crypto_symbols_all
+# )
+
+# the_symbols = [{"symbol": "DAI-USD", "api": "alpaca"}]
+
+the_symbols = sample_symbols.input_symbols["everything"]
 
 symbols = []
 
-for s in all_symbols:
+for s in the_symbols:
     symbols.append(s["symbol"])
 
 interval = "5m"

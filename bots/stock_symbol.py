@@ -831,7 +831,7 @@ class Symbol:
                 order_id=state["order_id"], back_testing_date=self._analyse_date
             )
 
-        self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
+            self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
