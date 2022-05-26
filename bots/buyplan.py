@@ -83,6 +83,11 @@ class BuyPlan:
         # calculate other order variables
         self.entry_unit = round(df.Close.iloc[-1], precision)
         self.stop_unit = round(stop_unit, precision)
+        self.last_low = df.Low.iloc[-1]
+
+        if self.stop_unit < self.last_low:
+            self.error_message = "stop_unit_too_high"
+            return
 
         # if notional_units:
         #    self.units = self.capital / self.entry_unit

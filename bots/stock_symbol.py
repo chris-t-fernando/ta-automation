@@ -522,6 +522,11 @@ class Symbol:
                         f"{self.symbol}: Found buy signal, but insufficient balance to purchase at least one unit. Balance {balance}, entry unit price {buy_plan.entry_unit}"
                     )
                     return False
+                elif buy_plan.error_message == "stop_unit_too_high":
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but Stop Loss {buy_plan.stop_unit} would already trigger last Low price of {buy_plan.last_low}"
+                    )
+                    return False
                 else:
                     log_wp.critical(
                         f"{self.symbol}: Found buy signal, but something went wrong in buy_plan. Balance {balance}, entry unit price {buy_plan.entry_unit}"
@@ -754,8 +759,8 @@ class Symbol:
             back_testing_date=self._back_testing_date,
         )
 
-        open_statuses = ["open", "filled"]
-        if order_result.status_summary not in open_statuses:
+        accepted_statuses = ["open", "filled", "pending"]
+        if order_result.status_summary not in accepted_statuses:
             log_wp.error(
                 f"{self._analyse_date} {self.symbol}: Failed to submit buy order {order_result.order_id}: {order_result.status_text}"
             )

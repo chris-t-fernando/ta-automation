@@ -19,6 +19,8 @@
 # actually just all of how I iterate over take profit - the logic has seeped out of BuyPlan and in to Stock_Symbol
 # 300 df merge update bring down to just changes - faster faster
 # swyftx wrapper is busted
+# loop detection
+# should we use high/low/close as trigger?
 
 # external packages
 import boto3
