@@ -48,7 +48,8 @@ class MacdBot:
         real_money_trading: bool = False,
         back_testing: bool = False,
         back_testing_balance: float = None,
-        override_broker: bool = False,
+        back_testing_override_broker: bool = False,
+        back_testing_skip_bar_update: bool = False,
     ):
         self.interval = interval
         self.interval_delta, max_range = utils.get_interval_settings(self.interval)
@@ -59,10 +60,11 @@ class MacdBot:
         self.back_testing_balance = back_testing_balance
         self.bot_telemetry = bot_telemetry
         self.notification_service = notification_service
+        self.back_testing_skip_bar_update = back_testing_skip_bar_update
 
         if back_testing:
             # override broker to back_test
-            if override_broker:
+            if back_testing_override_broker:
                 for s in symbols:
                     s["api"] = "back_test"
 
@@ -91,6 +93,7 @@ class MacdBot:
                 store=ssm,
                 market_data_source=market_data_source,
                 back_testing=back_testing,
+                back_testing_skip_bar_update=back_testing_skip_bar_update,
                 notification_service=notification_service,
             )
             if new_symbol._init_complete:

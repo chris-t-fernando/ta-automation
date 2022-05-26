@@ -62,8 +62,10 @@ class Symbol:
         real_money_trading: bool = False,
         to_date: str = None,
         back_testing: bool = False,
+        back_testing_skip_bar_update: bool = False,
     ):
         self.back_testing = back_testing
+        self.back_testing_skip_bar_update = back_testing_skip_bar_update
         self.bot_telemetry = bot_telemetry
         self.symbol = symbol
         self.api = api
@@ -378,45 +380,59 @@ class Symbol:
     # START BAR FUNCTIONS
     def _get_bars(self, from_date=None, to_date=None, initialised: bool = True):
         saved_data = False
-        if initialised == False:
-            # we actually need to grab everything
-            # first check to see if we have any data in s3
-            saved_bars = utils.load_bars([self.symbol])[self.symbol]
+        yf_end = None
 
+        if self.back_testing and self.back_testing_skip_bar_update:
+            saved_bars = utils.load_bars([self.symbol])[self.symbol]
             # this means we got data from s3
             if type(saved_bars) == pd.core.frame.DataFrame:
                 yf_start = saved_bars.index[-1]
                 saved_data = True
             else:
-                # this means we didn't get data from s3
-                yf_start = datetime.now() - self.max_range
+                raise RuntimeError(
+                    f"back_testing is True and back_testing_skip_bar_updates is True, but we have no data for {self.symbol}"
+                )
 
         else:
-            # if we've specified a date, we're probably refreshing our dataset over time
-            if from_date:
-                # widen the window out, just to make sure we don't miss any data in the refresh
-                yf_start = from_date - (self.interval_delta * 2)
+            if initialised == False:
+                # we actually need to grab everything
+                # first check to see if we have any data in s3
+                saved_bars = utils.load_bars([self.symbol])[self.symbol]
+
+                # this means we got data from s3
+                if type(saved_bars) == pd.core.frame.DataFrame:
+                    yf_start = saved_bars.index[-1]
+                    saved_data = True
+                else:
+                    # this means we didn't get data from s3
+                    yf_start = datetime.now() - self.max_range
+
             else:
-                # we're refreshing but didn't specify a date, so assume its in the last x minutes/hours
-                yf_start = datetime.now() - (self.interval_delta * 2)
+                # if we've specified a date, we're probably refreshing our dataset over time
+                if from_date:
+                    # widen the window out, just to make sure we don't miss any data in the refresh
+                    yf_start = from_date - (self.interval_delta * 2)
+                else:
+                    # we're refreshing but didn't specify a date, so assume its in the last x minutes/hours
+                    yf_start = datetime.now() - (self.interval_delta * 2)
 
-        # didn't specify an end date so go up til now
-        if to_date == None:
-            # yf_end = datetime.now()
-            yf_end = None
-        else:
-            # specified an end date so use it
-            yf_end = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
+            # didn't specify an end date so go up til now
+            if to_date == None:
+                # yf_end = datetime.now()
+                yf_end = None
+            else:
+                # specified an end date so use it
+                yf_end = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
 
-        # no end required - we want all of the data
-        bars = self.market_data_source.Ticker(self.symbol).history(
-            start=yf_start,
-            interval=self.interval,
-            actions=False,
-            debug=False,
-        )
+            # no end required - we want all of the data
+            bars = self.market_data_source.Ticker(self.symbol).history(
+                start=yf_start,
+                interval=self.interval,
+                actions=False,
+                debug=False,
+            )
 
-        bars = bars.tz_convert(pytz.utc)
+            bars = bars.tz_convert(pytz.utc)
 
         if saved_data:
             bars = utils.merge_bars(saved_bars, bars)
@@ -458,14 +474,6 @@ class Symbol:
             from_date=from_date,
             to_date=to_date,
         )
-
-        # trimmed_new_bars = new_bars.loc[
-        #    (new_bars.index.minute % 5 == 0) & (new_bars.index.second == 0)
-        # ]
-        # if len(new_bars) != len(trimmed_new_bars):
-        #    print("banana")
-
-        # new_bars = trimmed_new_bars
 
         if len(new_bars) > 0:
             # pad new bars to 200 rows so that macd and sma200 work
@@ -774,7 +782,7 @@ class Symbol:
         # submit buy order
         log_wp.log(9, f"{self.symbol}: Started trans_entering_position")
 
-        self.play_id = "play-" + utils.generate_id()
+        self.play_id = "play-" + self.symbol + utils.generate_id()
 
         order_result = self.api.buy_order_limit(
             symbol=self.symbol,

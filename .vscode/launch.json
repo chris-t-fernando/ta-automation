@@ -2,18 +2,64 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: tabot backtest one",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--back_test",
+                "--back_testing_skip_bar_update",
+                "--back_testing_override_broker",
+                "--symbols",
+                "crypto_symbol"
+            ]
+        },
+        {
+            "name": "Python: tabot backtest crypto",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--back_test",
+                "--back_testing_skip_bar_update",
+                "--back_testing_override_broker",
+                "--symbols",
+                "crypto_symbols_all"
+            ]
+        },
+        {
+            "name": "Python: tabot paper one",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--symbols",
+                "crypto_symbol"
+            ]
+        },
+        {
+            "name": "Python: tabot paper all",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--symbols",
+                "crypto_symbols_all"
+            ]
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "Python: tabot",
-            "type": "python",
-            "request": "launch",
-            "program": "bots/tabot.py",
             "console": "integratedTerminal",
             "justMyCode": true
         },

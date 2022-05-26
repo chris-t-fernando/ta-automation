@@ -24,6 +24,7 @@
 # stop infinite loops by breaking process() loop if last action was stop_loss_filled or position liquidated
 
 # external packages
+import argparse
 import boto3
 from datetime import datetime
 import json
@@ -52,20 +53,24 @@ log_wp.addHandler(fhdlr)
 log_wp.setLevel(logging.DEBUG)
 
 
-def main():
-    BUCKET = "mfers-tabot"
-    back_testing = True
-    override_broker = True
-    interval = "5m"
-    back_testing_balance = 100000
-    real_money_trading = False
+def main(args):
+    s3_bucket = args.bucket
+    back_testing = args.back_testing
+    back_testing_balance = args.back_testing_balance
+    back_testing_override_broker = args.back_testing_override_broker
+    back_testing_skip_bar_update = args.back_testing_skip_bar_update
+    interval = args.interval
+    real_money_trading = args.real_money_trading
     bot_telemetry = BotTelemetry(back_testing=back_testing)
     market_data_source = yf
-    notification_service_object = notification_services.Slack
+    if args.notification_service == "pushover":
+        notification_service_object = notification_services.Pushover
+    elif args.notification_service == "slack":
+        notification_service_object = notification_services.Slack
+    symbols = sample_symbols.input_symbols[args.symbols]
 
     # symbols = sample_symbols.everything
     # symbols = sample_symbols.crypto_symbols_all
-    symbols = sample_symbols.everything
     # symbols = [{"symbol": "AVAX-USD", "api": "alpaca"}]
 
     run_id = utils.generate_id()
@@ -144,10 +149,11 @@ def main():
         symbols=symbols,
         real_money_trading=real_money_trading,
         notification_service=notification_service,
-        override_broker=override_broker,
         interval=interval,
         back_testing=back_testing,
+        back_testing_override_broker=back_testing_override_broker,
         back_testing_balance=back_testing_balance,
+        back_testing_skip_bar_update=back_testing_skip_bar_update,
     )
 
     if len(symbols) == 0:
@@ -164,17 +170,17 @@ def main():
 
         bot_handler.bot_telemetry.generate_df()
         utils.save_to_s3(
-            bucket=BUCKET,
+            bucket=s3_bucket,
             key=f"telemetry/backtests/{run_id}_plays.csv",
             pickle=bot_handler.bot_telemetry.plays_df.to_csv(),
         )
         utils.save_to_s3(
-            bucket=BUCKET,
+            bucket=s3_bucket,
             key=f"telemetry/backtests/{run_id}_orders.csv",
             pickle=bot_handler.bot_telemetry.orders_df.to_csv(),
         )
         utils.save_to_s3(
-            bucket=BUCKET,
+            bucket=s3_bucket,
             key=f"telemetry/backtests/{run_id}_symbols.csv",
             pickle=bot_handler.bot_telemetry.symbols_df.to_csv(),
         )
@@ -204,17 +210,17 @@ def main():
             new_orders_df = bot_handler.bot_telemetry.orders_df
             if len(new_orders_df) != len(last_orders_df):
                 utils.save_to_s3(
-                    bucket=BUCKET,
+                    bucket=s3_bucket,
                     key=f"telemetry/{run_id}_plays.csv",
                     pickle=bot_handler.bot_telemetry.plays_df.to_json(),
                 )
                 utils.save_to_s3(
-                    bucket=BUCKET,
+                    bucket=s3_bucket,
                     key=f"telemetry/{run_id}_orders.csv",
                     pickle=bot_handler.bot_telemetry.orders_df.to_json(),
                 )
                 utils.save_to_s3(
-                    bucket=BUCKET,
+                    bucket=s3_bucket,
                     key=f"telemetry/backtests/{run_id}_symbols.csv",
                     pickle=bot_handler.bot_telemetry.symbols_df.to_csv(),
                 )
@@ -230,5 +236,57 @@ def main():
     print("banana")
 
 
+parser = argparse.ArgumentParser(description="TA bot orchestrator")
+parser.add_argument(
+    "--bucket",
+    default="mfers-tabot",
+    help="S3 bucket used to hold report CSVs and saved bars",
+)
+parser.add_argument(
+    "--back_testing",
+    default=False,
+    action=argparse.BooleanOptionalAction,
+    help="Back testing toggle",
+)
+# parser.add_argument("--back_testing", default=True, help="Back testing toggle")
+parser.add_argument(
+    "--back_testing_balance", default=100000, help="Starting balance when back testing"
+)
+parser.add_argument(
+    "--back_testing_override_broker",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Use paper API when backtesting. Don't do this",
+)
+parser.add_argument(
+    "--back_testing_skip_bar_update",
+    default=False,
+    help="TA bot orchestrator will attempt to download saved bars from S3 and then update them with the latest from Yahoo Finance. Setting this to False will prevent the update",
+)
+parser.add_argument(
+    "--interval",
+    default="5m",
+    choices=["1m", "5m", "30m"],
+    help="Intervals between executions/data resolution",
+)
+parser.add_argument(
+    "--real_money_trading",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help="Mutually exclusive with back_trading",
+)
+parser.add_argument(
+    "--notification_service",
+    default="slack",
+    choices=["pushover", "slack"],
+    help="Send notifications using this service",
+)
+parser.add_argument(
+    "--symbols",
+    default="crypto_symbols_all",
+    choices=list(sample_symbols.input_symbols.keys()),
+)
+args = parser.parse_args()
+
 if __name__ == "__main__":
-    main()
+    main(args)
