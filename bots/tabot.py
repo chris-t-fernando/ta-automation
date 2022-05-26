@@ -20,7 +20,8 @@
 # 300 df merge update bring down to just changes - faster faster
 # swyftx wrapper is busted
 # loop detection
-# should we use high/low/close as trigger?
+# should we use high/low/close as trigger? its used all through **utils** and buyplan
+# stop infinite loops by breaking process() loop if last action was stop_loss_filled or position liquidated
 
 # external packages
 import boto3
@@ -63,8 +64,9 @@ def main():
     notification_service_object = notification_services.Slack
 
     # symbols = sample_symbols.everything
-    symbols = sample_symbols.crypto_symbols_all
-    # symbols = sample_symbols.crypto_symbol
+    # symbols = sample_symbols.crypto_symbols_all
+    symbols = sample_symbols.everything
+    # symbols = [{"symbol": "AVAX-USD", "api": "alpaca"}]
 
     run_id = utils.generate_id()
     log_wp.debug(
@@ -156,6 +158,10 @@ def main():
         # no loop needed
         # TODO i think i can nest this into the while, avoid duplicating code
         bot_handler.process_bars()
+
+        # liquidate open positions
+        bot_handler.liquidate_all(back_testing=back_testing)
+
         bot_handler.bot_telemetry.generate_df()
         utils.save_to_s3(
             bucket=BUCKET,
@@ -167,7 +173,17 @@ def main():
             key=f"telemetry/backtests/{run_id}_orders.csv",
             pickle=bot_handler.bot_telemetry.orders_df.to_csv(),
         )
+        utils.save_to_s3(
+            bucket=BUCKET,
+            key=f"telemetry/backtests/{run_id}_symbols.csv",
+            pickle=bot_handler.bot_telemetry.symbols_df.to_csv(),
+        )
         print("banana")
+
+    # for idx in bot_handler.bot_telemetry.plays_df.index:
+    #    print(f"between: {bot_handler.bot_telemetry.plays_df.start.iloc[idx]} and {bot_handler.bot_telemetry.plays_df.end.iloc[idx]}")
+    #    concurrent_orders = bot_handler.bot_telemetry.plays_df.loc[(bot_handler.bot_telemetry.plays_df.start.iloc[idx] < bot_handler.bot_telemetry.plays_df.start) & (bot_handler.bot_telemetry.plays_df.end.iloc[idx] > bot_handler.bot_telemetry.plays_df.end)]
+    #    break
 
     else:
         last_orders_df = []
@@ -196,6 +212,11 @@ def main():
                     bucket=BUCKET,
                     key=f"telemetry/{run_id}_orders.csv",
                     pickle=bot_handler.bot_telemetry.orders_df.to_json(),
+                )
+                utils.save_to_s3(
+                    bucket=BUCKET,
+                    key=f"telemetry/backtests/{run_id}_symbols.csv",
+                    pickle=bot_handler.bot_telemetry.symbols_df.to_csv(),
                 )
 
             last_orders_df = new_orders_df

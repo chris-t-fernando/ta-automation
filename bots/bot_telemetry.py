@@ -2,6 +2,15 @@ import logging
 import boto3
 import pandas as pd
 
+from itradeapi import (
+    MARKET_BUY,
+    MARKET_SELL,
+    LIMIT_BUY,
+    LIMIT_SELL,
+    STOP_LIMIT_BUY,
+    STOP_LIMIT_SELL,
+)
+
 log_wp = logging.getLogger(
     "bot_telemetry"
 )  # or pass an explicit name here, e.g. "mylogger"
@@ -67,6 +76,7 @@ class BotTelemetry:
         self.current_breakeven = 0
         self.peak_orders = 0
         self.peak_capital_balance = 0
+        self.concurrent_orders = 0
 
     def add_order(self, order_result, play_id):
         # TODO - this is a dumb error specific to back testing that I don't care enough about to fix
@@ -79,6 +89,8 @@ class BotTelemetry:
         self._update_counters()
         self._update_streaks()
         self._update_peaks()
+
+        # if order_result.order_type == MARKET_SELL:
 
     def generate_df(self):
         self.orders_df = pd.DataFrame([x.as_dict() for x in self.orders])
@@ -167,7 +179,16 @@ class BotTelemetry:
 
             # print(f"Play ID {play} made {profit} profit")
 
+        # add concurrent play count
+        ends = plays_df.start.values < plays_df.end.values[:, None]
+        starts = plays_df.start.values > plays_df.start.values[:, None]
+        plays_df["concurrent_plays"] = (ends & starts).sum(0)
+
         self.plays_df = plays_df
+
+        self.symbols_df = pd.DataFrame()
+        self.symbols_df["profit"] = self.plays_df.groupby(["symbol"]).profit.sum()
+        self.symbols_df["plays"] = self.plays_df.groupby(["symbol"]).profit.count()
 
         print("banana")
 

@@ -84,9 +84,14 @@ class BuyPlan:
         self.entry_unit = round(df.Close.iloc[-1], precision)
         self.stop_unit = round(stop_unit, precision)
         self.last_low = df.Low.iloc[-1]
+        self.last_high = df.High.iloc[-1]
 
-        if self.stop_unit < self.last_low:
+        if self.stop_unit > self.last_low:
             self.error_message = "stop_unit_too_high"
+            return
+
+        if self.entry_unit * 1.25 < self.last_high:
+            self.error_message = "last_high_too_low"
             return
 
         # if notional_units:

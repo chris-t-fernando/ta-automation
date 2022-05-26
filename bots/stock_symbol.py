@@ -157,6 +157,25 @@ class Symbol:
             if next_transition():
                 ...
 
+            # a loop can happen while backtesting where:
+            # we do a buy order
+            # then a take profit gets triggered because 1.25% of risk/gain is less than current High
+            # then the new take profit stop loss is set to 99% of that, which is lower than the Low of that same cycle
+            # so it does a stop loss
+            # then after it does a stop loss it goes back to searching for a buy signal in the same cycle
+            # i think this loop should break if we've done a stop loss/order cancellation
+            if self.back_testing and next_transition == self.trans_take_profit_again:
+                log_wp.info(
+                    f"{self.symbol}: Finished trans_take_profit_again. Finishing this cycle of the state machine"
+                )
+                break
+
+            if self.back_testing and next_transition == self.trans_close_position:
+                log_wp.info(
+                    f"{self.symbol}: Finished trans_close_position. Finishing this cycle of the state machine"
+                )
+                break
+
         # TODO: not sure what to return?!
         return
 
@@ -524,7 +543,12 @@ class Symbol:
                     return False
                 elif buy_plan.error_message == "stop_unit_too_high":
                     log_wp.info(
-                        f"{self.symbol}: Found buy signal, but Stop Loss {buy_plan.stop_unit} would already trigger last Low price of {buy_plan.last_low}"
+                        f"{self.symbol}: Found buy signal, but Stop Loss {buy_plan.stop_unit} would already trigger at last Low price of {buy_plan.last_low}"
+                    )
+                    return False
+                elif buy_plan.error_message == "last_high_too_low":
+                    log_wp.info(
+                        f"{self.symbol}: Found buy signal, but first Take Profit step {buy_plan.entry_unit * 1.25} would already trigger at last High price of {buy_plan.last_high}"
                     )
                     return False
                 else:
@@ -645,14 +669,14 @@ class Symbol:
                     message=f"I don't hold any more units of {self.symbol}. Play complete",
                 )
                 log_wp.warning(
-                    f"{self.symbol}: No units still held, next action is trans_close_position"
+                    f"{self.symbol}: No units still held. Play complete, next action is trans_close_position"
                 )
                 return self.trans_close_position
             else:
                 # no slack notification needed here - I do it in trans_take_profit_again
                 # still some left to sell, so transition back to same state
                 log_wp.debug(
-                    f"{self.symbol}: Units still held, next action is trans_take_profit_again"
+                    f"{self.symbol}: Units still held. Play is still going, next action is trans_take_profit_again"
                 )
                 return self.trans_take_profit_again
 
@@ -1075,6 +1099,9 @@ class Symbol:
             active_rule=self.active_rule,
             new_position_quantity=self.position.quantity,
         )
+
+        if updated_plan["new_target_unit_price"] == None:
+            print("banana")
 
         order = self.api.sell_order_limit(
             symbol=self.symbol,
