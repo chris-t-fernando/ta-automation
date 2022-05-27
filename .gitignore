@@ -133,3 +133,5 @@ dmypy.json
 *.xlsx
 
 prof/*
+
+*__pycache__*
