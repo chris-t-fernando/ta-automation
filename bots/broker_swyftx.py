@@ -15,7 +15,7 @@ import logging
 
 log_wp = logging.getLogger("swyftx")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-fhdlr = logging.FileHandler("macd.log")
+fhdlr = logging.FileHandler("swyftx.log")
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )

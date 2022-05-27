@@ -23,7 +23,7 @@ log_wp = logging.getLogger(
     "backtest_api"
 )  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-fhdlr = logging.FileHandler("macd.log")
+fhdlr = logging.FileHandler("backtest_api.log")
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )

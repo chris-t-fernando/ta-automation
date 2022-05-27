@@ -23,11 +23,13 @@ log_wp = logging.getLogger(
     "stock_symbol"
 )  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
+fhdlr = logging.FileHandler("stock_symbol.log")
 log_wp.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )
 hdlr.setFormatter(formatter)
+log_wp.addHandler(fhdlr)
 log_wp.addHandler(hdlr)
 
 
@@ -48,6 +50,11 @@ STATE_MAP = {
 }
 STATE_MAP_INVERTED = {y: x for x, y in STATE_MAP.items()}
 
+
+class SymbolForbidden(Exception):
+    ...
+
+
 # symbol can be backtest naive
 class Symbol:
     def __init__(
@@ -64,6 +71,11 @@ class Symbol:
         back_testing: bool = False,
         back_testing_skip_bar_update: bool = False,
     ):
+        # can't easily map alpaca and YFinance
+        # UNI-USD in unicorn token, in alpaca UNIUSD is Uniswap token - different tokens
+        if symbol == "UNI-USD":
+            raise SymbolForbidden(f"Cannot map Uniswap token between Alpaca (UNIUSD) and Yahoo Finance (UNI3-USD). Don't use it.")
+
         self.back_testing = back_testing
         self.back_testing_skip_bar_update = back_testing_skip_bar_update
         self.bot_telemetry = bot_telemetry
@@ -85,6 +97,7 @@ class Symbol:
         self.market = self.get_market()
 
         # state machine config
+        self.state_const = NO_POSITION_TAKEN
         self.current_check = self.check_state_no_position_taken
         self.active_order_id = None
         self.buy_plan = None
@@ -220,7 +233,7 @@ class Symbol:
                 "symbol": self.symbol,
                 "order_id": order.order_id,
                 "broker": broker_name,
-                "state": STATE_MAP_INVERTED[order.status],
+                "state": STATE_MAP_INVERTED[self.state_const],
                 "play_id": self.play_id,
             }
         )
@@ -797,12 +810,15 @@ class Symbol:
             log_wp.error(
                 f"{self._analyse_date} {self.symbol}: Failed to submit buy order {order_result.order_id}: {order_result.status_text}"
             )
+
             return self.trans_buy_order_cancelled
 
         # hold on to order ID
         self.active_order_id = order_result.order_id
 
         self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
+
+        self.state_const = BUY_LIMIT_ORDER_ACTIVE
 
         # write state
         self._write_to_state(order_result)
@@ -831,7 +847,9 @@ class Symbol:
                 order_id=state["order_id"], back_testing_date=self._analyse_date
             )
 
-            self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
+            self.bot_telemetry.add_order(
+                order_result=order_result, play_id=self.play_id
+            )
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -843,6 +861,8 @@ class Symbol:
 
         # set current check
         self.current_check = self.check_state_no_position_taken
+
+        self.state_const = NO_POSITION_TAKEN
 
         return True
 
@@ -873,6 +893,7 @@ class Symbol:
 
         # set current check
         self.current_check = self.check_state_no_position_taken
+        self.state_const = NO_POSITION_TAKEN
 
         return True
 
@@ -900,6 +921,8 @@ class Symbol:
             message=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit} entry price | {self.buy_plan.stop_unit} stop loss price | {self.buy_plan.units} units bought",
         )
 
+        self.state_const = POSITION_TAKEN
+
         return True
 
     def trans_take_profit(self):
@@ -912,7 +935,7 @@ class Symbol:
 
         # TODO: THIS BIT IS BUSTED AND NEEDS FIXING ASAP
         units_to_sell = floor(pct * units)
-        if units_to_sell == 0 :
+        if units_to_sell == 0:
             units_to_sell = 1
 
         order = self.api.sell_order_limit(
@@ -929,6 +952,8 @@ class Symbol:
 
         # set current check
         self.current_check = self.check_state_take_profit
+
+        self.state_const = TAKING_PROFIT
 
         return True
 
@@ -974,6 +999,7 @@ class Symbol:
 
         # set current check
         self.current_check = self.check_state_stop_loss
+        self.state_const = STOP_LOSS_ACTIVE
 
         return True
 
@@ -1001,6 +1027,8 @@ class Symbol:
         # set current check
         self.current_check = self.check_state_stop_loss
 
+        self.state_const = STOP_LOSS_ACTIVE
+
         return True
 
     def trans_externally_liquidated(self):
@@ -1020,6 +1048,8 @@ class Symbol:
         # TODO add to win/loss as unknown outcome
 
         self.current_check = self.check_state_no_position_taken
+
+        self.state_const = NO_POSITION_TAKEN
 
     def trans_close_position(self):
         order = self.api.get_order(
@@ -1041,6 +1071,8 @@ class Symbol:
         # set check
         self.current_check = self.check_state_no_position_taken
 
+        self.state_const = NO_POSITION_TAKEN
+
     def trans_stop_loss_retry(self):
         # our take profit order was cancelled for some reason
         # i'm not sure what i want to do here actually. this needs more thought than just spamming new orders
@@ -1056,6 +1088,8 @@ class Symbol:
 
         # set current check
         self.current_check = self.check_state_take_profit
+
+        self.state_const = STOP_LOSS_ACTIVE
 
         return True
 
@@ -1084,6 +1118,8 @@ class Symbol:
 
         # set current check
         self.current_check = self.check_state_take_profit
+
+        self.state_const = TAKING_PROFIT
 
         return True
 
@@ -1152,6 +1188,8 @@ class Symbol:
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Successfully lodged new take profit: order ID {order.order_id} (state {order.status_summary}) to sell {order.ordered_unit_quantity} unit at {round(order.ordered_unit_price,2)} for value {round(new_value,2)} with new stop loss {round(new_stop_loss,2)}"
         )
+
+        self.state_const = TAKING_PROFIT
         return True
 
     # END TRANSITION FUNCTIONS

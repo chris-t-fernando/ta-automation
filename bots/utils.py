@@ -18,12 +18,14 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 log_wp = logging.getLogger("utils")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
+fhdlr = logging.FileHandler("utils.log")
 log_wp.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )
 hdlr.setFormatter(formatter)
 log_wp.addHandler(hdlr)
+log_wp.addHandler(fhdlr)
 
 
 def get_interval_integer(interval):

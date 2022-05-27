@@ -18,7 +18,7 @@ from dateutil.relativedelta import relativedelta
 
 log_wp = logging.getLogger("alpaca")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-fhdlr = logging.FileHandler("macd.log")
+fhdlr = logging.FileHandler("alpaca.log")
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
 )

@@ -346,3 +346,13 @@ Starting up run ID 25DD4F: interval=5m, back_testing=False, real_money_trading=T
 Starting up run ID A67E35: interval=5m, back_testing=False, real_money_trading=True
 Starting up run ID BD5E5A: interval=5m, back_testing=False, real_money_trading=True
 Starting up run ID 407B63: interval=5m, back_testing=False, real_money_trading=True
+Starting up run ID 869F53: interval=5m, back_testing=False, real_money_trading=True
+Finished analysing 2022-05-27 02:00:00+00:00, sleeping for 262.0s
+Finished analysing 2022-05-27 02:05:00+00:00, sleeping for 292.0s
+Finished analysing 2022-05-27 02:10:00+00:00, sleeping for 292.0s
+Finished analysing 2022-05-27 02:15:00+00:00, sleeping for 292.0s
+Starting up run ID E8580F: interval=5m, back_testing=False, real_money_trading=True
+Starting up run ID CA0D05: interval=5m, back_testing=False, real_money_trading=False
+Starting up run ID 4258CD: interval=5m, back_testing=False, real_money_trading=False
+Starting up run ID F66CA2: interval=5m, back_testing=False, real_money_trading=False
+Finished analysing 2022-05-27 06:45:00+00:00, sleeping for 379.0s
