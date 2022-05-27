@@ -73,34 +73,39 @@ class Slack(INotificationService):
     ):
         self.back_testing = back_testing
 
-        if back_testing == False:
-            slack_token = (
-                store.get_parameter(Name="/tabot/slack/bot_key", WithDecryption=True)
-                .get("Parameter")
-                .get("Value")
-            )
-            self.slack_announcements_channel = (
-                store.get_parameter(
-                    Name="/tabot/paper/slack/announcements_channel",
-                    WithDecryption=False,
+        if not back_testing:
+            if real_money_trading:
+                slack_token = (
+                    store.get_parameter(
+                        Name="/tabot/slack/bot_key", WithDecryption=True
+                    )
+                    .get("Parameter")
+                    .get("Value")
                 )
-                .get("Parameter")
-                .get("Value")
-            )
-            self.client = WebClient(token=slack_token)
-        elif real_money_trading:
-            slack_token = (
-                store.get_parameter(Name="/tabot/slack/bot_key", WithDecryption=True)
-                .get("Parameter")
-                .get("Value")
-            )
-            self.slack_announcements_channel = (
-                store.get_parameter(
-                    Name="/tabot/prod/slack/announcements_channel", WithDecryption=False
+                self.slack_announcements_channel = (
+                    store.get_parameter(
+                        Name="/tabot/prod/slack/announcements_channel",
+                        WithDecryption=False,
+                    )
+                    .get("Parameter")
+                    .get("Value")
                 )
-                .get("Parameter")
-                .get("Value")
-            )
+            else:
+                slack_token = (
+                    store.get_parameter(
+                        Name="/tabot/slack/bot_key", WithDecryption=True
+                    )
+                    .get("Parameter")
+                    .get("Value")
+                )
+                self.slack_announcements_channel = (
+                    store.get_parameter(
+                        Name="/tabot/paper/slack/announcements_channel",
+                        WithDecryption=False,
+                    )
+                    .get("Parameter")
+                    .get("Value")
+                )
             self.client = WebClient(token=slack_token)
 
     def send(self, message: str, subject: str = None) -> bool:

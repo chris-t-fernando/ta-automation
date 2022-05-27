@@ -255,12 +255,3 @@ class MacdBot:
         self.bot_telemetry.save_cycle()
 
         # log_wp.debug(f"Finished processing all records")
-
-    def liquidate_all(self, back_testing: bool = False):
-        if not back_testing:
-            raise RuntimeError(
-                f"Function liquidate_all should only be called during back testing, but back_testing={back_testing}"
-            )
-
-        for s in self.symbols:
-            self.symbols[s].trans_close_position()

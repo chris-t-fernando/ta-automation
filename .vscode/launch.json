@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "tabot bt one",
+            "name": "tabot back one",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -17,7 +17,7 @@
             ]
         },
         {
-            "name": "tabot bt all",
+            "name": "tabot back all",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -32,7 +32,7 @@
             ]
         },
         {
-            "name": "tabot bt crypto",
+            "name": "tabot back crypto",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -90,41 +90,6 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true
-        },
-        {
-            "type": "aws-sam",
-            "request": "direct-invoke",
-            "name": "job-scan:HelloWorldFunction (python3.8)",
-            "invokeTarget": {
-                "target": "template",
-                "templatePath": "${workspaceFolder}/job-scan/template.yaml",
-                "logicalId": "HelloWorldFunction"
-            },
-            "lambda": {
-                "payload": {},
-                "environmentVariables": {},
-                "runtime": "python3.8"
-            }
-        },
-        {
-            "type": "aws-sam",
-            "request": "direct-invoke",
-            "name": "API job-scan:HelloWorldFunction (python3.8)",
-            "invokeTarget": {
-                "target": "api",
-                "templatePath": "${workspaceFolder}/job-scan/template.yaml",
-                "logicalId": "HelloWorldFunction"
-            },
-            "api": {
-                "path": "/hello",
-                "httpMethod": "get",
-                "payload": {
-                    "json": {}
-                }
-            },
-            "lambda": {
-                "runtime": "python3.8"
-            }
         }
     ]
 }

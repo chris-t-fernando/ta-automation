@@ -117,7 +117,7 @@ def main(args):
 
         store.put_parameter(Name="/tabot/slack/bot_key", Value=slack_token)
         store.put_parameter(
-            Name="/tabot/paper/slack/announcements_channel",
+            Name=slack_announcements_path,
             Value=slack_announcements_channel,
         )
 
@@ -125,7 +125,7 @@ def main(args):
         store = parameter_stores.ssm()
 
     notification_service = notification_service_object(
-        store=store, back_testing=back_testing
+        store=store, back_testing=back_testing, real_money_trading=real_money_trading
     )
 
     bot_handler = MacdBot(
@@ -150,9 +150,6 @@ def main(args):
         # no loop needed
         # TODO i think i can nest this into the while, avoid duplicating code
         bot_handler.process_bars()
-
-        # liquidate open positions
-        bot_handler.liquidate_all(back_testing=back_testing)
 
         bot_handler.bot_telemetry.generate_df()
         utils.save_to_s3(

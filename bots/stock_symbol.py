@@ -912,6 +912,8 @@ class Symbol:
 
         # TODO: THIS BIT IS BUSTED AND NEEDS FIXING ASAP
         units_to_sell = floor(pct * units)
+        if units_to_sell == 0 :
+            units_to_sell = 1
 
         order = self.api.sell_order_limit(
             symbol=self.symbol,
