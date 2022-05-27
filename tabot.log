@@ -356,3 +356,4 @@ Starting up run ID CA0D05: interval=5m, back_testing=False, real_money_trading=F
 Starting up run ID 4258CD: interval=5m, back_testing=False, real_money_trading=False
 Starting up run ID F66CA2: interval=5m, back_testing=False, real_money_trading=False
 Finished analysing 2022-05-27 06:45:00+00:00, sleeping for 379.0s
+Starting up run ID A218BE: interval=5m, back_testing=False, real_money_trading=False

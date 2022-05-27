@@ -325,7 +325,8 @@ def check_buy_signal(df, symbol, bot_telemetry):
     if crossover and macd_negative:
         # all conditions met for a buy
         log_wp.debug(
-            f"{symbol}: FOUND NO SMA BUY SIGNAL AT {df.index[-1]} (MACD {round(row.macd_macd,4)} vs signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)})"
+            f"{symbol}: FOUND NO SMA BUY SIGNAL AT {df.index[-1]} (MACD {round(row.macd_macd,4)} vs "
+            f"signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)})"
         )
         return True
 

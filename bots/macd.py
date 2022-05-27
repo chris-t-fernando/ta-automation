@@ -103,7 +103,8 @@ class MacdBot:
                 )
             else:
                 log_wp.error(
-                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF returned {len(new_symbol.bars)} bars {round(time.time() - start_time,1)}s'
+                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF'
+                    f"returned {len(new_symbol.bars)} bars {round(time.time() - start_time,1)}s"
                 )
 
     def setup_brokers(self, api_list, store, back_testing: bool = False):
@@ -213,7 +214,8 @@ class MacdBot:
         # TODO once you work out why we aren't analysing the most recent data, drop this to level 9
         log_wp.log(
             9,
-            f"Range of all symbol bars: latest start date {latest_start} (for {latest_symbol}), latest end date {end_date}",
+            f"Range of all symbol bars: latest start date {latest_start}"
+            f"(for {latest_symbol}), latest end date {end_date}",
         )
         return start_date, end_date
 

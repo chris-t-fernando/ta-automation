@@ -169,11 +169,6 @@ def main(args):
         )
         print("banana")
 
-    # for idx in bot_handler.bot_telemetry.plays_df.index:
-    #    print(f"between: {bot_handler.bot_telemetry.plays_df.start.iloc[idx]} and {bot_handler.bot_telemetry.plays_df.end.iloc[idx]}")
-    #    concurrent_orders = bot_handler.bot_telemetry.plays_df.loc[(bot_handler.bot_telemetry.plays_df.start.iloc[idx] < bot_handler.bot_telemetry.plays_df.start) & (bot_handler.bot_telemetry.plays_df.end.iloc[idx] > bot_handler.bot_telemetry.plays_df.end)]
-    #    break
-
     else:
         last_orders_df = []
         while True:
@@ -245,7 +240,8 @@ parser.add_argument(
     "--back_testing_skip_bar_update",
     action=argparse.BooleanOptionalAction,
     default=False,
-    help="TA bot orchestrator will attempt to download saved bars from S3 and then update them with the latest from Yahoo Finance. Setting this to False will prevent the update",
+    help="TA bot orchestrator will attempt to download saved bars from S3 and then update them "
+    "with the latest from Yahoo Finance. Setting this to False will prevent the update",
 )
 parser.add_argument(
     "--interval",

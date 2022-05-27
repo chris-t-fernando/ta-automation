@@ -412,7 +412,8 @@ class BackTestAPI(ITradeAPI):
                     in ORDER_STATUS_SUMMARY_TO_ID["filled"]
                 ):
                     log_wp.debug(
-                        f"{symbol_to_delete}: Unable to delete order_id {order_id} from self._orders list since its already in {self._orders[symbol].status_summary} state"
+                        f"{symbol_to_delete}: Unable to delete order_id {order_id} from "
+                        f"self._orders list since its already in {self._orders[symbol].status_summary} state"
                     )
                     return False
                 symbol_to_delete = symbol
@@ -432,14 +433,16 @@ class BackTestAPI(ITradeAPI):
             del self._orders[symbol_to_delete]
 
             log_wp.debug(
-                f"{symbol_to_delete}: Moved order_id {order_id} from self._orders to self._inactive_orders"
+                f"{symbol_to_delete}: Moved order_id {order_id} from self._orders to"
+                f"self._inactive_orders"
             )
             return self.get_order(
                 order_id=order_id, back_testing_date=back_testing_date
             )
         else:
             log_wp.warning(
-                f"Tried to remove order_id {order_id} from self._orders but did not find it - is it already closed?"
+                f"Tried to remove order_id {order_id} from self._orders but did not "
+                f"find it - is it already closed?"
             )
             return False
 
@@ -475,7 +478,8 @@ class BackTestAPI(ITradeAPI):
                 self._inactive_orders.append(this_order)
                 filled_symbols.append(symbol)
                 log_wp.debug(
-                    f"{symbol}: Skipping this symbol in _inactive_orders since the status is {ORDER_STATUS_ID_TO_SUMMARY[this_order.status]}"
+                    f"{symbol}: Skipping this symbol in _inactive_orders since the "
+                    f"status is {ORDER_STATUS_ID_TO_SUMMARY[this_order.status]}"
                 )
                 continue
 
@@ -502,7 +506,8 @@ class BackTestAPI(ITradeAPI):
                 # don't process this order if it would send balance to negative
                 if order_value > self._balance:
                     log_wp.warning(
-                        f"{symbol}: Unable to fill {this_order.order_id} - order value is {order_value} but balance is only {self._balance}"
+                        f"{symbol}: Unable to fill {this_order.order_id} - order value "
+                        f"is {order_value} but balance is only {self._balance}"
                     )
                     self.cancel_order(order_id=this_order.order_id)
                     continue
@@ -540,7 +545,8 @@ class BackTestAPI(ITradeAPI):
                 filled_symbols.append(symbol)
 
                 log_wp.debug(
-                    f"{symbol}: market_buy filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
+                    f"{symbol}: market_buy filled, {this_order.filled_unit_quantity} "
+                    f"units at {this_order.filled_unit_price}, balance {self._balance}"
                 )
 
             elif this_order.order_type == MARKET_SELL:
@@ -553,7 +559,8 @@ class BackTestAPI(ITradeAPI):
 
                 if held < this_order.ordered_unit_quantity:
                     log_wp.warning(
-                        f"{symbol}: Failed to fill order {this_order.order_id} - trying to sell {this_order.ordered_unit_quantity} units but only hold {held}"
+                        f"{symbol}: Failed to fill order {this_order.order_id} - trying to "
+                        f"sell {this_order.ordered_unit_quantity} units but only hold {held}"
                     )
                     self.cancel_order(order_id=this_order.order_id)
                     continue
@@ -590,7 +597,8 @@ class BackTestAPI(ITradeAPI):
                 filled_symbols.append(symbol)
 
                 log_wp.info(
-                    f"{symbol}: market_sell filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
+                    f"{symbol}: market_sell filled, {this_order.filled_unit_quantity} "
+                    f"units at {this_order.filled_unit_price}, balance {self._balance}"
                 )
 
             elif this_order.order_type == LIMIT_BUY:
@@ -608,7 +616,8 @@ class BackTestAPI(ITradeAPI):
                     )
                     if order_value > self._balance:
                         log_wp.warning(
-                            f"{symbol}: Unable to fill {this_order.order_id} - order value is {order_value} but balance is only {self._balance}"
+                            f"{symbol}: Unable to fill {this_order.order_id} - order "
+                            f"value is {order_value} but balance is only {self._balance}"
                         )
                         self.cancel_order(
                             order_id=this_order.order_id,
@@ -655,7 +664,8 @@ class BackTestAPI(ITradeAPI):
                     filled_symbols.append(symbol)
 
                     log_wp.info(
-                        f"{symbol}: limit_buy filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
+                        f"{symbol}: limit_buy filled, {this_order.filled_unit_quantity} "
+                        f"units at {this_order.filled_unit_price}, balance {self._balance}"
                     )
 
             elif this_order.order_type == LIMIT_SELL:
@@ -671,7 +681,9 @@ class BackTestAPI(ITradeAPI):
 
                     if held < this_order.ordered_unit_quantity:
                         log_wp.debug(
-                            f"{symbol}: Failed to fill order {this_order.order_id} - trying to sell {this_order.ordered_unit_quantity} units but only hold {held}"
+                            f"{symbol}: Failed to fill order {this_order.order_id} - "
+                            f"trying to sell {this_order.ordered_unit_quantity} units "
+                            f"but only hold {held}"
                         )
                         self.cancel_order(
                             order_id=this_order.order_id,
@@ -709,7 +721,8 @@ class BackTestAPI(ITradeAPI):
                     filled_symbols.append(symbol)
 
                     log_wp.info(
-                        f"{symbol}: limit_sell filled, {this_order.filled_unit_quantity} units at {this_order.filled_unit_price}, balance {self._balance}"
+                        f"{symbol}: limit_sell filled, {this_order.filled_unit_quantity} "
+                        f"units at {this_order.filled_unit_price}, balance {self._balance}"
                     )
 
         for symbol in filled_symbols:
@@ -727,7 +740,8 @@ class BackTestAPI(ITradeAPI):
             actual_held += order["units"]
         if actual_held < quantity_to_sell:
             raise ValueError(
-                f'{symbol}: Unable to remove {quantity_to_sell} units from holding of {order["units"]}, since that would be less than 0'
+                f"{symbol}: Unable to remove {quantity_to_sell} units from holding of "
+                f'{order["units"]}, since that would be less than 0'
             )
 
         # now start popping units from held
