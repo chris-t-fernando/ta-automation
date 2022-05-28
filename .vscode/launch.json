@@ -67,6 +67,18 @@
             "justMyCode": true,
             "args": [
                 "--symbols",
+                "everything"
+            ]
+        },
+        {
+            "name": "tabot paper crypto all",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--symbols",
                 "crypto_symbols_all"
             ]
         },

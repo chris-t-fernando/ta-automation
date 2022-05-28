@@ -788,6 +788,7 @@ class Symbol:
                 f"{self._analyse_date} {self.symbol}: Can't find rule for this position, next "
                 "action is trans_take_profit_to_stop_loss"
             )
+
             return self.trans_position_taken_to_stop_loss
 
         # get order
@@ -801,6 +802,9 @@ class Symbol:
                 f"{self._analyse_date} {self.symbol}: Sell order was cancelled for some "
                 "reason (maybe be broker?), so trying to re-raise it. Next action is trans_take_profit_retry"
             )
+            self.notification_service.send(
+                message=f"Stop loss triggered for {self.symbol} but sell order got cancelled. Trying again.",
+            )
             return self.trans_stop_loss_retry
 
         elif order.status_summary == "filled":
@@ -808,6 +812,11 @@ class Symbol:
             log_wp.info(
                 f"{self._analyse_date} {self.symbol}: No units still held, next action "
                 "is trans_close_position"
+            )
+            self.notification_service.send(
+                message=f"Stop loss filled for {self.symbol} | {order.filled_unit_price} "
+                f"sold price | {order.filled_unit_quantity} units sold | "
+                f"{order.filled_unit_quantity * order.filled_unit_price} total sale value",
             )
             return self.trans_close_position
 
@@ -817,6 +826,11 @@ class Symbol:
                 log_wp.critical(
                     f"{self._analyse_date} {self.symbol}: No units held but liquidated "
                     "outside of this sell order, next action is trans_externally_liquidated"
+                )
+                self.notification_service.send(
+                    message=f"Stop loss triggered for {self.symbol} and I successfully "
+                    "raised a stop order, but the position got liquidated some other way. "
+                    "Did you do it manually?",
                 )
                 return self.trans_externally_liquidated
 
@@ -847,6 +861,10 @@ class Symbol:
             log_wp.error(
                 f"{self._analyse_date} {self.symbol}: Failed to submit buy order "
                 f"{order_result.order_id}: {order_result.status_text}"
+            )
+            self.notification_service.send(
+                message=f"Buy conditions met for {self.symbol} but when I tried to "
+                f"raise a buy order it failed with error message {order_result.status_text}",
             )
 
             return self.trans_buy_order_cancelled
@@ -1036,6 +1054,7 @@ class Symbol:
         log_wp.warning(
             f"{self.symbol}: Successfully submitted stop_loss order {order.order_id}"
         )
+
         self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # update active_order_id

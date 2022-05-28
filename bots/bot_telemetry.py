@@ -191,8 +191,6 @@ class BotTelemetry:
         self.symbols_df["profit"] = self.plays_df.groupby(["symbol"]).profit.sum()
         self.symbols_df["plays"] = self.plays_df.groupby(["symbol"]).profit.count()
 
-        print("banana")
-
     # add in timestamps and use it for order by
     def _update_counters(self):
         ...

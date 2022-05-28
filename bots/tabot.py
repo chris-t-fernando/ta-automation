@@ -6,6 +6,13 @@
 # 300 df merge update bring down to just changes - faster faster
 # swyftx wrapper is busted
 # should we use high/low/close as trigger? its used all through **utils** and buyplan
+# make it more pythonic
+# better testing - especially buyplan
+# ability to transition between algos
+# ability to pause operation more than every 5 minutes
+# sell and stop loss tell me profit
+# write heartbeat
+# better reporting/telemetry
 
 # external packages
 import argparse
@@ -38,6 +45,7 @@ log_wp.setLevel(logging.DEBUG)
 
 
 def main(args):
+    run_id = utils.generate_id()
     s3_bucket = args.bucket
     back_testing = args.back_testing
     back_testing_balance = args.back_testing_balance
@@ -47,23 +55,18 @@ def main(args):
     real_money_trading = args.real_money_trading
     bot_telemetry = BotTelemetry(back_testing=back_testing)
     market_data_source = yf
+    symbols = sample_symbols.input_symbols[args.symbols]
     if args.notification_service == "pushover":
         notification_service_object = notification_services.Pushover
     elif args.notification_service == "slack":
         notification_service_object = notification_services.Slack
-    symbols = sample_symbols.input_symbols[args.symbols]
 
-    # symbols = sample_symbols.everything
-    # symbols = sample_symbols.crypto_symbols_all
-    # symbols = [{"symbol": "AVAX-USD", "api": "alpaca"}]
-
-    run_id = utils.generate_id()
     log_wp.debug(
         f"Starting up run ID {run_id}: interval={interval}, back_testing={back_testing}, real_money_trading={real_money_trading}"
     )
 
     # write heartbeat to SSM (can't use local for this since the heartbeat reader is Lambda)
-    heartbeat_path = "/tabot/heartbeat/paper"
+    heartbeat_path = "/tabot/paper/heartbeat"
 
     ssm = boto3.client("ssm")
     slack_token = (

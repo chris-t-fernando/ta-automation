@@ -1,0 +1,36 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Lambda function to check heartbeat and notify me if its missing
+
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  JobScan:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: heartbeat_monitor/
+      Handler: heartbeat_monitor.lambda_handler
+      Runtime: python3.8
+      Architectures:
+        - x86_64
+      Layers:
+        - arn:aws:lambda:ap-southeast-2:036372598227:layer:acn-report-dependencies:1
+        - arn:aws:lambda:ap-southeast-2:770693421928:layer:Klayers-python38-pandas:48
+
+      Policies:
+        - Statement:
+            - Sid: Tabot_heartbeat_read_ssm
+              Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:PutParameter
+              Resource: arn:aws:ssm:ap-southeast-2:036372598227:parameter/*
+      Events:
+        HeartbeatCheck:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0,15,30,45 * ? * * *)

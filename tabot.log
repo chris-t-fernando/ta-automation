@@ -368,3 +368,68 @@ Finished analysing 2022-05-27 07:20:00+00:00, sleeping for 289.0s
 Finished analysing 2022-05-27 07:25:00+00:00, sleeping for 289.0s
 Finished analysing 2022-05-27 07:30:00+00:00, sleeping for 289.0s
 Finished analysing 2022-05-27 07:35:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 07:40:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-27 07:45:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 07:50:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 07:55:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-27 08:00:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:05:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:10:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:15:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-27 08:20:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:25:00+00:00, sleeping for 287.0s
+Finished analysing 2022-05-27 08:30:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:35:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-27 08:40:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:45:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 08:50:00+00:00, sleeping for 290.0s
+Finished analysing 2022-05-27 08:55:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:00:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:05:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:10:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:15:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:20:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:25:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:30:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:35:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-27 09:40:00+00:00, sleeping for 182.0s
+Finished analysing 2022-05-28 00:50:00+00:00, sleeping for 279.0s
+Finished analysing 2022-05-28 00:55:00+00:00, sleeping for 284.0s
+Finished analysing 2022-05-28 01:00:00+00:00, sleeping for 282.0s
+Finished analysing 2022-05-28 01:05:00+00:00, sleeping for 284.0s
+Finished analysing 2022-05-28 01:10:00+00:00, sleeping for 284.0s
+Finished analysing 2022-05-28 01:15:00+00:00, sleeping for 284.0s
+Finished analysing 2022-05-28 01:20:00+00:00, sleeping for 284.0s
+Finished analysing 2022-05-28 01:25:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 01:30:00+00:00, sleeping for 287.0s
+Finished analysing 2022-05-28 01:35:00+00:00, sleeping for 284.0s
+Finished analysing 2022-05-28 01:40:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-28 01:45:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-28 01:50:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-28 01:55:00+00:00, sleeping for 287.0s
+Finished analysing 2022-05-28 02:00:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-28 02:05:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 02:10:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 02:15:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 02:20:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 02:25:00+00:00, sleeping for 287.0s
+Finished analysing 2022-05-28 02:30:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 02:35:00+00:00, sleeping for 283.0s
+Finished analysing 2022-05-28 02:40:00+00:00, sleeping for 282.0s
+Finished analysing 2022-05-28 02:45:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-28 02:50:00+00:00, sleeping for 289.0s
+Finished analysing 2022-05-28 02:55:00+00:00, sleeping for 288.0s
+Finished analysing 2022-05-28 03:00:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 03:05:00+00:00, sleeping for 279.0s
+Finished analysing 2022-05-28 03:10:00+00:00, sleeping for 285.0s
+Finished analysing 2022-05-28 03:15:00+00:00, sleeping for 282.0s
+Finished analysing 2022-05-28 03:20:00+00:00, sleeping for 279.0s
+Starting up run ID 0A20C6: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID 13BF70: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID B7C8D7: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID 6A8C40: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID AAD433: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID A8E1EE: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID 1AD415: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID 6C905E: interval=5m, back_testing=True, real_money_trading=False
+Starting up run ID 6E68C1: interval=5m, back_testing=True, real_money_trading=False

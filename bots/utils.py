@@ -4,6 +4,7 @@ import btalib
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import jsonpickle
+import json
 import logging
 from numpy import NaN
 import pandas as pd
@@ -15,6 +16,9 @@ import yfinance as yf
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
+
+# my modules
+from iparameter_store import IParameterStore
 
 log_wp = logging.getLogger("utils")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -436,39 +440,37 @@ def validate_rules(rules):
     return True
 
 
-def get_rules(store, back_testing):
+def get_rules(store: IParameterStore, back_testing: bool):
     if back_testing:
         path = "/backtest"
     else:
         path = ""
 
     try:
-        return unpickle(
+        rules = (
             store.get_parameter(Name=f"/tabot/rules{path}/5m", WithDecryption=False)
             .get("Parameter")
             .get("Value")
         )
+
     except store.exceptions.ParameterNotFound as e:
         return []
 
+    rules = json.loads(rules)
+    for rule in rules:
+        rule["purchase_date"] = pd.Timestamp(rule["purchase_date"])
+    return rules
 
+
+# merges rules but does not write them - just returns list of rule dicts
 def merge_rules(
-    store, symbol: str, action: str, new_rule=None, back_testing: bool = False
-):
-    if back_testing:
-        path = "/backtest"
-    else:
-        path = ""
-
-    try:
-        old_rules = (
-            store.get_parameter(Name=f"/tabot/rules{path}/5m")
-            .get("Parameter")
-            .get("Value")
-        )
-        rules = unpickle(old_rules)
-    except store.exceptions.ParameterNotFound:
-        rules = []
+    store: IParameterStore,
+    symbol: str,
+    action: str,
+    new_rule: dict = None,
+    back_testing: bool = False,
+) -> dict:
+    rules = get_rules(store=store, back_testing=back_testing)
 
     changed = False
     if action == "delete":
@@ -487,6 +489,7 @@ def merge_rules(
             else:
                 new_rules.append(new_rule)
                 changed = True
+
     elif action == "create":
         new_rules = []
         for rule in rules:
@@ -514,16 +517,22 @@ def merge_rules(
         return False
 
 
-def put_rules(store, symbol: str, new_rules: list, back_testing: bool = False):
+def put_rules(
+    store: IParameterStore, symbol: str, new_rules: list, back_testing: bool = False
+):
     # return True
     if back_testing:
         path = "/backtest"
     else:
         path = ""
 
+    # convert Datetime objects to strings
+    for rule in new_rules:
+        rule["purchase_date"] = str(rule["purchase_date"])
+
     store.put_parameter(
         Name=f"/tabot/rules{path}/5m",
-        Value=pickle(new_rules),
+        Value=json.dumps(new_rules),
         Type="String",
         Overwrite=True,
     )

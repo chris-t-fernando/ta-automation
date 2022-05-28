@@ -1,5 +1,7 @@
 from iparameter_store import IParameterStore
 import boto3
+import sys
+import json
 
 
 class ssm(IParameterStore):
@@ -7,7 +9,10 @@ class ssm(IParameterStore):
         self.store = boto3.client("ssm")
 
     def put_parameter(self, *args, **kwargs) -> dict:
-        return self.store.put_parameter(*args, **kwargs)
+        try:
+            return self.store.put_parameter(*args, **kwargs)
+        except Exception as e:
+            raise
 
     def get_parameter(self, *args, **kwargs) -> dict:
         return self.store.get_parameter(*args, **kwargs)
@@ -24,11 +29,12 @@ class back_test_store(IParameterStore):
     def put_parameter(
         self, Name: str, Value: str, Type: str = "String", Overwrite: bool = True
     ) -> dict:
-        if Name not in self.store:
+        new_path = Name not in self.store
+        overwrite_path = Name in self.store and Overwrite == True
+        if new_path or overwrite_path:
             self.store[Name] = {"Parameter": {"Value": Value}}
-            return
-        if Name in self.store and Overwrite == True:
-            self.store[Name] = {"Parameter": {"Value": Value}}
+            if len(json.dumps(self.store[Name])) > 4096:
+                raise Exception("Length of dict exceeds 4096 characters")
             return
         if Name in self.store and Overwrite == False:
             raise ValueError
