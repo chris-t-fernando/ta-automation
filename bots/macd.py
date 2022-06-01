@@ -1,15 +1,13 @@
 # external packages
-import logging
 from datetime import datetime
+import logging
 import time
 
 # my modules
-from bot_telemetry import BotTelemetry
 from broker_alpaca import AlpacaAPI
 from broker_swyftx import SwyftxAPI
 from broker_back_test import BackTestAPI
-from inotification_service import INotificationService
-from iparameter_store import IParameterStore
+from macd_config import MacdConfig
 from stock_symbol import (
     Symbol,
     NO_POSITION_TAKEN,
@@ -19,8 +17,8 @@ from stock_symbol import (
     TAKING_PROFIT,
     STOP_LOSS_ACTIVE,
 )
+from tabot_rules import TABotRules
 import utils
-
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -37,34 +35,20 @@ log_wp.setLevel(logging.DEBUG)
 class MacdBot:
     jobs = None
 
-    def __init__(
-        self,
-        ssm: IParameterStore,
-        market_data_source,
-        bot_telemetry: BotTelemetry,
-        notification_service: INotificationService,
-        symbols: list,
-        interval: str = "5m",
-        real_money_trading: bool = False,
-        back_testing: bool = False,
-        back_testing_balance: float = None,
-        back_testing_override_broker: bool = False,
-        back_testing_skip_bar_update: bool = False,
-    ):
-        self.interval = interval
-        self.interval_delta, max_range = utils.get_interval_settings(self.interval)
-        self.real_money_trading = real_money_trading
-        self.ssm = ssm
-        self.market_data_source = market_data_source
-        self.back_testing = back_testing
-        self.back_testing_balance = back_testing_balance
-        self.bot_telemetry = bot_telemetry
-        self.notification_service = notification_service
-        self.back_testing_skip_bar_update = back_testing_skip_bar_update
+    def __init__(self, symbols: list, config: MacdConfig):
+        self.config = config
+        self.store = config.store
+        self.interval = config.interval
+        self.interval_delta, __ = utils.get_interval_settings(self.interval)
+        self.back_testing_balance = config.back_testing_balance
+        self.real_money_trading = config.production_run
+        self.bot_telemetry = config.bot_telemetry
+        self.notification_service = config.notification_service
+        self.rules = TABotRules(store=self.config.store, rules_path=self.config.path_rules, state_path=self.config.path_state)
 
-        if back_testing:
+        if config.back_testing:
             # override broker to back_test
-            if back_testing_override_broker:
+            if config.back_testing_override_broker:
                 for s in symbols:
                     s["api"] = "back_test"
 
@@ -77,7 +61,6 @@ class MacdBot:
         # configure brokers
         self.api_list = list(set(self.api_list))
         self.api_dict = self.setup_brokers(
-            api_list=self.api_list, store=ssm, back_testing=back_testing
         )
 
         # set up individual symbols
@@ -86,16 +69,11 @@ class MacdBot:
             start_time = time.time()
             new_symbol = Symbol(
                 symbol=s["symbol"],
-                interval=self.interval,
-                real_money_trading=self.real_money_trading,
                 api=self.api_dict[s["api"]],
-                bot_telemetry=self.bot_telemetry,
-                store=ssm,
-                market_data_source=market_data_source,
-                back_testing=back_testing,
-                back_testing_skip_bar_update=back_testing_skip_bar_update,
-                notification_service=notification_service,
+                rules=self.rules,
+                config=config
             )
+
             if new_symbol._init_complete:
                 self.symbols[s["symbol"]] = new_symbol
                 log_wp.info(
@@ -107,60 +85,32 @@ class MacdBot:
                     f"returned {len(new_symbol.bars)} bars {round(time.time() - start_time,1)}s"
                 )
 
-    def setup_brokers(self, api_list, store, back_testing: bool = False):
-        api_set = set(api_list)
+    def setup_brokers(self):
+        # use a set to drop any duplicates
+        api_set = set(self.api_list)
         api_dict = {}
 
         for api in api_set:
             start_time = time.time()
             if api == "back_test":
                 api_dict[api] = BackTestAPI(
-                    back_testing=back_testing,
-                    back_testing_balance=self.back_testing_balance,
+                    back_testing=self.config.back_testing,
+                    back_testing_balance=self.config.back_testing_balance,
                 )
                 break
 
             elif api == "swyftx":
-                if self.real_money_trading:
-                    access_token_path = "/tabot/prod/swyftx/access_token"
-                else:
-                    access_token_path = "/tabot/paper/swyftx/access_token"
-
-                api_key = (
-                    store.get_parameter(Name=access_token_path, WithDecryption=True)
-                    .get("Parameter")
-                    .get("Value")
-                )
-
                 api_dict[api] = SwyftxAPI(
-                    api_key=api_key,
-                    back_testing=back_testing,
-                    back_testing_balance=self.back_testing_balance,
+                    api_key=self.config.swyftx_api_key,
+                    back_testing=self.config.back_testing,
+                    back_testing_balance=self.config.back_testing_balance,
                 )
 
             elif api == "alpaca":
-                if self.real_money_trading:
-                    api_key_path = "/tabot/prod/alpaca/api_key"
-                    security_key_path = "/tabot/prod/alpaca/security_key"
-                else:
-                    api_key_path = "/tabot/paper/alpaca/api_key"
-                    security_key_path = "/tabot/paper/alpaca/security_key"
-
-                api_key = (
-                    store.get_parameter(Name=api_key_path, WithDecryption=True)
-                    .get("Parameter")
-                    .get("Value")
-                )
-                secret_key = (
-                    store.get_parameter(Name=security_key_path, WithDecryption=True)
-                    .get("Parameter")
-                    .get("Value")
-                )
-
                 api_dict[api] = AlpacaAPI(
-                    alpaca_key_id=api_key,
-                    alpaca_secret_key=secret_key,
-                    back_testing=back_testing,
+                    alpaca_key_id=self.config.alpaca_api_key,
+                    alpaca_secret_key=self.config.alpaca_security_key,
+                    back_testing=self.config.back_testing,
                     back_testing_balance=self.back_testing_balance,
                     real_money_trading=self.real_money_trading,
                 )
@@ -201,7 +151,7 @@ class MacdBot:
                 latest_start = self.symbols[s].bars.index.min()
                 latest_symbol = s
 
-        if self.back_testing:
+        if self.config.back_testing:
             latest_start_position = self.symbols[latest_symbol].bars.index.get_loc(
                 latest_start
             )
@@ -230,7 +180,7 @@ class MacdBot:
 
         # define our starting point - if we're backtesting then go from the beginning of the data
         # if we're running live, then just process the most recent data
-        if self.back_testing:
+        if self.config.back_testing:
             current_record = data_start_date
         else:
             current_record = data_end_date

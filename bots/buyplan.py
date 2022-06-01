@@ -31,6 +31,7 @@ class BuyPlan:
         symbol: str,
         df,
         balance: float,
+        play_id:str,
         profit_target: float = 1.5,
         notional_units: bool = False,
         precision: int = 3,
@@ -45,6 +46,7 @@ class BuyPlan:
         self.min_price_increment = min_price_increment
         self.precision = precision
         self.max_play_value = max_play_value
+        self.play_id = play_id
 
         self.symbol = symbol
         if balance < max_play_value:

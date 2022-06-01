@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 class IParameterStore(ABC):
     @abstractmethod
-    def put_parameter(
+    def put(
         Name: str,
         Value: str,
         Type: str = "String",
@@ -11,5 +11,5 @@ class IParameterStore(ABC):
     ) -> dict:
         ...
 
-    def get_parameter(Name: str, WithDecryption: bool = False) -> dict:
+    def get(Name: str, WithDecryption: bool = True) -> dict:
         ...

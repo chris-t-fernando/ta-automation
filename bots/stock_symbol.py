@@ -7,6 +7,7 @@ import pytz
 
 # my modules
 from buyplan import BuyPlan
+from macd_config import MacdConfig
 from itradeapi import (
     ITradeAPI,
     MARKET_BUY,
@@ -16,7 +17,7 @@ from itradeapi import (
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
 )
-from inotification_service import INotificationService
+from tabot_rules import TABotRules
 import utils
 
 log_wp = logging.getLogger(
@@ -61,15 +62,8 @@ class Symbol:
         self,
         symbol: str,
         api: ITradeAPI,
-        interval: str,
-        store,
-        bot_telemetry,
-        market_data_source,
-        notification_service: INotificationService,
-        real_money_trading: bool = False,
-        to_date: str = None,
-        back_testing: bool = False,
-        back_testing_skip_bar_update: bool = False,
+        config:MacdConfig,
+        rules:TABotRules
     ):
         # can't easily map alpaca and YFinance
         # UNI-USD in unicorn token, in alpaca UNIUSD is Uniswap token - different tokens
@@ -79,17 +73,22 @@ class Symbol:
                 "and Yahoo Finance (UNI3-USD). Don't use it."
             )
 
-        self.back_testing = back_testing
-        self.back_testing_skip_bar_update = back_testing_skip_bar_update
-        self.bot_telemetry = bot_telemetry
         self.symbol = symbol
         self.api = api
-        self.interval = interval
-        self.real_money_trading = real_money_trading
-        self.store = store
-        self.market_data_source = market_data_source
-        self.initialised = False
-        self.notification_service = notification_service
+        self.broker_name = self.api.get_broker_name()
+        self.rules = rules
+        self.config = config
+        self.store = config.store
+        self.notification_service = config.notification_service
+        self.bot_telemetry = config.bot_telemetry
+        self.interval = config.interval
+        self.market_data_source = config.market_data_source
+        self.run_type = config.run_type
+        self.back_testing = config.back_testing
+        self.paper_testing = config.paper_testing
+        self.production_run = config.production_run
+        self._init_complete = False
+
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
         # next check precision on order - normal stocks are only to the thousandth, crypto is huge
@@ -117,15 +116,13 @@ class Symbol:
         self._back_testing_date = None
 
         bars = self._get_bars(
-            to_date=to_date,
             initialised=False,
         )
 
         if len(bars) == 0:
             self.bars = []
-            self._init_complete = False
         else:
-            self.bars = utils.add_signals(bars, interval)
+            self.bars = utils.add_signals(bars, self.interval)
             self._init_complete = True
 
     def get_market(self):
@@ -136,7 +133,7 @@ class Symbol:
         else:
             return "us_market"
 
-        return
+        # this is how you'd do the right way but it will take ages to boot even a small number of symbols
         self.market = self.market_data_source.Ticker("ACN").info["market"]
 
     def _set_order_size_and_increment(self):
@@ -160,7 +157,7 @@ class Symbol:
         # if we have no data for this datestamp, then no action
         if datestamp not in self.bars.index:
             return
-        # print(f"{self.symbol} bar count {len(self.bars)}")
+        
         self._analyse_index = self.bars.index.get_loc(self._analyse_date)
 
         # keep progressing through the state machine until we hit a stop
@@ -199,210 +196,63 @@ class Symbol:
         # TODO: not sure what to return?!
         return
 
-    # STATE AND RULE FUNCTIONS
-    def get_state(self):
-        stored_state = utils.get_stored_state(
-            store=self.store, back_testing=self.back_testing
-        )
-
-        for this_state in stored_state:
-            if this_state["symbol"] == self.symbol:
-                return this_state
-
-        return False
-
-    # writes the symbol to state
-    def _write_to_state(self, order):
-        stored_state = utils.get_stored_state(
-            store=self.store, back_testing=self.back_testing
-        )
-        broker_name = self.api.get_broker_name()
-
-        new_state = []
-
-        for this_state in stored_state:
-            # needs to match broker and symbol
-            s_symbol = this_state["symbol"]
-            s_broker = this_state["broker"]
-            if s_symbol == self.symbol and s_broker == broker_name:
-                raise ValueError(
-                    f"Tried to add {self.symbol} on broker {broker_name} to state, "
-                    "but it already existed"
-                )
-            else:
-                # it's not the state we're looking for so keep it
-                new_state.append(this_state)
-
-        # if we got here, the symbol/broker combination does not exist in state so we are okay to add it
-        new_state.append(
-            {
-                "symbol": self.symbol,
-                "order_id": order.order_id,
-                "broker": broker_name,
-                "state": STATE_MAP_INVERTED[self.state_const],
-                "play_id": self.play_id,
-            }
-        )
-
-        utils.put_stored_state(
-            store=self.store, new_state=new_state, back_testing=self.back_testing
-        )
-
-        log_wp.log(9, f"{self.symbol}: Successfully wrote order to state")
-
-    # removes this symbol from the state
-    def _remove_from_state(self):
-        stored_state = utils.get_stored_state(
-            store=self.store, back_testing=self.back_testing
-        )
-        broker_name = self.api.get_broker_name()
-        found_in_state = False
-
-        new_state = []
-
-        for this_state in stored_state:
-            # needs to match broker and symbol
-            s_symbol = this_state["symbol"]
-            s_broker = this_state["broker"]
-            if s_symbol == self.symbol and s_broker == broker_name:
-                found_in_state = True
-            else:
-                # it's not the state we're looking for so keep it
-                new_state.append(this_state)
-
-        utils.put_stored_state(
-            store=self.store, new_state=new_state, back_testing=self.back_testing
-        )
-
-        if found_in_state:
-            log_wp.log(9, f"{self.symbol}: Successfully wrote updated state")
-            return True
-        else:
-            log_wp.warning(
-                f"{self.symbol}: Tried to remove symbol from state but did not find it"
-            )
-            return False
-
-    # replaces the rule for this symbol
-    def _replace_rule(self, new_rule):
-        stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
-
-        new_rules = []
-
-        for rule in stored_rules:
-            if rule["symbol"] == self.symbol:
-                new_rules.append(new_rule)
-            else:
-                new_rules.append(rule)
-
-        write_result = utils.put_rules(
-            store=self.store,
-            symbol=self.symbol,
-            new_rules=new_rules,
-            back_testing=self.back_testing,
-        )
-
-        return write_result
-
-    # adds sybol to rules - will barf if one already exists
-    def _write_to_rules(self, buy_plan, order_result):
-        stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
-
-        new_rules = []
-
-        for this_state in stored_rules:
-            s_symbol = this_state["symbol"]
-            if s_symbol == self.symbol:
-                raise ValueError(
-                    f"Tried to add {self.symbol} rules, but it already existed"
-                )
-            else:
-                # it's not the state we're looking for so keep it
-                new_rules.append(this_state)
-
-        # if we got here, the symbol does not exist in rules so we are okay to add it
-        new_rule = {
-            "symbol": buy_plan.symbol,
-            "play_id": self.play_id,
-            "original_stop_loss": buy_plan.stop_unit,
-            "current_stop_loss": buy_plan.stop_unit,
-            "original_target_price": buy_plan.target_price,
-            "current_target_price": buy_plan.target_price,
-            "steps": 0,
-            "original_risk": buy_plan.risk_unit,
-            "current_risk": buy_plan.risk_unit,
-            "purchase_date": self._analyse_date,
-            "purchase_price": order_result.filled_unit_price,
-            "units_held": order_result.filled_unit_quantity,
-            "units_sold": 0,
-            "units_bought": order_result.filled_unit_quantity,
-            "order_id": order_result.order_id,
-            "sales": [],
-            "win_point_sell_down_pct": 0.5,
-            "win_point_new_stop_loss_pct": 0.995,
-            "risk_point_sell_down_pct": 0.25,
-            "risk_point_new_stop_loss_pct": 0.99,
-        }
-
-        new_rules.append(new_rule)
-
-        utils.put_rules(
-            symbol=self.symbol,
-            store=self.store,
-            new_rules=new_rules,
-            back_testing=self.back_testing,
-        )
-
-        log_wp.log(9, f"{self.symbol}: Successfully wrote new buy order to rules")
-
-    # gets rule for this symbol
     def get_rule(self):
-        stored_rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
+        return self.rules.get_rule(symbol=self.symbol)
+    
+    def write_to_rules(self, buy_plan, order_result):
+        return self.rules.write_to_rules(buy_plan=buy_plan, order_result=order_result)
 
-        for this_rule in stored_rules:
-            if this_rule["symbol"] == self.symbol:
-                return this_rule
+    def replace_rule(self, new_rule):
+        return self.rules.replace_rule(symbol=self.symbol, new_rule=new_rule)
+    
+    def remove_from_rules(self):
+        return self.rules.remove_from_rules(symbol=self.symbol)
 
-        return False
+    def get_state(self):
+        return self.rules.get_state(symbol=self.symbol)
+    
+    def get_state_all(self):
+        return self.rules.get_state_all()
 
-    # removes the symbol from the buy rules in store
-    def _remove_from_rules(self):
-        stored_state = utils.get_rules(store=self.store, back_testing=self.back_testing)
-        found_in_rules = False
+    #TODO move logic into tabot rules
+    def write_to_state(self, order):
+        existing_state = self.get_state_all()
 
-        new_rules = []
+        for state in existing_state:
+            if state["symbol"] == self.symbol and state["broker"] == self.broker_name:
+                # there's already a symbol for this broker in state. check if its still live or stale
+                closed_statuses = ["cancelled", "filled"]
+                existing_order = self.api.get_order(order_id=state["order_id"])
 
-        for this_rule in stored_state:
-            if this_rule["symbol"] == self.symbol:
-                found_in_rules = True
-            else:
-                # not the rule we're looking to remove, so retain it
-                new_rules.append(this_rule)
+                if existing_order.status_summary not in closed_statuses:
+                    raise ValueError(
+                        f"Tried to add {self.symbol} on broker {self.broker_name} to state, "
+                        "but it already existed"
+                    )
+        
+        # if we got here then its safe to add this entry to state
+        new_state = {
+            "symbol": self.symbol,
+            "order_id": order.order_id,
+            "broker": self.broker_name,
+            "state": STATE_MAP_INVERTED[self.state_const],
+            "play_id": self.play_id,
+        }
+        
+        self.rules.write_to_state(symbol=self.symbol, broker=self.broker_name, new_state=new_state)
 
-        if found_in_rules:
-            utils.put_rules(
-                symbol=self.symbol,
-                store=self.store,
-                new_rules=new_rules,
-                back_testing=self.back_testing,
-            )
-            log_wp.log(9, f"{self.symbol}: Successfully wrote updated rules")
-            return True
-        else:
-            log_wp.warning(
-                f"{self.symbol}: Tried to remove symbol from rules but did not find it"
-            )
-            return False
+    #TODO move logic into tabot rules
+    def remove_from_state(self):
+        return self.rules.remove_from_state(symbol=self.symbol, broker=self.broker_name)
 
-    # END STATE AND RULE FUNCTIONS
 
     # START BAR FUNCTIONS
     def _get_bars(self, from_date=None, to_date=None, initialised: bool = True):
         saved_data = False
         yf_end = None
 
-        if self.back_testing and self.back_testing_skip_bar_update:
-            saved_bars = utils.load_bars([self.symbol])[self.symbol]
+        if self.back_testing and self.config.back_testing_skip_bar_update:
+            saved_bars = utils.load_bars(self.symbol, bucket=self.config.saved_symbol_data_bucket, key_base=self.config.saved_symbol_key_base)
             # this means we got data from s3
             if type(saved_bars) == pd.core.frame.DataFrame:
                 yf_start = saved_bars.index[-1]
@@ -418,7 +268,8 @@ class Symbol:
             if initialised == False:
                 # we actually need to grab everything
                 # first check to see if we have any data in s3
-                saved_bars = utils.load_bars([self.symbol])[self.symbol]
+                # if i wasn't lazy i'd make a 
+                saved_bars = utils.load_bars(self.symbol, bucket=self.config.saved_symbol_data_bucket, key_base=self.config.saved_symbol_key_base)
 
                 # this means we got data from s3
                 if type(saved_bars) == pd.core.frame.DataFrame:
@@ -461,27 +312,22 @@ class Symbol:
         if len(bars) == 0:
             # something went wrong - usually bad symbol and search parameters
             if not yf_end:
-                debug_end = "now"
+                end_string = "now"
             else:
-                debug_end = yf_end
+                end_string = yf_end
 
             log_wp.warning(
-                f"{self.symbol}: No data returned between {yf_start} til {debug_end}"
+                f"{self.symbol}: No data returned between {yf_start} til {end_string}"
             )
             return bars
 
         interval_mod = utils.get_interval_integer(self.interval)
 
-        trimmed_new_bars = bars.loc[
+        bars = bars.loc[
             (bars.index.minute % interval_mod == 0) & (bars.index.second == 0)
         ]
-        # if len(bars) != len(trimmed_new_bars):
-        #    print("banana")
 
-        bars = trimmed_new_bars
-
-        # bars = bars.loc[bars.index <= yf_end]
-
+        # put bar data into the api so that the back_testing broker API has some data to work with
         if self.back_testing:
             self.api._put_bars(symbol=self.symbol, bars=bars)
 
@@ -539,11 +385,13 @@ class Symbol:
             # first how much cash do we have to spend?
             account = self.api.get_account()
             balance = account.assets["USD"]
+            play_id = "play-" + self.symbol + utils.generate_id()
 
             buy_plan = BuyPlan(
                 symbol=self.symbol,
                 df=bars_slice,
                 balance=balance,
+                play_id=play_id,
                 precision=self.precision,
                 min_trade_increment=self.min_trade_increment,
                 min_order_size=self.min_order_size,
@@ -662,7 +510,6 @@ class Symbol:
         # get inputs for next checks
         last_close = self.bars.Close.loc[self._analyse_date]
         self.active_rule = self.get_rule()
-        # utils.get_rules(store=self.store, back_testing=self.back_testing)
 
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
         if not self.active_rule:
@@ -779,7 +626,6 @@ class Symbol:
         position = self.api.get_position(symbol=self.symbol)
 
         # get inputs for next checks
-        # rules = utils.get_rules(store=self.store, back_testing=self.back_testing)
         self.active_rule = self.get_rule()
 
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
@@ -846,8 +692,7 @@ class Symbol:
     def trans_entering_position(self):
         # submit buy order
         log_wp.log(9, f"{self.symbol}: Started trans_entering_position")
-
-        self.play_id = "play-" + self.symbol + utils.generate_id()
+        self.play_id = self.buy_plan.play_id
 
         order_result = self.api.buy_order_limit(
             symbol=self.symbol,
@@ -877,7 +722,7 @@ class Symbol:
         self.state_const = BUY_LIMIT_ORDER_ACTIVE
 
         # write state
-        self._write_to_state(order_result)
+        self.write_to_state(order_result)
 
         # set self.current_check to check_position_taken
         self.current_check = self.check_state_entering_position
@@ -915,7 +760,7 @@ class Symbol:
         self.play_id = None
 
         # clear state
-        self._remove_from_state()
+        self.remove_from_state()
 
         # set current check
         self.current_check = self.check_state_no_position_taken
@@ -948,7 +793,7 @@ class Symbol:
         self.play_id = None
 
         # clear state
-        self._remove_from_state()
+        self.remove_from_state()
 
         # set current check
         self.current_check = self.check_state_no_position_taken
@@ -958,10 +803,10 @@ class Symbol:
 
     def trans_buy_order_filled(self):
         # clear state
-        self._remove_from_state()
+        self.remove_from_state()
 
         # add rule
-        self._write_to_rules(
+        self.write_to_rules(
             buy_plan=self.buy_plan, order_result=self.active_order_result
         )
 
@@ -1103,7 +948,7 @@ class Symbol:
 
         # already don't hold any, so no need to delete orders
         # just need to clean up the object and delete rules
-        self._remove_from_rules()
+        self.remove_from_rules()
         self.active_order_id = None
         self.active_order_result = None
         self.buy_plan = None
@@ -1128,7 +973,7 @@ class Symbol:
         self.play_id = None
 
         # delete rules
-        self._remove_from_rules()
+        self.remove_from_rules()
 
         # TODO add to win/loss
 
@@ -1233,7 +1078,7 @@ class Symbol:
         new_rule = updated_plan["new_rule"]
         new_stop_loss = updated_plan["new_stop_loss"]
 
-        if not self._replace_rule(new_rule=new_rule):
+        if not self.replace_rule(new_rule=new_rule):
             log_wp.critical(
                 f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
             )

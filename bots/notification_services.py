@@ -1,6 +1,6 @@
 # external packages
 import logging
-from pushover import init, Client
+from pushover import Pushover
 from slack_sdk import WebClient
 
 # my modules
@@ -25,98 +25,52 @@ log_wp.setLevel(logging.DEBUG)
 class Pushover(INotificationService):
     def __init__(
         self,
-        store: IParameterStore,
-        back_testing: bool = False,
-        real_money_trading: bool = False,
+        api_key:str,
+        user_key:str,
     ):
-        self.back_testing = back_testing
+        #self.client = Client(user_key, api_token=api_key)
+        self.client = Pushover(api_key)
+        self.client.user(user_key)
 
-        if not back_testing:
-            pushover_api_key = (
-                store.get_parameter(
-                    Name="/tabot/pushover/api_key", WithDecryption=False
-                )
-                .get("Parameter")
-                .get("Value")
-            )
+    def send(self, message: str,subject: str = None) -> bool:
+        if not subject:
+            subject = "tabot notification"
 
-            pushover_user_key = (
-                store.get_parameter(
-                    Name="/tabot/pushover/user_key", WithDecryption=False
-                )
-                .get("Parameter")
-                .get("Value")
-            )
+        po_message = self.client.msg(message)
+        po_message.set("title", subject)
+        self.client.send(po_message)
 
-            # init(pushover_user_key, api_token=pushover_api_key)
-            self.client = Client(pushover_user_key, api_token=pushover_api_key)
 
-    def send(self, message: str, subject: str = None) -> bool:
-        if self.back_testing:
-            log_wp.debug(f"Notification: {message}")
-        else:
-            if not subject:
-                subject = "tabot notification"
-
-            self.client.send_message(
-                message=message,
-                title=subject,
-            )
+# finish changing get parameter and put parameter
+# finish moving from two bools to just reading run_type
+# generally just keep implementing new config objects
 
 
 class Slack(INotificationService):
     def __init__(
         self,
-        store: IParameterStore,
-        back_testing: bool = False,
-        real_money_trading: bool = False,
+        bot_key:str,
+        channel:str
     ):
-        self.back_testing = back_testing
-
-        if not back_testing:
-            if real_money_trading:
-                slack_token = (
-                    store.get_parameter(
-                        Name="/tabot/slack/bot_key", WithDecryption=True
-                    )
-                    .get("Parameter")
-                    .get("Value")
-                )
-                self.slack_announcements_channel = (
-                    store.get_parameter(
-                        Name="/tabot/prod/slack/announcements_channel",
-                        WithDecryption=False,
-                    )
-                    .get("Parameter")
-                    .get("Value")
-                )
-            else:
-                slack_token = (
-                    store.get_parameter(
-                        Name="/tabot/slack/bot_key", WithDecryption=True
-                    )
-                    .get("Parameter")
-                    .get("Value")
-                )
-                self.slack_announcements_channel = (
-                    store.get_parameter(
-                        Name="/tabot/paper/slack/announcements_channel",
-                        WithDecryption=False,
-                    )
-                    .get("Parameter")
-                    .get("Value")
-                )
-            self.client = WebClient(token=slack_token)
+        self.channel = channel
+        self.client = WebClient(token=bot_key)
 
     def send(self, message: str, subject: str = None) -> bool:
-        if self.back_testing:
-            log_wp.debug(f"Notification: {message}")
-        else:
-            self.client.chat_postMessage(
-                channel=self.slack_announcements_channel,
-                text=message,
-            )
+        self.client.chat_postMessage(
+            channel=self.channel,
+            text=message,
+        )
 
+class LocalEcho(INotificationService):
+    def __init__(
+        self,
+        bot_key=None,
+        channel=None
+    ):
+        ...
+
+    def send(self, message: str, subject: str = None) -> bool:
+        print(f"LocalEcho: {message}")
 
 """
 import parameter_stores

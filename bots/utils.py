@@ -3,7 +3,6 @@ import boto3
 import btalib
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-import jsonpickle
 import json
 import logging
 from numpy import NaN
@@ -387,191 +386,7 @@ def check_sma(last_sma: float, recent_average_sma: float, ignore_sma: bool = Fal
         return False
 
 
-def validate_rule(rule):
-    required_keys = [
-        "symbol",
-        "original_stop_loss",
-        "current_stop_loss",
-        "original_target_price",
-        "current_target_price",
-        "steps",
-        "original_risk",
-        "purchase_date",
-        "units_held",
-        "units_sold",
-        "units_bought",
-        "win_point_sell_down_pct",
-        "win_point_new_stop_loss_pct",
-        "risk_point_sell_down_pct",
-        "risk_point_new_stop_loss_pct",
-    ]
 
-    rule_keys = rule.keys()
-
-    # duplicate key
-    duplicate_keys = len(set(rule_keys)) - len(rule_keys)
-    if duplicate_keys != 0:
-        raise ValueError(
-            f'Duplicate rules found for symbol {rule["symbol"]}: {str(set(required_keys) ^ set(rule_keys))}'
-        )
-
-    for req_key in required_keys:
-        if req_key not in rule_keys:
-            raise ValueError(
-                f'Invalid rule found for symbol {rule["symbol"]}: {req_key}'
-            )
-
-
-def validate_rules(rules):
-    if rules == []:
-        log_wp.debug(f"No rules found")
-        return True
-
-    found_symbols = []
-    for rule in rules:
-        validate_rule(rule)
-        if rule["symbol"] in found_symbols:
-            raise ValueError(f'More than 1 rule found for {rule["symbol"]}')
-
-        log_wp.debug(f'Found valid rule for {rule["symbol"]}')
-        found_symbols.append(rule["symbol"])
-
-    log_wp.debug(f"Rules are valid")
-    return True
-
-
-def get_rules(store: IParameterStore, back_testing: bool):
-    if back_testing:
-        path = "/backtest"
-    else:
-        path = ""
-
-    try:
-        rules = (
-            store.get_parameter(Name=f"/tabot/rules{path}/5m", WithDecryption=False)
-            .get("Parameter")
-            .get("Value")
-        )
-
-    except store.exceptions.ParameterNotFound as e:
-        return []
-
-    rules = json.loads(rules)
-    for rule in rules:
-        rule["purchase_date"] = pd.Timestamp(rule["purchase_date"])
-    return rules
-
-
-# merges rules but does not write them - just returns list of rule dicts
-def merge_rules(
-    store: IParameterStore,
-    symbol: str,
-    action: str,
-    new_rule: dict = None,
-    back_testing: bool = False,
-) -> dict:
-    rules = get_rules(store=store, back_testing=back_testing)
-
-    changed = False
-    if action == "delete":
-        new_rules = []
-        for rule in rules:
-            if rule["symbol"] != symbol:
-                new_rules.append(rule)
-            else:
-                changed = True
-
-    elif action == "replace":
-        new_rules = []
-        for rule in rules:
-            if rule["symbol"] != symbol:
-                new_rules.append(rule)
-            else:
-                new_rules.append(new_rule)
-                changed = True
-
-    elif action == "create":
-        new_rules = []
-        for rule in rules:
-            if rule["symbol"] != symbol:
-                new_rules.append(rule)
-            else:
-                # TODO this can actually happen - then what happens?!
-                # raise ValueError(
-                #    f"Cannot create {symbol} - symbol already exists in store rules!"
-                # )
-                ...
-
-        new_rules.append(new_rule)
-        changed = True
-
-    else:
-        log_wp.error(f"{symbol}: No action specified")
-        raise Exception("No action specified")
-
-    if changed == True:
-        log_wp.log(9, f"{symbol}: Merged rules successfully")
-        return new_rules
-    else:
-        log_wp.log(9, f"{symbol}: No rules changed!")
-        return False
-
-
-def put_rules(
-    store: IParameterStore, symbol: str, new_rules: list, back_testing: bool = False
-):
-    # return True
-    if back_testing:
-        path = "/backtest"
-    else:
-        path = ""
-
-    # convert Datetime objects to strings
-    for rule in new_rules:
-        rule["purchase_date"] = str(rule["purchase_date"])
-
-    store.put_parameter(
-        Name=f"/tabot/rules{path}/5m",
-        Value=json.dumps(new_rules),
-        Type="String",
-        Overwrite=True,
-    )
-    log_wp.log(9, f"{symbol}: Successfully wrote updated rules")
-
-    return True
-
-
-def get_stored_state(store, back_testing: bool = False):
-    if back_testing:
-        back_testing_path = "/back_testing"
-    else:
-        back_testing_path = ""
-
-    try:
-        json_stored_state = (
-            store.get_parameter(
-                Name=f"/tabot{back_testing_path}/state", WithDecryption=False
-            )
-            .get("Parameter")
-            .get("Value")
-        )
-        return unpickle(json_stored_state)
-    except store.exceptions.ParameterNotFound as e:
-        return []
-
-
-def put_stored_state(store, new_state=list, back_testing: bool = False):
-    if back_testing:
-        back_testing_path = "/back_testing"
-    else:
-        back_testing_path = ""
-
-    store.put_parameter(
-        Name=f"/tabot{back_testing_path}/state",
-        Value=pickle(new_state),
-        Type="String",
-        Overwrite=True,
-    )
 
 
 # def trigger_sell_point(rule, last_price, period):
@@ -605,20 +420,19 @@ def put_stored_state(store, new_state=list, back_testing: bool = False):
 
 
 def pickle(object):
-    return jsonpickle.encode(object)
+    pickled_object = json.dumps(object)
+    return pickled_object
 
 
 def unpickle(object):
-    return jsonpickle.decode(object)
+    return json.loads(object)
 
 
-def save_bars(symbols: list, interval: str, max_range) -> bool:
-    s3 = boto3.resource("s3")
-
+def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_base:str) -> bool:
     for symbol in symbols:
-        existing_bars = load_bars([symbol])
-        if type(existing_bars[symbol]) == pd.core.frame.DataFrame:
-            start = existing_bars[symbol].index[-1]
+        existing_bars = load_bars(symbol, "s3://" + bucket, key_base+symbol+".csv")
+        if type(existing_bars) == pd.core.frame.DataFrame:
+            start = existing_bars.index[-1]
             log_wp.debug(
                 f"{symbol}: Existing bars found in S3 will be used as starting point"
             )
@@ -628,9 +442,7 @@ def save_bars(symbols: list, interval: str, max_range) -> bool:
                 f"{symbol}: No bars found in S3. Starting point will be YFinance start date"
             )
 
-        bars = yf.Ticker(symbol).history(
-            start=start, interval=interval, actions=False, debug=False
-        )
+        bars = yf.Ticker(symbol).history(start, interval, actions=False, debug=False)
 
         if len(bars) == 0:
             print(f"{symbol}: No YF data - skipping symbol")
@@ -642,15 +454,15 @@ def save_bars(symbols: list, interval: str, max_range) -> bool:
         trimmed_bars = bars.iloc[:-4]
 
         # need to merge old bars with new bars
-        if type(existing_bars[symbol]) == pd.core.frame.DataFrame:
-            trimmed_bars = merge_bars(bars=existing_bars[symbol], new_bars=trimmed_bars)
+        if type(existing_bars) == pd.core.frame.DataFrame:
+            trimmed_bars = merge_bars(bars=existing_bars, new_bars=trimmed_bars)
 
         bars_with_signals = add_signals(bars=trimmed_bars, interval=interval)
 
         # pickled_bars = utils.pickle(bars)
         pickled_bars = bars_with_signals.to_csv()
         if save_to_s3(
-            bucket="mfers-tabot", key=f"symbol_data/{symbol}.csv", pickle=pickled_bars
+            pickle=pickled_bars, bucket=bucket, key_base=key_base,  key=f"{symbol}.csv", 
         ):
             log_wp.info(f"{symbol}: Saved bars to S3")
         else:
@@ -659,28 +471,32 @@ def save_bars(symbols: list, interval: str, max_range) -> bool:
     return True
 
 
-def save_to_s3(bucket, key, pickle):
+def save_to_s3(pickle:str, bucket:str, key_base:str, key):
     s3 = boto3.resource("s3")
     try:
-        s3object = s3.Object(bucket, key)
+        s3object = s3.Object(bucket, key_base + key)
 
         s3object.put(
             Body=bytes(pickle.encode("utf-8")),
             StorageClass="ONEZONE_IA",
         )
     except Exception as e:
-        log_wp.error(f"Unable to save {key} to {bucket}: {str(e)}")
+        log_wp.error(f"Unable to save {key_base + key} to {bucket}: {str(e)}")
         return False
 
     return True
 
 
-def load_bars(symbols: list) -> dict:
+def load_bars(symbols: list, bucket:str, key_base:str) -> dict:
+    single_return = False
+    if type(symbols) == str:
+        symbols=[symbols]
+        single_return = True
     returned_bars = {}
     for symbol in symbols:
         try:
             loaded_csv = pd.read_csv(
-                f"s3://mfers-tabot/symbol_data/{symbol}.csv",
+                f"s3://{bucket}/{key_base}{symbol}.csv",
                 index_col=0,
                 parse_dates=True,
                 infer_datetime_format=True,
@@ -690,4 +506,7 @@ def load_bars(symbols: list) -> dict:
 
         returned_bars[symbol] = loaded_csv
 
-    return returned_bars
+    if single_return:
+        return loaded_csv
+    else:
+        return returned_bars
