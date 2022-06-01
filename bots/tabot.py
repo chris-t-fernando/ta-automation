@@ -20,6 +20,7 @@
 import argparse
 from datetime import datetime
 import logging
+import pytz
 import time
 
 # my modules
@@ -106,7 +107,7 @@ def main(args):
         last_orders_df = []
         while True:
             # do heartbeating
-            config.store.put(path=config.heartbeat, value=str(datetime.now()))
+            config.store.put(path=config.heartbeat, value=str(datetime.now().astimezone(pytz.utc)))
 
             # process data
             bot_handler.process_bars()
