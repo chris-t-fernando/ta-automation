@@ -161,7 +161,6 @@ class MacdBot:
                 back_test_start_position
             ]
 
-        # TODO once you work out why we aren't analysing the most recent data, drop this to level 9
         log_wp.log(
             9,
             f"Range of all symbol bars: latest start date {latest_start}"

@@ -277,10 +277,12 @@ class AlpacaAPI(ITradeAPI):
         return positions
 
     def get_last_close(self, symbol: str):
+        raise NotImplementedException
         history = yf.Ticker(symbol).history(interval="1m", actions=False)
         return history["Close"].iloc[-1]
 
     def get_bars(self, symbol: str, start: str, end: str, interval: str):
+        raise NotImplementedException
         return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False
         )
@@ -432,15 +434,13 @@ class AlpacaAPI(ITradeAPI):
             time_in_force="day",
         )
 
-    def buy_order_market(self, symbol, units, back_testing_date=None):
+    def buy_order_market(self, symbol:str, units:int, back_testing_date=None):
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
-    def cancel_order(self, order_id, back_testing_date=None):
+    def cancel_order(self, order_id:str, back_testing_date=None):
         self.api.cancel_order(order_id=order_id)
         return self.get_order(order_id=order_id, back_testing_date=back_testing_date)
 
-    # TODO signature needs to match swyftx
-    # also need the return to match swyftx - currently returns empty list if no active orders
     def list_orders(self, symbol: str = None, symbols: list = None, after: str = None):
         if symbol and symbols:
             raise ValueError("Can't specify both 'symbol' and 'symbols' - choose one")
@@ -529,12 +529,12 @@ if __name__ == "__main__":
 
     ssm = boto3.client("ssm")
     api_key = (
-        ssm.get_parameter(Name="/tabot/alpaca/api_key", WithDecryption=True)
+        ssm.get_parameter(Name="/tabot/paper/alpaca/api_key", WithDecryption=True)
         .get("Parameter")
         .get("Value")
     )
     secret_key = (
-        ssm.get_parameter(Name="/tabot/alpaca/security_key", WithDecryption=True)
+        ssm.get_parameter(Name="/tabot/paper/alpaca/security_key", WithDecryption=True)
         .get("Parameter")
         .get("Value")
     )

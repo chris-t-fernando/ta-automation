@@ -18,7 +18,7 @@ Resources:
       Architectures:
         - x86_64
       Layers:
-        - arn:aws:lambda:ap-southeast-2:036372598227:layer:slack_pushover:1
+        - arn:aws:lambda:ap-southeast-2:036372598227:layer:slack_pushover:2
       Policies:
         - Statement:
             - Sid: TabotHeartbeatReadSsm

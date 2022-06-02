@@ -67,10 +67,11 @@ class Symbol:
     ):
         # can't easily map alpaca and YFinance
         # UNI-USD in unicorn token, in alpaca UNIUSD is Uniswap token - different tokens
-        if symbol == "UNI-USD":
+        forbidden_symbols = ["UNI-USD", "GRT-USD"]
+        if symbol in forbidden_symbols:
             raise SymbolForbidden(
-                f"Cannot map Uniswap token between Alpaca (UNIUSD) "
-                "and Yahoo Finance (UNI3-USD). Don't use it."
+                f"Cannot map token {symbol} between Alpaca and Yahoo "
+                f"Finance. Don't use it."
             )
 
         self.symbol = symbol
@@ -241,7 +242,6 @@ class Symbol:
         
         self.rules.write_to_state(symbol=self.symbol, broker=self.broker_name, new_state=new_state)
 
-    #TODO move logic into tabot rules
     def remove_from_state(self):
         return self.rules.remove_from_state(symbol=self.symbol, broker=self.broker_name)
 
@@ -839,7 +839,7 @@ class Symbol:
         pct = self.active_rule["risk_point_sell_down_pct"]
         units = self.position.quantity
 
-        # TODO: THIS BIT IS BUSTED AND NEEDS FIXING ASAP
+        # TODO: i don't love this code. it needs full test coverage
         units_to_sell = floor(pct * units)
         if units_to_sell == 0:
             units_to_sell = 1
@@ -974,8 +974,6 @@ class Symbol:
 
         # delete rules
         self.remove_from_rules()
-
-        # TODO add to win/loss
 
         # set check
         self.current_check = self.check_state_no_position_taken

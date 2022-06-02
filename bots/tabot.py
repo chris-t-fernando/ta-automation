@@ -1,20 +1,22 @@
 # TODO
+# print numbers as decimals instead of exponentials
+# print numbers rounded to whatever position makes sense
+# better reporting/telemetry
+# orderresult needs an open/close status
+# orderresult needs to be moved in to the I class, and each concrete implementation needs to call super on it
+# swyftx wrapper is busted
 # recover active plays from state
 # better reporting
 #  - crypto vs nyse
 #  - streaks
 # 300 df merge update bring down to just changes - faster faster
-# swyftx wrapper is busted
 # should we use high/low/close as trigger? its used all through **utils** and buyplan
 # make it more pythonic
 # better testing - especially buyplan
 # ability to transition between algos
 # ability to pause operation more than every 5 minutes
 # sell and stop loss tell me profit
-# write heartbeat
-# better reporting/telemetry
-# orderresult needs an open/close status
-# get parameter - remove stupid .gets
+
 
 # external packages
 import argparse

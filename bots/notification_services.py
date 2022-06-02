@@ -5,7 +5,6 @@ from slack_sdk import WebClient
 
 # my modules
 from inotification_service import INotificationService
-from iparameter_store import IParameterStore
 
 
 log_wp = logging.getLogger(
