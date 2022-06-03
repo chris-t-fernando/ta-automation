@@ -12,6 +12,7 @@ STOP_LIMIT_SELL = 6
 class NotImplementedException(Exception):
     ...
 
+class BrokerAPIError(Exception):...
 
 class Account:
     assets: dict

@@ -387,6 +387,7 @@ class Symbol:
             balance = account.assets["USD"]
             play_id = "play-" + self.symbol + utils.generate_id()
 
+            # TODO you need to add a toggle to buy at market or limit - you keep missing swyftx opps
             buy_plan = BuyPlan(
                 symbol=self.symbol,
                 df=bars_slice,

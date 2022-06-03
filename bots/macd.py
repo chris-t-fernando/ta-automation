@@ -101,9 +101,10 @@ class MacdBot:
 
             elif api == "swyftx":
                 api_dict[api] = SwyftxAPI(
-                    api_key=self.config.swyftx_api_key,
+                    access_token=self.config.swyftx_access_token,
                     back_testing=self.config.back_testing,
-                    back_testing_balance=self.config.back_testing_balance,
+                    back_testing_balance=self.back_testing_balance,
+                    real_money_trading=self.real_money_trading,
                 )
 
             elif api == "alpaca":

@@ -148,14 +148,14 @@ class OrderResult(IOrderResult):
         self.create_time = response.submitted_at
         self.update_time = response.updated_at
 
-    def _to_yf(self, alpaca_symbol, alpaca_to_yf_symbol_map):
+    def _to_yf(self, alpaca_symbol, alpaca_to_yf_symbol_map)->str:
         if alpaca_symbol in alpaca_to_yf_symbol_map:
             return alpaca_to_yf_symbol_map[alpaca_symbol]
 
         # not a crypto symbol
         return alpaca_symbol
 
-    def _convert_order_type_to_constant(self, order_side, order_type):
+    def _convert_order_type_to_constant(self, order_side, order_type)->int:
         if order_side == "buy":
             if order_type == "limit":
                 return LIMIT_BUY
@@ -215,7 +215,7 @@ class AlpacaAPI(ITradeAPI):
 
         self.default_currency = "usd"
 
-    def _get_crypto_symbols_yf(self):
+    def _get_crypto_symbols_yf(self)->list:
         yf_symbols = []
         for alp_symbol in self.supported_crypto_symbols_alp:
             yf_symbols.append(self._to_yf(alp_symbol))
@@ -231,10 +231,10 @@ class AlpacaAPI(ITradeAPI):
             self._yf_to_alpaca_symbol_map[yf_symbol] = symbol
             self._alpaca_to_yf_symbol_map[symbol] = yf_symbol
 
-    def get_broker_name(self):
+    def get_broker_name(self)->str:
         return "alpaca"
 
-    def _get_crypto_symbols(self):
+    def _get_crypto_symbols(self)->list:
         # convert this to yf symbols
         crypto_symbols = []
         for asset in self.assets:
@@ -247,7 +247,7 @@ class AlpacaAPI(ITradeAPI):
     def _structure_asset_dict_by_id(self, asset_dict):
         raise NotImplementedException("Alpaca does not order assets with a int key")
 
-    def _structure_asset_dict_by_symbol(self, asset_dict):
+    def _structure_asset_dict_by_symbol(self, asset_dict)->dict:
         return_dict = {}
         for asset in asset_dict:
             # code
@@ -262,13 +262,13 @@ class AlpacaAPI(ITradeAPI):
         account = Account({currency: float(request.cash)})
         return account
 
-    def get_position(self, symbol):
+    def get_position(self, symbol)->Position:
         for position in self.list_positions():
             if position.symbol == symbol:
                 return position
         return Position(symbol=symbol, quantity=0)
 
-    def list_positions(self):
+    def list_positions(self)->list:
         # symbol, quantity
         positions = []
         for position in self.api.list_positions():
@@ -287,14 +287,14 @@ class AlpacaAPI(ITradeAPI):
             start=start, end=end, interval=interval, actions=False
         )
 
-    def _to_yf(self, alpaca_symbol):
+    def _to_yf(self, alpaca_symbol)->str:
         if alpaca_symbol in self._alpaca_to_yf_symbol_map:
             return self._alpaca_to_yf_symbol_map[alpaca_symbol]
 
         # not a crypto symbol
         return alpaca_symbol
 
-    def _to_alpaca(self, yf_symbol):
+    def _to_alpaca(self, yf_symbol)->str:
         if yf_symbol in self._yf_to_alpaca_symbol_map:
             return self._yf_to_alpaca_symbol_map[yf_symbol]
 
@@ -383,13 +383,13 @@ class AlpacaAPI(ITradeAPI):
         # get the order so we have all the info about it
         return self.get_order(order_id=response.id)
 
-    def get_order(self, order_id: str, back_testing_date=None):
+    def get_order(self, order_id: str, back_testing_date=None)->OrderResult:
         all_orders = self.list_orders()
         for o in all_orders:
             if o.order_id == order_id:
                 return o
 
-    def _translate_order_types(self, order_type):
+    def _translate_order_types(self, order_type)->str:
         if order_type == "MARKET_BUY":
             return "buy"
         elif order_type == "MARKET_SELL":
@@ -399,7 +399,7 @@ class AlpacaAPI(ITradeAPI):
 
     def sell_order_limit(
         self, symbol: str, units: float, unit_price: float, back_testing_date=None
-    ):
+    )->OrderResult:
         return self._submit_order(
             symbol=symbol,
             units=units,
@@ -418,7 +418,7 @@ class AlpacaAPI(ITradeAPI):
 
     def buy_order_limit(
         self, symbol: str, units: float, unit_price: float, back_testing_date=None
-    ):
+    )->OrderResult:
         return self._submit_order(
             symbol=symbol,
             units=units,
@@ -434,14 +434,14 @@ class AlpacaAPI(ITradeAPI):
             time_in_force="day",
         )
 
-    def buy_order_market(self, symbol:str, units:int, back_testing_date=None):
+    def buy_order_market(self, symbol:str, units:int, back_testing_date=None)->IOrderResult:
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_BUY)
 
-    def cancel_order(self, order_id:str, back_testing_date=None):
+    def cancel_order(self, order_id:str, back_testing_date=None)->IOrderResult:
         self.api.cancel_order(order_id=order_id)
         return self.get_order(order_id=order_id, back_testing_date=back_testing_date)
 
-    def list_orders(self, symbol: str = None, symbols: list = None, after: str = None):
+    def list_orders(self, symbol: str = None, symbols: list = None, after: str = None)->list:
         if symbol and symbols:
             raise ValueError("Can't specify both 'symbol' and 'symbols' - choose one")
 
@@ -480,7 +480,7 @@ class AlpacaAPI(ITradeAPI):
     # ):
     #    return self._submit_order(symbol=symbol, units=units, order_type=MARKET_SELL)
 
-    def sell_order_market(self, symbol: str, units: float, back_testing_date=None):
+    def sell_order_market(self, symbol: str, units: float, back_testing_date=None)->IOrderResult:
         return self._submit_order(symbol=symbol, units=units, order_type=MARKET_SELL)
 
         return self.api.submit_order(
@@ -505,7 +505,7 @@ class AlpacaAPI(ITradeAPI):
     # def get_asset(self, symbol):
     #    return self.api.get_asset(symbol=self._to_alpaca(symbol))
 
-    def get_asset(self, symbol: str):
+    def get_asset(self, symbol: str)->Asset:
         asset = self.api.get_asset(symbol=self._to_alpaca(symbol))
         if hasattr(asset, "min_order_size"):
             min_order_size = float(asset.min_order_size)

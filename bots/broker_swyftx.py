@@ -16,6 +16,7 @@ from itradeapi import (
     Account,
     Position,
     NotImplementedException,
+    BrokerAPIError
 )
 
 log_wp = logging.getLogger("swyftx")  # or pass an explicit name here, e.g. "mylogger"
@@ -46,9 +47,9 @@ STOP_LIMIT_SELL = 6
 
 
 ORDER_STATUS_SUMMARY_TO_ID = {
-    "cancelled": {2, 7, 8, 9, 10},
-    "open": {1, 3, 5},
-    "pending": {6},
+    "cancelled": {2, 6, 7, 8, 9, 10},
+    "open": {1, 3},
+    "pending": {5},
     "filled": {4},
 }
 ORDER_STATUS_ID_TO_SUMMARY = {
@@ -56,8 +57,8 @@ ORDER_STATUS_ID_TO_SUMMARY = {
     2: "cancelled",
     3: "open",
     4: "filled",
-    5: "open",
-    6: "pending",
+    5: "pending",
+    6: "cancelled",
     7: "cancelled",
     8: "cancelled",
     9: "cancelled",
@@ -73,7 +74,7 @@ ORDER_STATUS_TEXT = {
     7: "Unknown error",
     8: "Cancelled by system",
     9: "Failed - below minimum trading amount",
-    10: "Refunded",
+    10: "Refunded/rolled back",
 }
 
 ORDER_MAP = {
@@ -105,11 +106,15 @@ YF_SYMBOL_MAP = {
     "MKR-USD":"MKR",
     "SUSHI-USD":"SUSHI",
     "YFI-USD":"YFI",
-    "XRP-USD":"XRP"
+    "XRP-USD":"XRP",
+    "SOL-USD":"SOL",
+    "ADA-USD":"ADA"
+
 }
 SWYFTX_SYMBOL_MAP = {y: x for x, y in YF_SYMBOL_MAP.items()}
 
 class OrderResult(IOrderResult):
+    # TODO delete this cruft
     order_id: str
     sold_symbol: str
     bought_symbol: str
@@ -117,7 +122,6 @@ class OrderResult(IOrderResult):
     quantity_symbol: str
     quantity_id: int
     unit_price: int
-    trigger: float
     status: int
     status_text: str
     status_summary: str
@@ -200,46 +204,49 @@ class OrderResult(IOrderResult):
 # concrete class
 class SwyftxAPI(ITradeAPI):
     def __init__(
-        self, api_key: str, real_money_trading: bool = False, back_testing: bool = False
+        self, access_token: str, back_testing: bool = False, back_testing_balance:float=None, real_money_trading:bool=False
     ):
-        self.api_key = api_key
+        self.access_token = access_token
         self.assets_initialised = False
         self.back_testing = back_testing
 
         if real_money_trading != True:
             # now use the environment that was actually requested. i hate this.
-            self.api = pyswyft.API(access_token=api_key, environment="demo")
+            self.api = pyswyft.API(access_token=access_token, environment="demo")
         else:
-            self.api = pyswyft.API(access_token=api_key, environment="live")
+            self.api = pyswyft.API(access_token=access_token, environment="live")
+
+        self._build_asset_list()
 
         # set up data structures
-        self.default_currency = "AUD"
+        self.default_currency = "USD"
 
-    def get_precision(self, yf_symbol:str):
+    def get_precision(self, yf_symbol:str)->int:
         return 5
 
-    def get_broker_name(self):
+    def get_broker_name(self)->str:
         return "swyftx"
 
-    def get_assets(self):
+    def get_assets(self)->dict:
         if not self.assets_initialised:
             self._build_asset_list()
         return self._asset_list_by_symbol
 
-    def get_asset(self, symbol:str):
+    def get_asset(self, symbol:str)->Asset:
+        sw_symbol = YF_SYMBOL_MAP[symbol]
         if not self.assets_initialised:
             self._build_asset_list()
-        return self._asset_list_by_symbol[symbol]
+        return self._asset_list_by_symbol[sw_symbol]
 
-    def get_asset_by_id(self, id):
+    def get_asset_by_id(self, id)->Asset:
         if not self.assets_initialised:
             self._build_asset_list()
         return self._asset_list_by_id[id]
 
 
-    def _build_asset_list(self):
+    def _build_asset_list(self)->bool:
         # this is munted. there's no Markets endpoint in demo?!
-        temp_api = pyswyft.API(access_token=self.api_key, environment="live")
+        temp_api = pyswyft.API(access_token=self.access_token, environment="live")
         swyftx_assets = temp_api.request(markets.MarketsAssets())
 
         # set up asset lists
@@ -251,27 +258,27 @@ class SwyftxAPI(ITradeAPI):
 
         return True
 
-    def _structure_asset_dict_by_id(self, asset_dict):
+    def _structure_asset_dict_by_id(self, asset_dict)->dict:
         return_dict = {}
         for asset in asset_dict:
             asset["symbol"] = asset["code"]
             return_dict[asset["id"]] = asset
         return return_dict
 
-    def _structure_asset_dict_by_symbol(self, asset_dict):
+    def _structure_asset_dict_by_symbol(self, asset_dict)->dict:
         return_dict = {}
         for asset in asset_dict:
             asset["symbol"] = str(asset["code"])
             return_dict[asset["code"]] = asset
         return return_dict
 
-    def order_id_to_text(self, id):
+    def order_id_to_text(self, id)->str:
         return ORDER_MAP[id]
 
-    def order_text_to_id(self, text):
+    def order_text_to_id(self, text)->int:
         return ORDER_MAP_INVERTED[text]
 
-    def symbol_id_to_text(self, id):
+    def symbol_id_to_text(self, id)->str:
         if not self.assets_initialised:
             self._build_asset_list()
 
@@ -279,7 +286,7 @@ class SwyftxAPI(ITradeAPI):
         #return [b for b in assets if assets[b]["id"] == id][0]
         return asset["code"]
 
-    def symbol_text_to_id(self, symbol):
+    def symbol_text_to_id(self, symbol)->int:
         assets = self.get_assets()
         return assets[symbol]["id"]
 
@@ -398,10 +405,10 @@ class SwyftxAPI(ITradeAPI):
     def buy_order_market(
         #self, symbol: str, order_value: float = None, units: float = None
         self, symbol:str, units:int, back_testing_date=None
-    ):
+    )->OrderResult:
         sw_symbol = YF_SYMBOL_MAP[symbol]
         return self._submit_order(
-            sw_symbol=sw_symbol, units=units, order_type=MARKET_BUY, trigger=None
+            sw_symbol=sw_symbol, units=units, order_type=MARKET_BUY
         )
 
         # TODO integrate this back in to the alpaca api. i kind of like it
@@ -419,32 +426,33 @@ class SwyftxAPI(ITradeAPI):
         # no need for an else, units was already specified in the call
 
 
-    def buy_order_limit(self, symbol: str, units: float, unit_price: float):
+    def buy_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None)->OrderResult:
         # buying by total order value
         sw_symbol = YF_SYMBOL_MAP[symbol]
         return self._submit_order(
             sw_symbol=sw_symbol,
             units=units,
             order_type=LIMIT_BUY,
-            trigger=unit_price,
+            limit_unit_price=unit_price
         )
 
     def sell_order_market(
         #self, symbol: str, order_value: float = None, units: float = None
-        self, symbol: str, units: float = None
-    ):
+        self, symbol: str, units: float = None, back_testing_date=None
+    )->OrderResult:
+        sw_symbol = YF_SYMBOL_MAP[symbol]
         return self._submit_order(
-            sw_symbol=symbol, units=units, order_type=MARKET_SELL, trigger=None
+            sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL
         )
 
-    def sell_order_limit(self, symbol: str, units: float, unit_price: float):
-        trigger = 1 / unit_price
+    def sell_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None)->OrderResult:
+        sw_symbol = YF_SYMBOL_MAP[symbol]
         return self._submit_order(
-            sw_symbol=symbol, units=units, order_type=LIMIT_SELL, trigger=trigger
+            sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, limit_unit_price=unit_price
         )
 
     def _submit_order(
-        self, sw_symbol: str, units: int, order_type: int, trigger: bool = None
+        self, sw_symbol: str, units: int, order_type: int, limit_unit_price: float = None, sell_stop_price: float = None,
     ) -> OrderResult:
         """Submits an order (either buy or sell) based on value.  Note that this should not be called directly
 
@@ -461,39 +469,44 @@ class SwyftxAPI(ITradeAPI):
             raise NotImplementedException(
                 f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
             )
-
-        quantity = units
         
+        if order_type == LIMIT_BUY:
+            # sell 50 XRP units at $4 per unit. primary is USD, secondary is XRP
+            # limit is 0.25, or 1 USD divided by unit price
+            #trigger = 1 / limit_unit_price
+            asset_quantity = sw_symbol.upper()
+        elif order_type == LIMIT_SELL:
+            # buy is the opposite
+            # primary is USD, secondary is XRP
+            # secondary per primary
+            # so if unit price is $4 for 1 unit
+            #trigger = limit_unit_price
+            asset_quantity = self.default_currency.upper()
+            asset_quantity = sw_symbol.upper()
+            limit_unit_price = 1 / limit_unit_price
+        elif order_type == MARKET_BUY:
+            asset_quantity = sw_symbol.upper()
+        elif order_type == MARKET_SELL:
+            asset_quantity = sw_symbol.upper()
 
         # swyftx api expects symbols in upper case....
-        #if "BUY" in ORDER_MAP_INVERTED[order_type]:
-        #    primary = self.default_currency.upper()
-        #    secondary = sw_symbol.upper()
-        #    asset_quantity = sw_symbol.upper()
-        #else:
-        #    # sells
-        #    primary = self.default_currency.upper()
-        #    secondary = sw_symbol.upper()
-        #    asset_quantity = sw_symbol.upper()
-
         primary = self.default_currency.upper()
         secondary = sw_symbol.upper()
-        asset_quantity = self.default_currency.upper()
 
         orders_create_object = orders.OrdersCreate(
             primary=primary,
             secondary=secondary,
-            quantity=quantity,
+            quantity=units,
             assetQuantity=asset_quantity,
             orderType=order_type,
-            trigger=trigger,
+            trigger=limit_unit_price,
         )
 
         response = self.api.request(orders_create_object)
         # this annoys me, but LIMIT_BUY and LIMIT_SELL don't return any detail about the order on lodgement
         # whereas MARKET does
         # sleep(1)
-        return self.get_order(order_id=response["orderUuid"])
+        return self.get_order(order_id=response["orderUuid"], back_testing_date=None)
 
         if not response.get("order"):
             # i dunno why, by LIMIT_BUY and LIMIT_SELL don't return any detail about the order when you lodge it
@@ -518,16 +531,22 @@ class SwyftxAPI(ITradeAPI):
 
         return OrderResult(response=response, orders_create_object=orders_create_object)
 
-    def get_order(self, order_id: str):
+    def get_order(self, order_id: str, back_testing_date=None)->OrderResult:
         response = self.api.request(orders.OrdersGetOrder(orderID=order_id))
         # orders_create_object: orders.OrdersCreate):
         return OrderResult(
             order_object=response, asset_list_by_id=self._asset_list_by_id
         )
 
-    def cancel_order(self, order_id: str) -> dict:
-        request = self.api.request(orders.OrdersCancel(orderID=order_id))
-        return request
+    def cancel_order(self, order_id: str, back_testing_date=None) ->OrderResult:
+        cancel_request = self.api.request(orders.OrdersCancel(orderID=order_id))
+        #if request["status"]
+        order_result =  self.get_order(order_id=order_id, back_testing_date=back_testing_date)
+        if order_result.status_summary == "cancelled":
+            return order_result
+        else:
+            raise BrokerAPIError(f"Cancel order {order_id} has failed. Current status of the order is {cancel_request['status']} instead of cancelled")
+        #return request
 
     def list_orders(
         self,
@@ -572,7 +591,7 @@ class SwyftxAPI(ITradeAPI):
 
         return order_list
 
-    def close_position(self, symbol: str) -> OrderResult:
+    def close_position(self, symbol: str, back_testing_date=None) -> OrderResult:
         """Function to sell all units of a given symbol
 
         Args:
@@ -581,7 +600,8 @@ class SwyftxAPI(ITradeAPI):
         Returns:
             OrderResult: output from the API endpoint
         """
-        position = self.get_position(symbol)
+        sw_symbol = YF_SYMBOL_MAP[symbol]
+        position = self.get_position(sw_symbol)
         request = self.sell_order_market(symbol=symbol, units=position.quantity)
         return request
 
@@ -590,31 +610,27 @@ if __name__ == "__main__":
     import boto3
 
     ssm = boto3.client("ssm")
-    api_key = (
+    access_token = (
         ssm.get_parameter(Name="/tabot/paper/swyftx/access_token", WithDecryption=True)
         .get("Parameter")
         .get("Value")
     )
 
-    api = SwyftxAPI(api_key=api_key)
+    api = SwyftxAPI(access_token=access_token)
     #api.get_bars("SOL-USD", start="2022-04-01T00:00:00+10:00")
 
     api.get_account()
-    #buy_market_value = api.buy_order_market(symbol="XRP-USD", uni)
-    buy_limit = api.buy_order_limit(symbol="XRP-USD", units=52, unit_price=.1)
-    buy_market_units = api.buy_order_market(symbol="ETH-USD", units=75)
     
-    
-    
-    sell_market_value = api.sell_order_market(symbol="XRP", order_value=100)
-    sell_market_units = api.sell_order_market(symbol="XRP", units=10)
-    sell_limit = api.sell_order_limit(symbol="XRP", units=52, unit_price=0.95)
+    buy_limit = api.buy_order_limit(symbol="XRP-USD", units=52, unit_price=0.1)
+    buy_market_units = api.buy_order_market(symbol="XRP-USD", units=75)
+    sell_market_value = api.sell_order_market(symbol="XRP-USD", units=10)
+    sell_limit = api.sell_order_limit(symbol="XRP-USD", units=52, unit_price=2)
     api.list_positions()
-    api.get_position(symbol="XRP")
+    api.get_position(symbol="XRP-USD")
     api.list_orders()
     api.list_orders(filled=True)
     api.list_orders(cancelled=True)
     api.list_orders(still_open=True)
-    api.close_position("XRP")
+    api.close_position("XRP-USD")
 
     print("a")
