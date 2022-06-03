@@ -8,8 +8,8 @@ from broker_alpaca import AlpacaAPI
 from broker_swyftx import SwyftxAPI
 from broker_back_test import BackTestAPI
 from macd_config import MacdConfig
-from stock_symbol import (
-    Symbol,
+from macd_worker import (
+    MacdWorker,
     NO_POSITION_TAKEN,
     BUY_LIMIT_ORDER_ACTIVE,
     BUY_PRICE_MET,
@@ -67,7 +67,7 @@ class MacdBot:
         self.symbols = {}
         for s in symbols:
             start_time = time.time()
-            new_symbol = Symbol(
+            new_symbol = MacdWorker(
                 symbol=s["symbol"],
                 api=self.api_dict[s["api"]],
                 rules=self.rules,

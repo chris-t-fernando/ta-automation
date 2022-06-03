@@ -89,27 +89,382 @@ ORDER_MAP = {
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
 
 YF_SYMBOL_MAP = {
-    "SHIB-USD": "SHIB",
-    "ETH-USD":"ETH",
-    "DOGE-USD":"DOGE",
-    "MATIC-USD":"MATIC",
-    "WBTC-USD":"WBTC",
-    "TRX-USD":"TRX",
-    "BAT-USD":"BAT",
-    "PAXG-USD":"PAXG",
-    "AAVE-USD":"AAVE",
-    "AVAX-USD":"AVAX",
-    "BCH-USD":"BCH",
-    "LINK-USD":"LINK",
-    "DAI-USD":"DAI",
-    "LTC-USD":"LTC",
-    "MKR-USD":"MKR",
-    "SUSHI-USD":"SUSHI",
-    "YFI-USD":"YFI",
-    "XRP-USD":"XRP",
-    "SOL-USD":"SOL",
-    "ADA-USD":"ADA"
-
+"BTC-USD":"BTC",
+"TRX-USD":"TRX",
+"ETH-USD":"ETH",
+"XRP-USD":"XRP",
+"BCH-USD":"BCH",
+"EOS-USD":"EOS",
+"XVG-USD":"XVG",
+"NEO-USD":"NEO",
+"LTC-USD":"LTC",
+"ADA-USD":"ADA",
+"BNB-USD":"BNB",
+"IOTA-USD":"IOTA",
+"QTUM-USD":"QTUM",
+"ETC-USD":"ETC",
+"WTC-USD":"WTC",
+"ZRX-USD":"ZRX",
+"SUB-USD":"SUB",
+"OMG-USD":"OMG",
+"XMR-USD":"XMR",
+"ZEC-USD":"ZEC",
+"BAT-USD":"BAT",
+"LSK-USD":"LSK",
+"SALT-USD":"SALT",
+"FUN-USD":"FUN",
+"MCO-USD":"MCO",
+"POWR-USD":"POWR",
+"VGX-USD":"VGX",
+"WAVES-USD":"WAVES",
+"ADX-USD":"ADX",
+"KMD-USD":"KMD",
+"GBP-USD":"GBP",
+"JPY-USD":"JPY",
+"EUR-USD":"EUR",
+"USD-USD":"USD",
+"BTT-USD":"BTT",
+"DASH-USD":"DASH",
+"DENT-USD":"DENT",
+"HOT-USD":"HOT",
+"LINK-USD":"LINK",
+"MTL-USD":"MTL",
+"NANO-USD":"NANO",
+"NPXS-USD":"NPXS",
+"XLM-USD":"XLM",
+"ZIL-USD":"ZIL",
+"SYS-USD":"SYS",
+"PPT-USD":"PPT",
+"VET-USD":"VET",
+"ONT-USD":"ONT",
+"XEM-USD":"XEM",
+"BTG-USD":"BTG",
+"USDC-USD":"USDC",
+"DCR-USD":"DCR",
+"TUSD-USD":"TUSD",
+"REP-USD":"REP",
+"BCD-USD":"BCD",
+"RVN-USD":"RVN",
+"BTS-USD":"BTS",
+"ICX-USD":"ICX",
+"PAX-USD":"PAX",
+"AE-USD":"AE",
+"SC-USD":"SC",
+"ATOM-USD":"ATOM",
+"STEEM-USD":"STEEM",
+"ENJ-USD":"ENJ",
+"THETA-USD":"THETA",
+"STRAT-USD":"STRAT",
+"SNT-USD":"SNT",
+"GNT-USD":"GNT",
+"ELF-USD":"ELF",
+"ARDR-USD":"ARDR",
+"DOGE-USD":"DOGE",
+"NXS-USD":"NXS",
+"IOST-USD":"IOST",
+"ZEN-USD":"ZEN",
+"MANA-USD":"MANA",
+"XTZ-USD":"XTZ",
+"RLC-USD":"RLC",
+"HBAR-USD":"HBAR",
+"GAS-USD":"GAS",
+"ONG-USD":"ONG",
+"STX-USD":"STX",
+"LEND-USD":"LEND",
+"ALGO-USD":"ALGO",
+"ENG-USD":"ENG",
+"AGI-USD":"AGI",
+"KNC-USD":"KNC",
+"TNT-USD":"TNT",
+"AION-USD":"AION",
+"REN-USD":"REN",
+"WRX-USD":"WRX",
+"HC-USD":"HC",
+"BUSD-USD":"BUSD",
+"XZC-USD":"XZC",
+"FTT-USD":"FTT",
+"LRC-USD":"LRC",
+"CHZ-USD":"CHZ",
+"WIN-USD":"WIN",
+"BRD-USD":"BRD",
+"FET-USD":"FET",
+"LTO-USD":"LTO",
+"WABI-USD":"WABI",
+"NKN-USD":"NKN",
+"PERL-USD":"PERL",
+"RCN-USD":"RCN",
+"DATA-USD":"DATA",
+"KAVA-USD":"KAVA",
+"GRS-USD":"GRS",
+"OGN-USD":"OGN",
+"COTI-USD":"COTI",
+"ARK-USD":"ARK",
+"SNX-USD":"SNX",
+"ERD-USD":"ERD",
+"COMP-USD":"COMP",
+"BAND-USD":"BAND",
+"DGB-USD":"DGB",
+"BNT-USD":"BNT",
+"DOT-USD":"DOT",
+"FTM-USD":"FTM",
+"IOTX-USD":"IOTX",
+"MATIC-USD":"MATIC",
+"MFT-USD":"MFT",
+"NULS-USD":"NULS",
+"OCEAN-USD":"OCEAN",
+"ONE-USD":"ONE",
+"REQ-USD":"REQ",
+"SOL-USD":"SOL",
+"SRM-USD":"SRM",
+"SXP-USD":"SXP",
+"TFUEL-USD":"TFUEL",
+"EGLD-USD":"EGLD",
+"KSM-USD":"KSM",
+"YFI-USD":"YFI",
+"TRB-USD":"TRB",
+"MKR-USD":"MKR",
+"RSR-USD":"RSR",
+"PAXG-USD":"PAXG",
+"UMA-USD":"UMA",
+"YFII-USD":"YFII",
+"HIVE-USD":"HIVE",
+"STORJ-USD":"STORJ",
+"JST-USD":"JST",
+"IRIS-USD":"IRIS",
+"DIA-USD":"DIA",
+"TOMO-USD":"TOMO",
+"WAN-USD":"WAN",
+"BZRX-USD":"BZRX",
+"ANKR-USD":"ANKR",
+"BLZ-USD":"BLZ",
+"NMR-USD":"NMR",
+"SAND-USD":"SAND",
+"ARPA-USD":"ARPA",
+"CELR-USD":"CELR",
+"VTHO-USD":"VTHO",
+"LOOM-USD":"LOOM",
+"CVC-USD":"CVC",
+"AST-USD":"AST",
+"CHR-USD":"CHR",
+"NAS-USD":"NAS",
+"DUSK-USD":"DUSK",
+"BAL-USD":"BAL",
+"STPT-USD":"STPT",
+"PNT-USD":"PNT",
+"COCOSOLD-USD":"COCOSOLD",
+"FIO-USD":"FIO",
+"KEY-USD":"KEY",
+"DREPOLD-USD":"DREPOLD",
+"CTSI-USD":"CTSI",
+"VITE-USD":"VITE",
+"NAV-USD":"NAV",
+"NEBL-USD":"NEBL",
+"ANT-USD":"ANT",
+"MDT-USD":"MDT",
+"TCT-USD":"TCT",
+"TROY-USD":"TROY",
+"MBL-USD":"MBL",
+"OXT-USD":"OXT",
+"AVAX-USD":"AVAX",
+"SUNOLD-USD":"SUNOLD",
+"SUSHI-USD":"SUSHI",
+"LUNC-USD":"LUNC",
+"WNXM-USD":"WNXM",
+"RUNE-USD":"RUNE",
+"CRV-USD":"CRV",
+"HNT-USD":"HNT",
+"NZD-USD":"NZD",
+"SCRT-USD":"SCRT",
+"ORN-USD":"ORN",
+"UTK-USD":"UTK",
+"XVS-USD":"XVS",
+"AAVE-USD":"AAVE",
+"FIL-USD":"FIL",
+"INJ-USD":"INJ",
+"FLM-USD":"FLM",
+"WING-USD":"WING",
+"ALPHA-USD":"ALPHA",
+"BEL-USD":"BEL",
+"POLY-USD":"POLY",
+"VIDT-USD":"VIDT",
+"BOT-USD":"BOT",
+"NEAR-USD":"NEAR",
+"DNT-USD":"DNT",
+"AKRO-USD":"AKRO",
+"STRAX-USD":"STRAX",
+"GLM-USD":"GLM",
+"AUDIO-USD":"AUDIO",
+"GVT-USD":"GVT",
+"QSP-USD":"QSP",
+"CND-USD":"CND",
+"VIBE-USD":"VIBE",
+"WPR-USD":"WPR",
+"QLC-USD":"QLC",
+"MITH-USD":"MITH",
+"COS-USD":"COS",
+"STMX-USD":"STMX",
+"AVA-USD":"AVA",
+"WBTC-USD":"WBTC",
+"MDA-USD":"MDA",
+"AERGO-USD":"AERGO",
+"HARD-USD":"HARD",
+"FOR-USD":"FOR",
+"SKL-USD":"SKL",
+"DLT-USD":"DLT",
+"OST-USD":"OST",
+"PSG-USD":"PSG",
+"JUV-USD":"JUV",
+"MTH-USD":"MTH",
+"OAX-USD":"OAX",
+"EVX-USD":"EVX",
+"VIB-USD":"VIB",
+"RDN-USD":"RDN",
+"BCPT-USD":"BCPT",
+"CDT-USD":"CDT",
+"AMB-USD":"AMB",
+"CMT-USD":"CMT",
+"GO-USD":"GO",
+"CTXC-USD":"CTXC",
+"POA-USD":"POA",
+"ROSE-USD":"ROSE",
+"VIA-USD":"VIA",
+"SKY-USD":"SKY",
+"QKC-USD":"QKC",
+"CTK-USD":"CTK",
+"YOYO-USD":"YOYO",
+"1INCH-USD":"1INCH",
+"CELO-USD":"CELO",
+"COCOS-USD":"COCOS",
+"FIRO-USD":"FIRO",
+"TWT-USD":"TWT",
+"TRU-USD":"TRU",
+"REEF-USD":"REEF",
+"AXS-USD":"AXS",
+"BTCSTOLD-USD":"BTCSTOLD",
+"SNMOLD-USD":"SNMOLD",
+"APPC-USD":"APPC",
+"IDEX-USD":"IDEX",
+"UNFI-USD":"UNFI",
+"DODO-USD":"DODO",
+"CAKE-USD":"CAKE",
+"RIF-USD":"RIF",
+"NBS-USD":"NBS",
+"FRONT-USD":"FRONT",
+"ACM-USD":"ACM",
+"GXS-USD":"GXS",
+"AUCTION-USD":"AUCTION",
+"BADGER-USD":"BADGER",
+"OM-USD":"OM",
+"LINA-USD":"LINA",
+"BTCST-USD":"BTCST",
+"DEGO-USD":"DEGO",
+"RAMP-USD":"RAMP",
+"PERP-USD":"PERP",
+"LIT-USD":"LIT",
+"TVK-USD":"TVK",
+"FIS-USD":"FIS",
+"PHA-USD":"PHA",
+"ALICE-USD":"ALICE",
+"DREP-USD":"DREP",
+"PUNDIX-USD":"PUNDIX",
+"EPS-USD":"EPS",
+"SUPER-USD":"SUPER",
+"AUTO-USD":"AUTO",
+"ASR-USD":"ASR",
+"GTO-USD":"GTO",
+"CFX-USD":"CFX",
+"SNM-USD":"SNM",
+"SHIB-USD":"SHIB",
+"AGIX-USD":"AGIX",
+"SUN-USD":"SUN",
+"TORN-USD":"TORN",
+"GTC-USD":"GTC",
+"MDX-USD":"MDX",
+"MASK-USD":"MASK",
+"BAR-USD":"BAR",
+"MIR-USD":"MIR",
+"TLM-USD":"TLM",
+"KEEP-USD":"KEEP",
+"ERN-USD":"ERN",
+"LPT-USD":"LPT",
+"QUICK-USD":"QUICK",
+"NU-USD":"NU",
+"POLS-USD":"POLS",
+"FORTH-USD":"FORTH",
+"ICP-USD":"ICP",
+"XYM-USD":"XYM",
+"QNT-USD":"QNT",
+"FLOW-USD":"FLOW",
+"CKB-USD":"CKB",
+"USDP-USD":"USDP",
+"AR-USD":"AR",
+"SSV-USD":"SSV",
+"ILV-USD":"ILV",
+"RAY-USD":"RAY",
+"DYDX-USD":"DYDX",
+"CLV-USD":"CLV",
+"TRIBE-USD":"TRIBE",
+"FARM-USD":"FARM",
+"BOND-USD":"BOND",
+"BURGER-USD":"BURGER",
+"DEXE-USD":"DEXE",
+"MBOX-USD":"MBOX",
+"SFP-USD":"SFP",
+"SLP-USD":"SLP",
+"C98-USD":"C98",
+"YGG-USD":"YGG",
+"MLN-USD":"MLN",
+"GALA-USD":"GALA",
+"GNO-USD":"GNO",
+"BAKE-USD":"BAKE",
+"AGLD-USD":"AGLD",
+"TKO-USD":"TKO",
+"ALPACA-USD":"ALPACA",
+"MINA-USD":"MINA",
+"MOVR-USD":"MOVR",
+"GHST-USD":"GHST",
+"AMP-USD":"AMP",
+"OG-USD":"OG",
+"PLA-USD":"PLA",
+"PROM-USD":"PROM",
+"RAD-USD":"RAD",
+"RARE-USD":"RARE",
+"PYR-USD":"PYR",
+"ATM-USD":"ATM",
+"QI-USD":"QI",
+"FIDA-USD":"FIDA",
+"ENS-USD":"ENS",
+"FXS-USD":"FXS",
+"JASMY-USD":"JASMY",
+"LAZIO-USD":"LAZIO",
+"CITY-USD":"CITY",
+"OOKI-USD":"OOKI",
+"SGB-USD":"SGB",
+"BTTC-USD":"BTTC",
+"XNO-USD":"XNO",
+"T-USD":"T",
+"USTC-USD":"USTC",
+"RNDR-USD":"RNDR",
+"IMX-USD":"IMX",
+"APE-USD":"APE",
+"JOE-USD":"JOE",
+"FLUX-USD":"FLUX",
+"SPELL-USD":"SPELL",
+"ALCX-USD":"ALCX",
+"KDA-USD":"KDA",
+"KLAY-USD":"KLAY",
+"DOCK-USD":"DOCK",
+"XEC-USD":"XEC",
+"GMT-USD":"GMT",
+"PEOPLE-USD":"PEOPLE",
+"TAUD-USD":"TAUD",
+"DFI-USD":"DFI",
+"WAXP-USD":"WAXP",
+"REI-USD":"REI",
+"EPX-USD":"EPX",
+"LUNA-USD":"LUNA",
+"LDO-USD":"LDO",
+"NEXO-USD":"NEXO",
 }
 SWYFTX_SYMBOL_MAP = {y: x for x, y in YF_SYMBOL_MAP.items()}
 
@@ -136,7 +491,6 @@ class OrderResult(IOrderResult):
 
     def __init__(self, order_object, asset_list_by_id: dict):
         self._raw_response = order_object
-
         self.status = order_object["status"]
         self.status_text = ORDER_STATUS_TEXT[self.status]
         self.status_summary = ORDER_STATUS_ID_TO_SUMMARY[self.status]
@@ -144,7 +498,6 @@ class OrderResult(IOrderResult):
             order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
             or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
         )
-
 
         self.order_type = order_object["order_type"]
         self.order_type_text = ORDER_MAP_INVERTED[self.order_type]
@@ -199,15 +552,12 @@ class OrderResult(IOrderResult):
         self.update_time = timezone.localize(datetime.fromisoformat('%s.%03d' % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(mod_s)), mod_ms)))
 
 
-# return objects
-
 # concrete class
 class SwyftxAPI(ITradeAPI):
     def __init__(
         self, access_token: str, back_testing: bool = False, back_testing_balance:float=None, real_money_trading:bool=False
     ):
         self.access_token = access_token
-        self.assets_initialised = False
         self.back_testing = back_testing
 
         if real_money_trading != True:
@@ -228,19 +578,13 @@ class SwyftxAPI(ITradeAPI):
         return "swyftx"
 
     def get_assets(self)->dict:
-        if not self.assets_initialised:
-            self._build_asset_list()
         return self._asset_list_by_symbol
 
     def get_asset(self, symbol:str)->Asset:
         sw_symbol = YF_SYMBOL_MAP[symbol]
-        if not self.assets_initialised:
-            self._build_asset_list()
         return self._asset_list_by_symbol[sw_symbol]
 
     def get_asset_by_id(self, id)->Asset:
-        if not self.assets_initialised:
-            self._build_asset_list()
         return self._asset_list_by_id[id]
 
 
@@ -251,10 +595,7 @@ class SwyftxAPI(ITradeAPI):
 
         # set up asset lists
         self._asset_list_by_id = self._structure_asset_dict_by_id(swyftx_assets)
-        
         self._asset_list_by_symbol = self._structure_asset_dict_by_symbol(swyftx_assets)
-
-        self.assets_initialised = True
 
         return True
 
@@ -279,9 +620,6 @@ class SwyftxAPI(ITradeAPI):
         return ORDER_MAP_INVERTED[text]
 
     def symbol_id_to_text(self, id)->str:
-        if not self.assets_initialised:
-            self._build_asset_list()
-
         asset = self.get_asset_by_id(id=id)
         #return [b for b in assets if assets[b]["id"] == id][0]
         return asset["code"]
@@ -470,17 +808,10 @@ class SwyftxAPI(ITradeAPI):
                 f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
             )
         
+        # this is the most frustrating API ever
         if order_type == LIMIT_BUY:
-            # sell 50 XRP units at $4 per unit. primary is USD, secondary is XRP
-            # limit is 0.25, or 1 USD divided by unit price
-            #trigger = 1 / limit_unit_price
             asset_quantity = sw_symbol.upper()
         elif order_type == LIMIT_SELL:
-            # buy is the opposite
-            # primary is USD, secondary is XRP
-            # secondary per primary
-            # so if unit price is $4 for 1 unit
-            #trigger = limit_unit_price
             asset_quantity = self.default_currency.upper()
             asset_quantity = sw_symbol.upper()
             limit_unit_price = 1 / limit_unit_price
@@ -503,9 +834,8 @@ class SwyftxAPI(ITradeAPI):
         )
 
         response = self.api.request(orders_create_object)
-        # this annoys me, but LIMIT_BUY and LIMIT_SELL don't return any detail about the order on lodgement
-        # whereas MARKET does
-        # sleep(1)
+        # this annoys me, but LIMIT orders don't return any detail about the
+        # order on lodgement - whereas MARKET does
         return self.get_order(order_id=response["orderUuid"], back_testing_date=None)
 
         if not response.get("order"):

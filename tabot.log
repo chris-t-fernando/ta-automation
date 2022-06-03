@@ -713,3 +713,5 @@ Finished analysing 2022-06-03 05:55:00+00:00, sleeping for 275.0s
 Finished analysing 2022-06-03 06:00:00+00:00, sleeping for 271.0s
 Finished analysing 2022-06-03 06:05:00+00:00, sleeping for 274.0s
 Finished analysing 2022-06-03 06:10:00+00:00, sleeping for 271.0s
+Starting up run ID DE404A: interval=5m, run_type=paper
+Starting up run ID 1240A2: interval=5m, run_type=paper

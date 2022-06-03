@@ -78,6 +78,20 @@
             ]
         },
         {
+            "name": "tabot paper swyftx med",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--run_type",
+                "paper",
+                "--symbols",
+                "swyftx_medium"
+            ]
+        },
+        {
             "name": "tabot paper crypto all",
             "type": "python",
             "request": "launch",

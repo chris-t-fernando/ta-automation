@@ -442,7 +442,7 @@ def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_bas
                 f"{symbol}: No bars found in S3. Starting point will be YFinance start date"
             )
 
-        bars = yf.Ticker(symbol).history(start, interval, actions=False, debug=False)
+        bars = yf.Ticker(symbol).history(str(start), interval, actions=False, debug=False)
 
         if len(bars) == 0:
             print(f"{symbol}: No YF data - skipping symbol")

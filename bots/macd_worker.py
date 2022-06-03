@@ -57,7 +57,7 @@ class SymbolForbidden(Exception):
 
 
 # symbol can be backtest naive
-class Symbol:
+class MacdWorker:
     def __init__(
         self,
         symbol: str,
