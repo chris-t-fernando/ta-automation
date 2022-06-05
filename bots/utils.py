@@ -447,7 +447,7 @@ def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_bas
         bars = yf.Ticker(symbol).history(start=start, interval=interval, actions=False, debug=False)
 
         if len(bars) == 0:
-            print(f"{symbol}: No YF data - skipping symbol")
+            log_wp.warning(f"{symbol}: No YF data - skipping symbol")
             continue
 
         bars = bars.tz_convert(pytz.utc)

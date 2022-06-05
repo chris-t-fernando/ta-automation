@@ -5,6 +5,9 @@ from itradeapi import (
     Position,
     Asset,
     NotImplementedException,
+    UnknownSymbol,
+    DelistedAsset,
+    UntradeableAsset
 )
 import yfinance as yf
 from datetime import datetime
@@ -205,7 +208,8 @@ class AlpacaAPI(ITradeAPI):
         )
 
         # set up asset lists
-        self.assets = self.api.list_assets()
+        self._build_asset_list()
+        
         # self.asset_list_by_id = self._structure_asset_dict_by_id(assets)
         self.asset_list_by_symbol = self._structure_asset_dict_by_symbol(self.assets)
 
@@ -213,7 +217,40 @@ class AlpacaAPI(ITradeAPI):
         self._create_yf_to_alpaca_symbol_mapping(self.supported_crypto_symbols_alp)
         self.supported_crypto_symbols_yf = self._get_crypto_symbols_yf()
 
-        self.default_currency = "usd"
+        self.default_currency = "USD"
+    
+    def _build_asset_list(self):
+        alpaca_assets = self.api.list_assets()
+
+        self._invalid_assets = {}
+        valid_assets = []
+        for asset in alpaca_assets:
+            if asset.status == "inactive" or not asset.tradable:
+                self._invalid_assets[asset.symbol] = asset
+            else:
+                valid_assets.append(asset)
+
+        self.assets = valid_assets
+
+    def validate_symbol(self, symbol:str):
+        al_symbol = self._to_alpaca(symbol)
+        # if its valid, just return True
+        if al_symbol in self.assets:
+            return True
+        # also check crypto symbols TODO: at some point just merge crypto and normal
+        if al_symbol in self.supported_crypto_symbols_alp:
+            return True
+        
+        #  if its also not in dict of invalid assets, so its just totally unknown
+        if al_symbol not in self._invalid_assets:
+            raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
+        
+        # so its invalid but the broker does know about it - delisted/not tradeable
+        if self._invalid_assets[al_symbol].status == "inactive":
+            raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
+        
+        if self._invalid_assets[al_symbol].tradable == False:
+            raise UntradeableAsset(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
 
     def _get_crypto_symbols_yf(self)->list:
         yf_symbols = []

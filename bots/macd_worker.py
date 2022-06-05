@@ -65,15 +65,6 @@ class MacdWorker:
         config:MacdConfig,
         rules:TABotRules
     ):
-        # can't easily map alpaca and YFinance
-        # UNI-USD in unicorn token, in alpaca UNIUSD is Uniswap token - different tokens
-        forbidden_symbols = ["UNI-USD", "GRT-USD"]
-        if symbol in forbidden_symbols:
-            raise SymbolForbidden(
-                f"Cannot map token {symbol} between Alpaca and Yahoo "
-                f"Finance. Don't use it."
-            )
-
         self.symbol = symbol
         self.api = api
         self.broker_name = self.api.get_broker_name()
@@ -89,6 +80,13 @@ class MacdWorker:
         self.paper_testing = config.paper_testing
         self.production_run = config.production_run
         self._init_complete = False
+
+        try:
+            self.is_valid_symbol()
+        except Exception as e:
+            # bad symbol, bail out
+            log_wp.error(f"{symbol}: Invalid symbol ({str(e)})")
+            return
 
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
 
@@ -122,9 +120,31 @@ class MacdWorker:
 
         if len(bars) == 0:
             self.bars = []
+            log_wp.error(f"{symbol}: No YF data for this symbol")
+            return
         else:
             self.bars = utils.add_signals(bars, self.interval)
             self._init_complete = True
+
+    def is_valid_symbol(self):
+        # can't easily map alpaca and YFinance
+        # UNI-USD in unicorn token, in alpaca UNIUSD is Uniswap token - different tokens
+        # TODO: pull this from store
+        forbidden_symbols = ["UNI-USD", "GRT-USD"]
+        if self.symbol in forbidden_symbols:
+            raise SymbolForbidden(
+                f"Cannot map token {self.symbol} between broker API and Yahoo "
+                f"Finance. Don't use it."
+            )
+        
+        # next check that the symbol is known to the broker and tradeable
+        try:
+            self.api.validate_symbol(symbol=self.symbol)
+
+        except Exception as e:
+            raise
+            
+        return True
 
     def get_market(self):
         # there's the right way and the fast way to do this
@@ -399,51 +419,53 @@ class MacdWorker:
                 min_price_increment=self.min_price_increment,
             )
 
+            # TODO this needs to be turned into exceptions
             if not buy_plan.success:
                 if buy_plan.error_message == "entry_larger_than_order_size":
                     log_wp.info(
                         f"{self.symbol}: Found buy signal, but max play size is "
-                        f"{buy_plan.max_play_value} vs entry price of {buy_plan.entry_unit}"
+                        f"{buy_plan.max_play_value:,.2f} vs entry price of {buy_plan.entry_unit:,}"
                     )
                     return False
                 elif buy_plan.error_message == "min_order_size":
+                    _min_order_value = self.min_order_size * buy_plan.entry_unit
                     log_wp.info(
                         f"{self.symbol}: Found buy signal, but insufficient balance to "
-                        f"purchase at least the minimum order quantity. Balance {balance}, "
-                        f"minimum order size {self.min_order_size}, minimum order value "
-                        f"{self.min_order_size * buy_plan.entry_unit}"
+                        f"purchase at least the minimum order quantity. Balance {balance:,.2f}, "
+                        f"minimum order size {self.min_order_size:,}, minimum order value "
+                        f"{_min_order_value:,}"
                     )
                     return False
                 elif buy_plan.error_message == "zero_units":
                     log_wp.info(
                         f"{self.symbol}: Found buy signal, but insufficient balance to purchase "
-                        f"at least one unit. Balance {balance}, entry unit price {buy_plan.entry_unit}"
+                        f"at least one unit. Balance {balance:,.2f}, entry unit price {buy_plan.entry_unit:,}"
                     )
                     return False
                 elif buy_plan.error_message == "insufficient_balance":
                     log_wp.info(
                         f"{self.symbol}: Found buy signal, but insufficient balance to "
-                        f"purchase at least one unit. Balance {balance}, entry unit "
-                        f"price {buy_plan.entry_unit}"
+                        f"purchase at least one unit. Balance {balance:,.2f}, entry unit "
+                        f"price {buy_plan.entry_unit:,}"
                     )
                     return False
                 elif buy_plan.error_message == "stop_unit_too_high":
                     log_wp.info(
-                        f"{self.symbol}: Found buy signal, but Stop Loss {buy_plan.stop_unit} "
-                        f"would already trigger at last Low price of {buy_plan.last_low}"
+                        f"{self.symbol}: Found buy signal, but Stop Loss {buy_plan.stop_unit:,} "
+                        f"would already trigger at last Low price of {buy_plan.last_low:,}"
                     )
                     return False
                 elif buy_plan.error_message == "last_high_too_low":
                     log_wp.info(
                         f"{self.symbol}: Found buy signal, but first Take Profit step "
                         f"{buy_plan.entry_unit * 1.25} would already trigger at last "
-                        f"High price of {buy_plan.last_high}"
+                        f"High price of {buy_plan.last_high:,}"
                     )
                     return False
                 else:
                     log_wp.critical(
                         f"{self.symbol}: Found buy signal, but something went wrong in "
-                        f"buy_plan. Balance {balance}, entry unit price {buy_plan.entry_unit}"
+                        f"buy_plan. Balance {balance:,.2f}, entry unit price {buy_plan.entry_unit:,}"
                     )
                     return False
 
@@ -492,8 +514,8 @@ class MacdWorker:
         # do nothing - still open, not timedout
         log_wp.debug(
             f"{self.symbol}: Order {order.order_id} is still open but not filled. Last "
-            f"High was {self.bars.High.loc[self._analyse_date]} last Low was "
-            f"{self.bars.Low.loc[self._analyse_date]}, limit price is {order.ordered_unit_price}"
+            f"High was {self.bars.High.loc[self._analyse_date]:,} last Low was "
+            f"{self.bars.Low.loc[self._analyse_date]:,}, limit price is {order.ordered_unit_price:,}"
         )
         return False
 
@@ -502,7 +524,7 @@ class MacdWorker:
 
         # position liquidated
         if self.position.quantity == 0:
-            log_wp.debug(
+            log_wp.warning(
                 f"{self.symbol}: 0 units held, assuming that position has been "
                 "externally liquidated"
             )
@@ -524,7 +546,7 @@ class MacdWorker:
         stop_loss = self.active_rule["current_stop_loss"]
         if last_close < stop_loss:
             log_wp.warning(
-                f"{self._analyse_date} {self.symbol}: Stop loss hit, next action "
+                f"{self.symbol} {self._analyse_date}: Stop loss hit, next action "
                 "is trans_position_taken_to_stop_loss"
             )
             return self.trans_position_taken_to_stop_loss
@@ -553,10 +575,11 @@ class MacdWorker:
 
         # first check to see if the take profit order has been filled
         if order.status_summary == "filled":
+            _value = order.filled_unit_quantity * order.filled_unit_price
             self.notification_service.send(
-                message=f"MACD algo took profit on {self.symbol} | {order.filled_unit_price} "
-                f"sold price | {order.filled_unit_quantity} units sold | "
-                f"{order.filled_unit_quantity * order.filled_unit_price} total sale value",
+                message=f"MACD algo took profit on {self.symbol} | {order.filled_unit_price:,} "
+                f"sold price | {order.filled_unit_quantity:,} units sold | "
+                f"{_value:,} total sale value",
             )
 
             # do we have any units left?
@@ -584,7 +607,7 @@ class MacdWorker:
                 "liquidate them. Did these units get liquidated outside of my workflow?",
             )
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: No units held but liquidated outside "
+                f"{self.symbol} {self._analyse_date}: No units held but liquidated outside "
                 "of this sell order, next action is trans_externally_liquidated"
             )
             return self.trans_externally_liquidated
@@ -596,7 +619,7 @@ class MacdWorker:
                 "(stop loss etc) can't found in state storage. You need to liquidate this holding manually.",
             )
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Can't find rule for this position, "
+                f"{self.symbol} {self._analyse_date}: Can't find rule for this position, "
                 "next action is trans_take_profit_to_stop_loss"
             )
             return self.trans_take_profit_to_stop_loss
@@ -606,8 +629,8 @@ class MacdWorker:
         if last_close < stop_loss:
             # no notification required here - will be handled in trans_ method
             log_wp.warning(
-                f"{self._analyse_date} {self.symbol}: Stop loss hit (last close {round(last_close,2)} "
-                f"< stop loss {round(stop_loss,2)}), next action is trans_take_profit_to_stop_loss"
+                f"{self._analyse_date} {self.symbol}: Stop loss hit (last close {last_close:,} "
+                f"< stop loss {stop_loss:,}), next action is trans_take_profit_to_stop_loss"
             )
             return self.trans_take_profit_to_stop_loss
 
@@ -615,7 +638,7 @@ class MacdWorker:
             # the order got cancelled for some reason. we still have a position, so try to re-raise it
             # no notification required here - will be handled in trans_ method
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Sell order was cancelled for some reason (maybe "
+                f"{self.symbol} {self._analyse_date}: Sell order was cancelled for some reason (maybe "
                 "by broker?), so trying to re-raise it. Next action is trans_take_profit_retry"
             )
             return self.trans_take_profit_retry
@@ -632,7 +655,7 @@ class MacdWorker:
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
         if not self.active_rule:
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Can't find rule for this position, next "
+                f"{self.symbol} {self._analyse_date}: Can't find rule for this position, next "
                 "action is trans_take_profit_to_stop_loss"
             )
 
@@ -646,7 +669,7 @@ class MacdWorker:
         if order.status_summary == "cancelled":
             # the order got cancelled for some reason. we still have a position, so try to re-raise it
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Sell order was cancelled for some "
+                f"{self.symbol} {self._analyse_date}: Sell order was cancelled for some "
                 "reason (maybe be broker?), so trying to re-raise it. Next action is trans_take_profit_retry"
             )
             self.notification_service.send(
@@ -657,13 +680,14 @@ class MacdWorker:
         elif order.status_summary == "filled":
             # stop loss got filled, now need to fully close position
             log_wp.info(
-                f"{self._analyse_date} {self.symbol}: No units still held, next action "
+                f"{self.symbol} {self._analyse_date}: No units still held, next action "
                 "is trans_close_position"
             )
+            _total_value = order.filled_unit_quantity * order.filled_unit_price
             self.notification_service.send(
-                message=f"Stop loss filled for {self.symbol} | {order.filled_unit_price} "
-                f"sold price | {order.filled_unit_quantity} units sold | "
-                f"{order.filled_unit_quantity * order.filled_unit_price} total sale value",
+                message=f"Stop loss filled for {self.symbol} | {order.filled_unit_price:,} "
+                f"sold price | {order.filled_unit_quantity:,} units sold | "
+                f"{_total_value:,} total sale value",
             )
             return self.trans_close_position
 
@@ -671,7 +695,7 @@ class MacdWorker:
             # is the order still open but we don't own any? if so, it got liquidated outside of this process
             if position.quantity == 0:
                 log_wp.critical(
-                    f"{self._analyse_date} {self.symbol}: No units held but liquidated "
+                    f"{self.symbol} {self._analyse_date}: No units held but liquidated "
                     "outside of this sell order, next action is trans_externally_liquidated"
                 )
                 self.notification_service.send(
@@ -683,7 +707,7 @@ class MacdWorker:
 
             # nothing to do
             log_wp.debug(
-                f"{self._analyse_date} {self.symbol}: Stop loss order still open, no next action"
+                f"{self.symbol} {self._analyse_date}: Stop loss order still open, no next action"
             )
             return False
 
@@ -705,7 +729,7 @@ class MacdWorker:
         accepted_statuses = ["open", "filled", "pending"]
         if order_result.status_summary not in accepted_statuses:
             log_wp.error(
-                f"{self._analyse_date} {self.symbol}: Failed to submit buy order "
+                f"{self.symbol} {self._analyse_date}: Failed to submit buy order "
                 f"{order_result.order_id}: {order_result.status_text}"
             )
             self.notification_service.send(
@@ -730,7 +754,7 @@ class MacdWorker:
 
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Buy order {order_result.order_id} (state "
-            f"{order_result.status_summary}) at unit price {order_result.ordered_unit_price} submitted"
+            f"{order_result.status_summary}) at unit price {order_result.ordered_unit_price:,} submitted"
         )
         log_wp.log(9, f"{self.symbol}: Finished trans_entering_position")
         return True
@@ -741,7 +765,7 @@ class MacdWorker:
 
         if state == False:
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Unable to find order for this symbol in state! "
+                f"{self.symbol} {self._analyse_date}: Unable to find order for this symbol in state! "
                 "There may be an unmanaged buy order in the market!"
             )
         else:
@@ -776,7 +800,7 @@ class MacdWorker:
 
         if state == False:
             log_wp.warning(
-                f"{self._analyse_date} {self.symbol}: Unable to find order for this symbol "
+                f"{self.symbol} {self._analyse_date}: Unable to find order for this symbol "
                 "in state! May be an orphaned buy order!"
             )
         else:
@@ -823,8 +847,8 @@ class MacdWorker:
         self.current_check = self.check_state_position_taken
 
         self.notification_service.send(
-            message=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit} "
-            f"entry price | {self.buy_plan.stop_unit} stop loss price | {self.buy_plan.units} "
+            message=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit:,} "
+            f"entry price | {self.buy_plan.stop_unit:,} stop loss price | {self.buy_plan.units:,} "
             "units bought",
         )
 
@@ -892,7 +916,7 @@ class MacdWorker:
 
         if order.status_summary == "cancelled":
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Unable to submit stop loss order "
+                f"{self.symbol} {self._analyse_date}: Unable to submit stop loss order "
                 f"for symbol! API returned {order.status_text}"
             )
             return False
@@ -924,8 +948,8 @@ class MacdWorker:
 
         if order.status_summary == "cancelled":
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Unable to submit stop loss order "
-                "for symbol! API returned {order.status_text}"
+                f"{self.symbol} {self._analyse_date}: Unable to submit stop loss order "
+                f"for symbol! API returned {order.status_text}"
             )
             return False
 
@@ -1046,9 +1070,9 @@ class MacdWorker:
         )
         self.bot_telemetry.add_order(order_result=filled_order, play_id=self.play_id)
         log_wp.warning(
-            f"{self._analyse_date} {self.symbol}: Successfully took profit: order ID "
-            f"{filled_order.order_id} sold {filled_order.filled_unit_quantity} at "
-            f"{filled_order.filled_unit_price} for value {filled_value}"
+            f"{self.symbol} {self._analyse_date}: Successfully took profit: order ID "
+            f"{filled_order.order_id} sold {filled_order.filled_unit_quantity:,} at "
+            f"{filled_order.filled_unit_price:,} for value {filled_value:,}"
         )
 
         updated_plan = self.buy_plan.take_profit(
@@ -1058,7 +1082,7 @@ class MacdWorker:
         )
 
         if updated_plan["new_target_unit_price"] == None:
-            print("banana")
+            print("new_target_unit_price_banana")
 
         order = self.api.sell_order_limit(
             symbol=self.symbol,
@@ -1079,17 +1103,17 @@ class MacdWorker:
 
         if not self.replace_rule(new_rule=new_rule):
             log_wp.critical(
-                f"{self._analyse_date} {self.symbol}: Failed to update rules with new rule! Likely orphaned order"
+                f"{self.symbol} {self._analyse_date}: Failed to update rules with new rule! Likely orphaned order"
             )
-
+        _total_value = filled_order.filled_unit_quantity * filled_order.filled_unit_price
         self.notification_service.send(
-            message=f"MACD algo took profit on {self.symbol} | {filled_order.filled_unit_price} "
-            f"sold price | {filled_order.filled_unit_quantity} units sold | "
-            f"{filled_order.filled_unit_quantity * filled_order.filled_unit_price} total sale value",
+            message=f"MACD algo took profit on {self.symbol} | {filled_order.filled_unit_price:,} "
+            f"sold price | {filled_order.filled_unit_quantity:,} units sold | "
+            f"{_total_value:,} total sale value",
         )
         self.notification_service.send(
-            message=f"I still hold {new_units_held} units of {self.symbol} | "
-            f"{new_target_unit_price} is new target price | {new_stop_loss} is new stop loss",
+            message=f"I still hold {new_units_held:,} units of {self.symbol} | "
+            f"{new_target_unit_price:,} is new target price | {new_stop_loss:,} is new stop loss",
         )
 
         self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
@@ -1099,10 +1123,10 @@ class MacdWorker:
 
         new_value = order.ordered_unit_quantity * order.ordered_unit_price
         log_wp.warning(
-            f"{self._analyse_date} {self.symbol}: Successfully lodged new take profit: order ID "
-            f"{order.order_id} (state {order.status_summary}) to sell {order.ordered_unit_quantity} "
-            f"unit at {round(order.ordered_unit_price,2)} for value "
-            f"{round(new_value,2)} with new stop loss {round(new_stop_loss,2)}"
+            f"{self.symbol} {self._analyse_date}: Successfully lodged new take profit: order ID "
+            f"{order.order_id} (state {order.status_summary}) to sell {order.ordered_unit_quantity:,} "
+            f"unit at {order.ordered_unit_price:,} for value "
+            f"{new_value:,} with new stop loss {new_stop_loss:,}"
         )
 
         self.state_const = TAKING_PROFIT

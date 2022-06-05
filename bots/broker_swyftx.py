@@ -16,7 +16,10 @@ from itradeapi import (
     Account,
     Position,
     NotImplementedException,
-    BrokerAPIError
+    BrokerAPIError,
+    UnknownSymbol,
+    DelistedAsset,
+    UntradeableAsset
 )
 
 log_wp = logging.getLogger("swyftx")  # or pass an explicit name here, e.g. "mylogger"
@@ -508,14 +511,9 @@ class OrderResult(IOrderResult):
         self.symbol = asset_list_by_id[bought_id]["symbol"]
 
 
-        if "limit" in ORDER_MAP_INVERTED[order_object["order_type"]]:
+        if "LIMIT" in ORDER_MAP_INVERTED[order_object["order_type"]].upper():
         #if order_object.type == "limit":
             # TODO this is wrong
-            #self.ordered_unit_quantity = float(response.qty)
-            #self.ordered_unit_price = float(response.limit_price)
-            #self.ordered_total_value = (
-            #    self.ordered_unit_quantity * self.ordered_unit_price
-            #)
             self.ordered_unit_quantity = order_object["amount"]
             self.ordered_unit_price = order_object["trigger"]
             self.ordered_total_value = (
@@ -587,26 +585,64 @@ class SwyftxAPI(ITradeAPI):
     def get_asset_by_id(self, id)->Asset:
         return self._asset_list_by_id[id]
 
+    def validate_symbol(self, symbol:str):
+        sw_symbol = YF_SYMBOL_MAP[symbol]
+        # if its valid, just return True
+        if sw_symbol in self._asset_list_by_symbol:
+            return True
+        
+        #  if its also not in dict of invalid assets, so its just totally unknown
+        if sw_symbol not in self._invalid_assets:
+            raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
+        
+        # so its invalid but the broker does know about it - delisted/not tradeable
+        if self._invalid_assets[sw_symbol]["delisting"] == 1:
+            raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
+        
+        if self._invalid_assets[sw_symbol]["tradable"] == 0:
+            raise UntradeableAsset(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
+        
+        # logically we shouldn't get here
+        raise RuntimeError("We shouldn't have gotten here.")
 
     def _build_asset_list(self)->bool:
         # this is munted. there's no Markets endpoint in demo?!
         temp_api = pyswyft.API(access_token=self.access_token, environment="live")
         swyftx_assets = temp_api.request(markets.MarketsAssets())
+        
+        self._invalid_assets = self._get_invalid_assets(swyftx_assets)
+        valid_assets = []
+        for asset in swyftx_assets:
+            found = False
+            for invalid_asset in self._invalid_assets:
+                if asset["code"] == invalid_asset:
+                    found = True
+            if not found:
+                valid_assets.append(asset)
 
         # set up asset lists
-        self._asset_list_by_id = self._structure_asset_dict_by_id(swyftx_assets)
-        self._asset_list_by_symbol = self._structure_asset_dict_by_symbol(swyftx_assets)
+        self._asset_list_by_symbol = self._structure_asset_dict_by_symbol(valid_assets)
+        self._asset_list_by_id = self._structure_asset_dict_by_id(valid_assets)
 
         return True
 
-    def _structure_asset_dict_by_id(self, asset_dict)->dict:
+    def _get_invalid_assets(self, asset_dict:dict)->dict:
+        invalid_assets = {}
+        for asset in asset_dict:
+            if asset["tradable"] == 0:
+                invalid_assets[asset["code"]] = asset
+            elif asset["delisting"] == 1:
+                invalid_assets[asset["code"]] = asset
+        return invalid_assets
+
+    def _structure_asset_dict_by_id(self, asset_dict:dict)->dict:
         return_dict = {}
         for asset in asset_dict:
             asset["symbol"] = asset["code"]
             return_dict[asset["id"]] = asset
         return return_dict
 
-    def _structure_asset_dict_by_symbol(self, asset_dict)->dict:
+    def _structure_asset_dict_by_symbol(self, asset_dict:dict)->dict:
         return_dict = {}
         for asset in asset_dict:
             asset["symbol"] = str(asset["code"])
