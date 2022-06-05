@@ -81,8 +81,8 @@ class MacdBot:
                 )
             else:
                 log_wp.error(
-                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF'
-                    f"returned {len(new_symbol.bars)} bars {round(time.time() - start_time,1)}s"
+                    f'{s["symbol"]}: Failed to set up symbol - check spelling? YF '
+                    f"returned {len(new_symbol.bars)} bars in {round(time.time() - start_time,1)}s"
                 )
 
     def setup_brokers(self):

@@ -430,19 +430,21 @@ def unpickle(object):
 
 def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_base:str) -> bool:
     for symbol in symbols:
-        existing_bars = load_bars(symbol, "s3://" + bucket, key_base+symbol+".csv")
+        existing_bars = load_bars(symbols=symbol, bucket=bucket, key_base=key_base)
         if type(existing_bars) == pd.core.frame.DataFrame:
             start = existing_bars.index[-1]
             log_wp.debug(
-                f"{symbol}: Existing bars found in S3 will be used as starting point"
+                f"{symbol}: {len(existing_bars):,d} existing bars found in S3 will be used as starting point"
             )
+            existing_rows = len(existing_bars)
         else:
             start = datetime.now() - max_range
             log_wp.debug(
-                f"{symbol}: No bars found in S3. Starting point will be YFinance start date"
+                f"{symbol}: No bars found in S3. Starting point will be YFinance start date {str(start)}"
             )
+            existing_rows = 0
 
-        bars = yf.Ticker(symbol).history(str(start), interval, actions=False, debug=False)
+        bars = yf.Ticker(symbol).history(start=start, interval=interval, actions=False, debug=False)
 
         if len(bars) == 0:
             print(f"{symbol}: No YF data - skipping symbol")
@@ -464,7 +466,8 @@ def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_bas
         if save_to_s3(
             pickle=pickled_bars, bucket=bucket, key_base=key_base,  key=f"{symbol}.csv", 
         ):
-            log_wp.info(f"{symbol}: Saved bars to S3")
+            log_wp.info(f"{symbol}: Saved bars to S3 ({len(bars):,d} records retrieved, {existing_rows:,d} "
+            f"were already in S3, {len(trimmed_bars):,d} records saved)")
         else:
             log_wp.error(f"{symbol}: Failed to save bars to S3")
 

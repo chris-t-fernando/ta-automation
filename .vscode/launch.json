@@ -64,7 +64,7 @@
             ]
         },
         {
-            "name": "tabot paper crypto",
+            "name": "tabot paper crypto all",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
