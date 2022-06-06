@@ -129,6 +129,13 @@ class OrderResult(IOrderResult):
         self.create_time = response["created_time"]
         self.update_time = response["updated_time"]
 
+        open_statuses = ["open", "pending"]
+        if self.status_summary in open_statuses:
+            self.closed = False
+        else:
+            self.closed = True
+
+        self.validate()
 
 # concrete implementation of trade api for alpaca
 class BackTestAPI(ITradeAPI):
@@ -897,6 +904,10 @@ class BackTestAPI(ITradeAPI):
             min_trade_increment=min_trade_increment,
             min_price_increment=min_price_increment,
         )
+
+    def validate_symbol(self, symbol:str):
+        # TODO: this is not right - but the whole handling of symbols is busted in back testing
+        return True
 
 
 if __name__ == "__main__":

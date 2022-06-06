@@ -1,22 +1,24 @@
 # TODO
+# dynamic order size
+# loop detection in state machine
 # print numbers as decimals instead of exponentials
 # print numbers rounded to whatever position makes sense
 # better reporting/telemetry
 # orderresult needs an open/close status
-# orderresult needs to be moved in to the I class, and each concrete implementation needs to call super on it
-# swyftx wrapper is busted
 # recover active plays from state
 # better reporting
 #  - crypto vs nyse
 #  - streaks
 # 300 df merge update bring down to just changes - faster faster
 # should we use high/low/close as trigger? its used all through **utils** and buyplan
-# make it more pythonic
+# make it more pythonic - use context managers, better exceptions etc
 # better testing - especially buyplan
 # ability to transition between algos
 # ability to pause operation more than every 5 minutes
 # sell and stop loss tell me profit
-
+# back testing handling of valid symbols
+# test back testing handling of validating order result
+# add logging to broker concretes
 
 # external packages
 import argparse

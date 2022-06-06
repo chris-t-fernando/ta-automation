@@ -25,6 +25,13 @@ log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
 
 
+class OrderQuantitySmallerThanMinimum(Exception):...
+class OrderValueSmallerThanMinimum(Exception):...
+class ZeroUnitsOrdered(Exception):...
+class InsufficientBalance(Exception):...
+class StopPriceAlreadyMet(Exception):...
+class TakeProfitAlreadyMet(Exception):...
+
 class BuyPlan:
     def __init__(
         self,
@@ -91,10 +98,12 @@ class BuyPlan:
         self.last_high = df.High.iloc[-1]
 
         if self.stop_unit > self.last_low:
+            raise StopPriceAlreadyMet(f"Stop unit price of {self.stop_unit} would already trigger since last low was {self.last_low}")
             self.error_message = "stop_unit_too_high"
             return
 
         if self.entry_unit * 1.25 < self.last_high:
+            raise TakeProfitAlreadyMet(f"Take profit price of {self.entry_unit * 1.25} would already trigger since last high was {self.last_high}")
             self.error_message = "last_high_too_low"
             return
 
@@ -105,12 +114,16 @@ class BuyPlan:
 
         if max_play_value < self.entry_unit:
             # we're not buying any units
+            raise OrderValueSmallerThanMinimum(f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit}")
+
             self.error_message = "entry_larger_than_order_size"
             return
 
         units = self.capital / self.entry_unit
         if units < min_order_size:
             # too few - failed order
+            raise OrderQuantitySmallerThanMinimum(f"Play quantity of {units} is lower than minimum quantity of {min_order_size}")
+
             self.error_message = "min_order_size"
             return
 
@@ -118,18 +131,18 @@ class BuyPlan:
 
         if self.units == 0:
             # we're not buying any units
+            raise ZeroUnitsOrdered(f"Units to purchase is 0. Maybe due to floor? Calculated units was {units}, minimum trade increment is {min_trade_increment}")
             self.error_message = "zero_units"
             return
 
         # if we don't have enough money, bail out
         if self.entry_unit * self.units > balance:
+            raise InsufficientBalance(f"Balance of {balance} is insufficient to purchase {self.units} units at {self.entry_unit}")
             self.error_message = "insufficient_balance"
             return
 
         self.steps = 0
         self.risk_unit = round(self.entry_unit - self.stop_unit, precision)
-        if self.risk_unit == 0:
-            print("banana")
         self.risk_value = round(self.units * self.risk_unit, precision)
         self.target_profit = round(profit_target * self.risk_unit, precision)
         self.original_risk_unit = round(self.risk_unit, precision)

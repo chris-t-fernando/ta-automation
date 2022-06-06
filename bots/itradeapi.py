@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from pandas import DataFrame
+import datetime
 
 MARKET_BUY = 1
 MARKET_SELL = 2
@@ -16,7 +17,10 @@ class BrokerAPIError(Exception):...
 
 class UnknownSymbol(Exception):...
 class DelistedAsset(Exception):...
-class UntradeableAsset(Exception):...    
+class UntradeableAsset(Exception):...  
+class MalformedOrderResult(Exception):...  
+class ZeroUnitsOrdered(Exception):...
+class ApiRateLimit(Exception):...
 
 class Account:
     assets: dict
@@ -45,9 +49,56 @@ class Asset:
 
 
 class IOrderResult(ABC):
+    _raw_response:dict
+    order_type:int
+    order_type_text:str
+    order_id:str
+    symbol:str
+    ordered_unit_quantity:float
+    ordered_unit_price:float
+    ordered_total_value:float
+    filled_unit_quantity:float
+    filled_unit_price:float
+    filled_total_value:float
+    status:int
+    status_text:str
+    status_summary:str
+    success:bool
+    fees:float
+    create_time:datetime
+    update_time:datetime
+    closed:bool
+        
     @abstractmethod
     def __init__(self, response: dict, orders_create_object):
         ...
+
+    def validate(self):
+        failed = False
+        required_attributes = ["_raw_response",
+    "status",
+    "status_text",
+    "status_summary",
+    "success",
+    "order_type",
+    "order_type_text",
+    "order_id",
+    "symbol",
+    "ordered_unit_quantity",
+    "ordered_unit_price",
+    "ordered_total_value",
+    "filled_unit_quantity",
+    "filled_unit_price",
+    "filled_total_value",
+    "fees",
+    "create_time",
+    "update_time",
+    "closed"]
+        
+        for attribute in required_attributes:
+            if not hasattr(self, attribute):
+                raise MalformedOrderResult(f"OrderResult is missing {attribute}")
+        return True
 
     def as_dict(self):
         return {
@@ -91,31 +142,31 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def get_bars(self) -> DataFrame:
+    def get_bars(self,symbol: str, start: str, end: str = None, interval: str = "1d") -> DataFrame:
         ...
 
     @abstractmethod
-    def buy_order_market(self) -> IOrderResult:
+    def buy_order_market(self, symbol:str, units:int, back_testing_date=None) -> IOrderResult:
         ...
 
     @abstractmethod
-    def buy_order_limit(self) -> IOrderResult:
+    def buy_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None) -> IOrderResult:
         ...
 
     @abstractmethod
     def sell_order_market(
-        self, symbol: str, units: float, back_testing_unit_price: None
+        self, symbol: str, units: float = None, back_testing_date=None
     ) -> IOrderResult:
         ...
 
     @abstractmethod
     def sell_order_limit(
-        self, symbol: str, units: float, unit_price: float
+        self, symbol: str, units: float, unit_price: float, back_testing_date=None
     ) -> IOrderResult:
         ...
 
     @abstractmethod
-    def cancel_order(self, order_id: str, back_testing_date) -> IOrderResult:
+    def cancel_order(self, order_id: str, back_testing_date=None) -> IOrderResult:
         ...
 
     @abstractmethod
@@ -143,4 +194,4 @@ class ITradeAPI(ABC):
         ...
 
     @abstractmethod
-    def validate_symbol(self, symbol:str):...
+    def validate_symbol(self, symbol:str)->bool:...

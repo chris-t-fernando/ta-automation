@@ -6,7 +6,7 @@ import pandas as pd
 import pytz
 
 # my modules
-from buyplan import BuyPlan
+from buyplan import BuyPlan, OrderQuantitySmallerThanMinimum, OrderValueSmallerThanMinimum,ZeroUnitsOrdered,InsufficientBalance, StopPriceAlreadyMet,TakeProfitAlreadyMet
 from macd_config import MacdConfig
 from itradeapi import (
     ITradeAPI,
@@ -408,66 +408,26 @@ class MacdWorker:
             play_id = "play-" + self.symbol + utils.generate_id()
 
             # TODO you need to add a toggle to buy at market or limit - you keep missing swyftx opps
-            buy_plan = BuyPlan(
-                symbol=self.symbol,
-                df=bars_slice,
-                balance=balance,
-                play_id=play_id,
-                precision=self.precision,
-                min_trade_increment=self.min_trade_increment,
-                min_order_size=self.min_order_size,
-                min_price_increment=self.min_price_increment,
-            )
-
-            # TODO this needs to be turned into exceptions
-            if not buy_plan.success:
-                if buy_plan.error_message == "entry_larger_than_order_size":
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but max play size is "
-                        f"{buy_plan.max_play_value:,.2f} vs entry price of {buy_plan.entry_unit:,}"
-                    )
-                    return False
-                elif buy_plan.error_message == "min_order_size":
-                    _min_order_value = self.min_order_size * buy_plan.entry_unit
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but insufficient balance to "
-                        f"purchase at least the minimum order quantity. Balance {balance:,.2f}, "
-                        f"minimum order size {self.min_order_size:,}, minimum order value "
-                        f"{_min_order_value:,}"
-                    )
-                    return False
-                elif buy_plan.error_message == "zero_units":
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but insufficient balance to purchase "
-                        f"at least one unit. Balance {balance:,.2f}, entry unit price {buy_plan.entry_unit:,}"
-                    )
-                    return False
-                elif buy_plan.error_message == "insufficient_balance":
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but insufficient balance to "
-                        f"purchase at least one unit. Balance {balance:,.2f}, entry unit "
-                        f"price {buy_plan.entry_unit:,}"
-                    )
-                    return False
-                elif buy_plan.error_message == "stop_unit_too_high":
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but Stop Loss {buy_plan.stop_unit:,} "
-                        f"would already trigger at last Low price of {buy_plan.last_low:,}"
-                    )
-                    return False
-                elif buy_plan.error_message == "last_high_too_low":
-                    log_wp.info(
-                        f"{self.symbol}: Found buy signal, but first Take Profit step "
-                        f"{buy_plan.entry_unit * 1.25} would already trigger at last "
-                        f"High price of {buy_plan.last_high:,}"
-                    )
-                    return False
-                else:
-                    log_wp.critical(
-                        f"{self.symbol}: Found buy signal, but something went wrong in "
-                        f"buy_plan. Balance {balance:,.2f}, entry unit price {buy_plan.entry_unit:,}"
-                    )
-                    return False
+            try:
+                buy_plan = BuyPlan(
+                    symbol=self.symbol,
+                    df=bars_slice,
+                    balance=balance,
+                    play_id=play_id,
+                    precision=self.precision,
+                    min_trade_increment=self.min_trade_increment,
+                    min_order_size=self.min_order_size,
+                    min_price_increment=self.min_price_increment,
+                )
+            except (OrderQuantitySmallerThanMinimum ,OrderValueSmallerThanMinimum ,ZeroUnitsOrdered,InsufficientBalance ,StopPriceAlreadyMet, TakeProfitAlreadyMet) as e:
+                log_wp.info(f"{self.symbol}: Found buy signal but failed to generate BuyPlan: balance is {balance}, error is '{str(e)}'")
+                return False
+            except Exception as e:
+                log_wp.critical(
+                    f"{self.symbol}: Found buy signal, but something went wrong in "
+                    f"BuyPlan. Balance {balance:,.2f}"
+                )
+                return False
 
             self.buy_plan = buy_plan
             log_wp.info(
@@ -494,6 +454,8 @@ class MacdWorker:
         elif order.status_summary == "filled":
             # buy got filled so transition to position taken
             self.active_order_result = order
+            self.active_order_id = order.order_id
+            
             log_wp.debug(
                 f"{self.symbol}: Order {order.order_id}: filled, next action is trans_buy_order_filled"
             )
@@ -719,10 +681,16 @@ class MacdWorker:
         log_wp.log(9, f"{self.symbol}: Started trans_entering_position")
         self.play_id = self.buy_plan.play_id
 
-        order_result = self.api.buy_order_limit(
+        # TODO you commented this out just for testing - turn this in to a flag
+        #order_result = self.api.buy_order_limit(
+        #    symbol=self.symbol,
+        #    units=self.buy_plan.units,
+        #    unit_price=self.buy_plan.entry_unit,
+        #    back_testing_date=self._back_testing_date,
+        #)
+        order_result = self.api.buy_order_market(
             symbol=self.symbol,
             units=self.buy_plan.units,
-            unit_price=self.buy_plan.entry_unit,
             back_testing_date=self._back_testing_date,
         )
 
@@ -734,7 +702,7 @@ class MacdWorker:
             )
             self.notification_service.send(
                 message=f"Buy conditions met for {self.symbol} but when I tried to "
-                f"raise a buy order it failed with error message {order_result.status_text}",
+                f"raise a buy order it failed with error message '{order_result.status_text}'",
             )
 
             return self.trans_buy_order_cancelled
@@ -754,7 +722,7 @@ class MacdWorker:
 
         log_wp.warning(
             f"{self._analyse_date} {self.symbol}: Buy order {order_result.order_id} (state "
-            f"{order_result.status_summary}) at unit price {order_result.ordered_unit_price:,} submitted"
+            f"{order_result.status_summary}) at unit price {order_result.ordered_unit_price} submitted"
         )
         log_wp.log(9, f"{self.symbol}: Finished trans_entering_position")
         return True
@@ -966,10 +934,12 @@ class MacdWorker:
         return True
 
     def trans_externally_liquidated(self):
-        order = self.api.get_order(
-            order_id=self.active_order_id, back_testing_date=self._analyse_date
-        )
-        self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
+        # happens if it gets liquidated immediately after purchase
+        if self.active_order_id is not None:
+            order = self.api.get_order(
+                order_id=self.active_order_id, back_testing_date=self._analyse_date
+            )
+            self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
         # already don't hold any, so no need to delete orders
         # just need to clean up the object and delete rules

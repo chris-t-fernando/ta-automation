@@ -60,8 +60,7 @@ class MacdBot:
 
         # configure brokers
         self.api_list = list(set(self.api_list))
-        self.api_dict = self.setup_brokers(
-        )
+        self.api_dict = self.setup_brokers()
 
         # set up individual symbols
         self.symbols = {}

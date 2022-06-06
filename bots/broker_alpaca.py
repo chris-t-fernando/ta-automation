@@ -144,12 +144,21 @@ class OrderResult(IOrderResult):
         self.success = (
             self.status in ORDER_STATUS_SUMMARY_TO_ID["open"]
             or self.status in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+            or self.status in ORDER_STATUS_SUMMARY_TO_ID["pending"]
         )
 
         self.fees = 0
 
         self.create_time = response.submitted_at
         self.update_time = response.updated_at
+
+        open_statuses = ["open", "pending"]
+        if self.status_summary in open_statuses:
+            self.closed = False
+        else:
+            self.closed = True
+
+        self.validate()
 
     def _to_yf(self, alpaca_symbol, alpaca_to_yf_symbol_map)->str:
         if alpaca_symbol in alpaca_to_yf_symbol_map:

@@ -1,12 +1,13 @@
 from datetime import datetime
-from math import floor
+#from math import floor
+import json
 import logging
-from socket import create_server
 import pyswyft
 from pyswyft.endpoints import accounts, history, markets, orders
 import pytz
 import time
 import yfinance as yf
+
 
 
 from itradeapi import (
@@ -19,8 +20,12 @@ from itradeapi import (
     BrokerAPIError,
     UnknownSymbol,
     DelistedAsset,
-    UntradeableAsset
+    UntradeableAsset,
+    ZeroUnitsOrdered,
+    ApiRateLimit
 )
+
+import utils
 
 log_wp = logging.getLogger("swyftx")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -468,30 +473,11 @@ YF_SYMBOL_MAP = {
 "LUNA-USD":"LUNA",
 "LDO-USD":"LDO",
 "NEXO-USD":"NEXO",
+"USDT-USD":"USDT"
 }
 SWYFTX_SYMBOL_MAP = {y: x for x, y in YF_SYMBOL_MAP.items()}
 
 class OrderResult(IOrderResult):
-    # TODO delete this cruft
-    order_id: str
-    sold_symbol: str
-    bought_symbol: str
-    quantity: float
-    quantity_symbol: str
-    quantity_id: int
-    unit_price: int
-    status: int
-    status_text: str
-    status_summary: str
-    order_type: int
-    order_type_text: str
-    create_time: int
-    update_time: int
-    total_value: float
-    success: bool
-    _raw_response: dict
-    _raw_request = None
-
     def __init__(self, order_object, asset_list_by_id: dict):
         self._raw_response = order_object
         self.status = order_object["status"]
@@ -500,6 +486,7 @@ class OrderResult(IOrderResult):
         self.success = (
             order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["open"]
             or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["filled"]
+            or order_object["status"] in ORDER_STATUS_SUMMARY_TO_ID["pending"]
         )
 
         self.order_type = order_object["order_type"]
@@ -510,19 +497,20 @@ class OrderResult(IOrderResult):
         bought_id = order_object["secondary_asset"]
         self.symbol = asset_list_by_id[bought_id]["symbol"]
 
-
-        if "LIMIT" in ORDER_MAP_INVERTED[order_object["order_type"]].upper():
-        #if order_object.type == "limit":
-            # TODO this is wrong
-            self.ordered_unit_quantity = order_object["amount"]
-            self.ordered_unit_price = order_object["trigger"]
+        if "LIMIT" in ORDER_MAP_INVERTED[order_object["order_type"]]:
+            self.ordered_unit_quantity = order_object["quantity"]
+            # if selling, 1 / trigger = unit price. This API is goddamn stupid
+            if "SELL" in ORDER_MAP_INVERTED[order_object["order_type"]]:
+                self.ordered_unit_price = 1/ order_object["trigger"]
+            else:
+                self.ordered_unit_price = order_object["trigger"]
             self.ordered_total_value = (
                 self.ordered_unit_quantity * self.ordered_unit_price
             )
             
         else:
             # market orders - so there is only quantity is known, not price or total value
-            self.ordered_unit_quantity = order_object["amount"]
+            self.ordered_unit_quantity = order_object["quantity"]
             self.ordered_unit_price = None
             self.ordered_total_value = None
 
@@ -549,6 +537,13 @@ class OrderResult(IOrderResult):
         mod_s, mod_ms = divmod(order_object["updated_time"], 1000)
         self.update_time = timezone.localize(datetime.fromisoformat('%s.%03d' % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(mod_s)), mod_ms)))
 
+        open_statuses = ["open", "pending"]
+        if self.status_summary in open_statuses:
+            self.closed = False
+        else:
+            self.closed = True
+
+        self.validate()
 
 # concrete class
 class SwyftxAPI(ITradeAPI):
@@ -569,6 +564,12 @@ class SwyftxAPI(ITradeAPI):
         # set up data structures
         self.default_currency = "USD"
 
+        self.rejected_orders = {}
+
+        #while True:
+        #    self.close_position(symbol="ETH-USD")
+        #    self.close_position(symbol="XRP-USD")
+
     def get_precision(self, yf_symbol:str)->int:
         return 5
 
@@ -585,7 +586,7 @@ class SwyftxAPI(ITradeAPI):
     def get_asset_by_id(self, id)->Asset:
         return self._asset_list_by_id[id]
 
-    def validate_symbol(self, symbol:str):
+    def validate_symbol(self, symbol:str)->bool:
         sw_symbol = YF_SYMBOL_MAP[symbol]
         # if its valid, just return True
         if sw_symbol in self._asset_list_by_symbol:
@@ -693,8 +694,16 @@ class SwyftxAPI(ITradeAPI):
             #                symbol = "usd"
             #                asset["availableBalance"] = rate["amount"]
             #########
-
-            assets[symbol] = float(asset["availableBalance"])
+            
+            # need to account for transaction fees. probably better to do this at buyplan time but whatever trevor
+            if symbol == self.default_currency:
+                balance = float(asset["availableBalance"])
+                if balance < 10:
+                    assets[symbol] = 0
+                else:    
+                    assets[symbol] = float(asset["availableBalance"]) - 10
+            else:
+                assets[symbol] = float(asset["availableBalance"])
 
         return Account(assets=assets)
 
@@ -723,10 +732,14 @@ class SwyftxAPI(ITradeAPI):
 
         for position in raw_positions:
             # dumb api lets you have incredibly small units
-            if float(position["availableBalance"]) > 100:
-                symbol = self.symbol_id_to_text(id=position["assetId"])
+            #if float(position["availableBalance"]) > 100:
+            symbol = self.symbol_id_to_text(id=position["assetId"])
+
+            # i don't treat usd and aud as positions
+            if symbol not in ["USD", "AUD"]:
+                yf_symbol = SWYFTX_SYMBOL_MAP[symbol]
                 return_positions.append(
-                    Position(symbol=symbol, quantity=position["availableBalance"])
+                    Position(symbol=yf_symbol, quantity=position["availableBalance"])
                 )
 
         return return_positions
@@ -781,9 +794,19 @@ class SwyftxAPI(ITradeAPI):
         self, symbol:str, units:int, back_testing_date=None
     )->OrderResult:
         sw_symbol = YF_SYMBOL_MAP[symbol]
-        return self._submit_order(
-            sw_symbol=sw_symbol, units=units, order_type=MARKET_BUY
-        )
+        asset_quantity = sw_symbol.upper()
+
+        try:
+            return self._submit_order(
+                sw_symbol=sw_symbol, units=units, order_type=MARKET_BUY, asset_quantity=asset_quantity
+            )
+        except ZeroUnitsOrdered as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_BUY, asset_quantity=asset_quantity)
+        except ApiRateLimit as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity)
+        except:
+            raise
+
 
         # TODO integrate this back in to the alpaca api. i kind of like it
         #if order_value == None and units == None:
@@ -803,32 +826,63 @@ class SwyftxAPI(ITradeAPI):
     def buy_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None)->OrderResult:
         # buying by total order value
         sw_symbol = YF_SYMBOL_MAP[symbol]
-        return self._submit_order(
-            sw_symbol=sw_symbol,
-            units=units,
-            order_type=LIMIT_BUY,
-            limit_unit_price=unit_price
-        )
+        asset_quantity = sw_symbol.upper()
+
+        try:
+            return self._submit_order(
+                sw_symbol=sw_symbol,
+                units=units,
+                order_type=LIMIT_BUY,
+                limit_unit_price=unit_price, asset_quantity=asset_quantity
+            )
+        except ZeroUnitsOrdered as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_BUY, asset_quantity=asset_quantity, unit_price=unit_price)
+        except ApiRateLimit as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity, unit_price=unit_price)
+        except:
+            raise
 
     def sell_order_market(
         #self, symbol: str, order_value: float = None, units: float = None
         self, symbol: str, units: float = None, back_testing_date=None
     )->OrderResult:
         sw_symbol = YF_SYMBOL_MAP[symbol]
-        return self._submit_order(
-            sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL
-        )
+        asset_quantity = sw_symbol.upper()
+
+        try:
+            return self._submit_order(
+                sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL, asset_quantity=asset_quantity
+            )
+        except ZeroUnitsOrdered as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=MARKET_SELL, asset_quantity=asset_quantity)
+        except ApiRateLimit as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity)
+        except:
+            raise
+
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None)->OrderResult:
         sw_symbol = YF_SYMBOL_MAP[symbol]
-        return self._submit_order(
-            sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, limit_unit_price=unit_price
-        )
+        precision = self.get_precision(symbol)
+        asset_quantity = sw_symbol.upper()
+        limit_unit_price = round(1 / unit_price, precision)
+
+        try:
+            return self._submit_order(
+                sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, limit_unit_price=limit_unit_price, asset_quantity=asset_quantity
+            )
+        except ZeroUnitsOrdered as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity, unit_price=limit_unit_price)
+        except ApiRateLimit as e:
+            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity, unit_price=limit_unit_price)
+        except:
+            raise
+
 
     def _submit_order(
-        self, sw_symbol: str, units: int, order_type: int, limit_unit_price: float = None, sell_stop_price: float = None,
+        self, sw_symbol: str, units: int, order_type: int, asset_quantity:str, limit_unit_price: float = None
     ) -> OrderResult:
-        """Submits an order (either buy or sell) based on value.  Note that this should not be called directly
+        """Submits an order (either buy or sell) based on value.  Note that this should not be called from outside of this class
 
         Args:
             symbol (str): the symbol to be bought/sold
@@ -845,59 +899,56 @@ class SwyftxAPI(ITradeAPI):
             )
         
         # this is the most frustrating API ever
-        if order_type == LIMIT_BUY:
-            asset_quantity = sw_symbol.upper()
-        elif order_type == LIMIT_SELL:
-            asset_quantity = self.default_currency.upper()
-            asset_quantity = sw_symbol.upper()
-            limit_unit_price = 1 / limit_unit_price
-        elif order_type == MARKET_BUY:
-            asset_quantity = sw_symbol.upper()
-        elif order_type == MARKET_SELL:
-            asset_quantity = sw_symbol.upper()
+        precision = self.get_precision(yf_symbol = SWYFTX_SYMBOL_MAP[sw_symbol])
+        if order_type == LIMIT_SELL:
+            limit_unit_price = round(1 / limit_unit_price, precision)
 
         # swyftx api expects symbols in upper case....
         primary = self.default_currency.upper()
         secondary = sw_symbol.upper()
+        quantity = round(units, precision)
 
         orders_create_object = orders.OrdersCreate(
             primary=primary,
             secondary=secondary,
-            quantity=units,
+            quantity=quantity,
             assetQuantity=asset_quantity,
             orderType=order_type,
             trigger=limit_unit_price,
         )
 
-        response = self.api.request(orders_create_object)
+        try:
+            response = self.api.request(orders_create_object)
+        except pyswyft.exceptions.PySwyftError as e:
+            this_exception = self.get_exception(exception=e)
+            if this_exception["error"] == "ArgsError":
+                # usually happens when you request a non-sensical order like 0 quantity of units
+                if quantity == 0:
+                    log_wp.error(f"Can't buy/sell zero units: {str(orders_create_object)}")
+                    raise ZeroUnitsOrdered(f"Failed to sell/buy 0 units")
+            
+            if this_exception["error"] == "RateLimit":
+                # try again
+                log_wp.error(f"API rate limit triggered: {str(orders_create_object)}")
+                raise ApiRateLimit(this_exception["message"])
+                
+            raise
+
+        except Exception as e:
+            print("banana")
         # this annoys me, but LIMIT orders don't return any detail about the
         # order on lodgement - whereas MARKET does
         return self.get_order(order_id=response["orderUuid"], back_testing_date=None)
 
-        if not response.get("order"):
-            # i dunno why, by LIMIT_BUY and LIMIT_SELL don't return any detail about the order when you lodge it
-            # whereas
-            if order_type == LIMIT_BUY:
-                # i've only see this when submitting a buy order with insufficient cash
-                # so we're going to be dodgey and fudge a response
-                response["order"] = {
-                    "order_type": order_type,
-                    "secondary_asset": secondary,
-                    "primary_asset": primary,
-                    "quantity": quantity,
-                    "quantity_asset": asset_quantity,
-                    "trigger": trigger,
-                    "status": 2,  # order cancelled
-                    "create_time": None,  # never got created
-                    "update_time": None,  # never got modified
-                }
-            else:
-                # but maybe it could happen in other cases too?
-                raise Exception("API did not return any data!")
-
-        return OrderResult(response=response, orders_create_object=orders_create_object)
+    def get_exception(self, exception:pyswyft.exceptions.PySwyftError):
+        inflated =  json.loads(exception.args[0])
+        return inflated["error"]
 
     def get_order(self, order_id: str, back_testing_date=None)->OrderResult:
+        if order_id[:9] == "REJECTED-":
+            # this is one of my shonky orders
+            return OrderResult(order_object=self.rejected_orders[order_id], asset_list_by_id=self._asset_list_by_id)
+
         response = self.api.request(orders.OrdersGetOrder(orderID=order_id))
         # orders_create_object: orders.OrdersCreate):
         return OrderResult(
@@ -905,8 +956,15 @@ class SwyftxAPI(ITradeAPI):
         )
 
     def cancel_order(self, order_id: str, back_testing_date=None) ->OrderResult:
-        cancel_request = self.api.request(orders.OrdersCancel(orderID=order_id))
-        #if request["status"]
+        try:
+            cancel_request = self.api.request(orders.OrdersCancel(orderID=order_id))
+        except pyswyft.exceptions.PySwyftError as e:
+            # while i'm trying to catch swyftx errors
+            print("banana")
+        except:
+            # if we get here, I've created a specific exception for this situation so I'm okay to emit it upstream
+            raise
+
         order_result =  self.get_order(order_id=order_id, back_testing_date=back_testing_date)
         if order_result.status_summary == "cancelled":
             return order_result
@@ -966,11 +1024,49 @@ class SwyftxAPI(ITradeAPI):
         Returns:
             OrderResult: output from the API endpoint
         """
-        sw_symbol = YF_SYMBOL_MAP[symbol]
-        position = self.get_position(sw_symbol)
-        request = self.sell_order_market(symbol=symbol, units=position.quantity)
+        
+        # TODO if we don't hold any of this, do something smart
+        position = self.get_position(symbol)
+
+        try:
+            request = self.sell_order_market(symbol=symbol, units=position.quantity)
+        except Exception as e:
+            print("banana")
         return request
 
+    def _make_rejected_order_result(self, symbol:str, units:float, order_type:int, asset_quantity:str, unit_price:float=None):
+        order_id = "REJECTED-" + utils.generate_id()
+        sw_symbol = YF_SYMBOL_MAP[symbol]
+        primary_asset = self._asset_list_by_symbol[self.default_currency]["id"]
+        secondary_asset = self._asset_list_by_symbol[sw_symbol]["id"]
+        asset_quantity = self._asset_list_by_symbol[asset_quantity]["id"]
+        epoch = datetime.utcfromtimestamp(0)
+        now = int((datetime.now() - epoch).total_seconds() * 1000.0)
+
+        order = {
+            'orderUuid':order_id,
+            'order_type':order_type,
+            'primary_asset':primary_asset,
+            'secondary_asset':secondary_asset,
+            'quantity_asset':asset_quantity,
+            'quantity':units,
+            'trigger':unit_price,
+            'status':8, # rejected by system
+            'created_time':now,
+            'updated_time':now,
+            'amount':None,
+            'total':None,
+            'rate':None,
+            'audValue':None,
+            'userCountryValue':None,
+            'feeAmount':None,
+            'feeAsset':None,
+            'feeAudValue':None,
+            'feeUserCountryValue':None,
+        }
+
+        self.rejected_orders[order_id] = order
+        return order
 
 if __name__ == "__main__":
     import boto3
@@ -986,17 +1082,20 @@ if __name__ == "__main__":
     #api.get_bars("SOL-USD", start="2022-04-01T00:00:00+10:00")
 
     api.get_account()
-    
-    buy_limit = api.buy_order_limit(symbol="XRP-USD", units=52, unit_price=0.1)
-    buy_market_units = api.buy_order_market(symbol="XRP-USD", units=75)
-    sell_market_value = api.sell_order_market(symbol="XRP-USD", units=10)
-    sell_limit = api.sell_order_limit(symbol="XRP-USD", units=52, unit_price=2)
-    api.list_positions()
-    api.get_position(symbol="XRP-USD")
-    api.list_orders()
-    api.list_orders(filled=True)
-    api.list_orders(cancelled=True)
-    api.list_orders(still_open=True)
-    api.close_position("XRP-USD")
+    a = api.close_position("XRP-USD")
+    b = api.buy_order_limit(symbol="XRP-USD", units=52, unit_price=0.1)
+    c = api.buy_order_market(symbol="XRP-USD", units=75)
+    d = api.sell_order_market(symbol="XRP-USD", units=10)
+    e = api.sell_order_limit(symbol="XRP-USD", units=10, unit_price=2)
+    f= api.sell_order_limit(symbol="XRP-USD", units=11, unit_price=3)
+    g= api.sell_order_limit(symbol="XRP-USD", units=12, unit_price=8)
+    h=api.list_positions()
+    i=api.get_position(symbol="XRP-USD")
+    j=api.list_orders()
+    k=api.list_orders(filled=True)
+    l=api.list_orders(cancelled=True)
+    m=api.list_orders(still_open=True)
+    n=api.close_position("XRP-USD")
+
 
     print("a")
