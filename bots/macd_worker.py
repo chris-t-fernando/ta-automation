@@ -16,6 +16,12 @@ from itradeapi import (
     LIMIT_SELL,
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
+UnknownSymbol,
+ DelistedAsset,
+ UntradeableAsset,
+ MalformedOrderResult,
+ ZeroUnitsOrdered,
+ ApiRateLimit,
 )
 from tabot_rules import TABotRules
 import utils
@@ -82,8 +88,10 @@ class MacdWorker:
         self._init_complete = False
 
         try:
-            self.is_valid_symbol()
-        except Exception as e:
+            if not self.is_valid_symbol():
+                log_wp.error(f"{symbol}: Invalid symbol (delisted or untradeable)")
+                return
+        except UnknownSymbol as e:
             # bad symbol, bail out
             log_wp.error(f"{symbol}: Invalid symbol ({str(e)})")
             return
@@ -139,12 +147,10 @@ class MacdWorker:
         
         # next check that the symbol is known to the broker and tradeable
         try:
-            self.api.validate_symbol(symbol=self.symbol)
+            return self.api.validate_symbol(symbol=self.symbol)
 
-        except Exception as e:
+        except (UnknownSymbol, DelistedAsset, UntradeableAsset) as e:
             raise
-            
-        return True
 
     def get_market(self):
         # there's the right way and the fast way to do this

@@ -209,6 +209,7 @@ class SwyftxAPI(ITradeAPI):
         if symbol not in self._invalid_assets:
             raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
         
+        return False
         # so its invalid but the broker does know about it - delisted/not tradeable
         if self._invalid_assets[symbol]["delisting"] == 1:
             raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
