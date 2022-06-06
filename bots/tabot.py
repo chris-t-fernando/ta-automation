@@ -19,6 +19,7 @@
 # back testing handling of valid symbols
 # test back testing handling of validating order result
 # add logging to broker concretes
+# alpaca and backtest - when structuring assets, use Asset class instead of dict
 
 # external packages
 import argparse

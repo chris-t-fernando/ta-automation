@@ -44,7 +44,7 @@ class BuyPlan:
         precision: int = 3,
         min_trade_increment: float = 1,
         min_order_size: float = 1,
-        min_price_increment: float = 0.001,
+        min_price_increment: float = 0.001, # TODO: something clever with this
         max_play_value: float = 2000,
     ):
         self.success = False
@@ -230,4 +230,3 @@ class BuyPlan:
             "new_units_held": new_units_held,
             "new_units_sold": new_units_sold,
         }
-        print("banana")

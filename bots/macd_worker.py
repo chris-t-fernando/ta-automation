@@ -158,15 +158,10 @@ class MacdWorker:
         self.market = self.market_data_source.Ticker("ACN").info["market"]
 
     def _set_order_size_and_increment(self):
-        asset = self.api.get_asset(symbol=self.symbol)
-        if hasattr(asset, "min_order_size"):
-            self.min_order_size = float(asset.min_order_size)
-            self.min_trade_increment = float(asset.min_trade_increment)
-            self.min_price_increment = float(asset.min_price_increment)
-        else:
-            self.min_order_size = 1
-            self.min_trade_increment = 1
-            self.min_price_increment = 0.001
+        asset = self.api.get_asset(self.symbol)
+        self.min_trade_increment = asset.min_trade_increment
+        self.min_order_size=asset.min_order_size
+        self.min_price_increment=asset.min_price_increment
 
     def process(self, datestamp):
         # i'm too lazy to pass datestamp around so save it in object

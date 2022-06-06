@@ -96,387 +96,6 @@ ORDER_MAP = {
 
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
 
-YF_SYMBOL_MAP = {
-"BTC-USD":"BTC",
-"TRX-USD":"TRX",
-"ETH-USD":"ETH",
-"XRP-USD":"XRP",
-"BCH-USD":"BCH",
-"EOS-USD":"EOS",
-"XVG-USD":"XVG",
-"NEO-USD":"NEO",
-"LTC-USD":"LTC",
-"ADA-USD":"ADA",
-"BNB-USD":"BNB",
-"IOTA-USD":"IOTA",
-"QTUM-USD":"QTUM",
-"ETC-USD":"ETC",
-"WTC-USD":"WTC",
-"ZRX-USD":"ZRX",
-"SUB-USD":"SUB",
-"OMG-USD":"OMG",
-"XMR-USD":"XMR",
-"ZEC-USD":"ZEC",
-"BAT-USD":"BAT",
-"LSK-USD":"LSK",
-"SALT-USD":"SALT",
-"FUN-USD":"FUN",
-"MCO-USD":"MCO",
-"POWR-USD":"POWR",
-"VGX-USD":"VGX",
-"WAVES-USD":"WAVES",
-"ADX-USD":"ADX",
-"KMD-USD":"KMD",
-"GBP-USD":"GBP",
-"JPY-USD":"JPY",
-"EUR-USD":"EUR",
-"USD-USD":"USD",
-"BTT-USD":"BTT",
-"DASH-USD":"DASH",
-"DENT-USD":"DENT",
-"HOT-USD":"HOT",
-"LINK-USD":"LINK",
-"MTL-USD":"MTL",
-"NANO-USD":"NANO",
-"NPXS-USD":"NPXS",
-"XLM-USD":"XLM",
-"ZIL-USD":"ZIL",
-"SYS-USD":"SYS",
-"PPT-USD":"PPT",
-"VET-USD":"VET",
-"ONT-USD":"ONT",
-"XEM-USD":"XEM",
-"BTG-USD":"BTG",
-"USDC-USD":"USDC",
-"DCR-USD":"DCR",
-"TUSD-USD":"TUSD",
-"REP-USD":"REP",
-"BCD-USD":"BCD",
-"RVN-USD":"RVN",
-"BTS-USD":"BTS",
-"ICX-USD":"ICX",
-"PAX-USD":"PAX",
-"AE-USD":"AE",
-"SC-USD":"SC",
-"ATOM-USD":"ATOM",
-"STEEM-USD":"STEEM",
-"ENJ-USD":"ENJ",
-"THETA-USD":"THETA",
-"STRAT-USD":"STRAT",
-"SNT-USD":"SNT",
-"GNT-USD":"GNT",
-"ELF-USD":"ELF",
-"ARDR-USD":"ARDR",
-"DOGE-USD":"DOGE",
-"NXS-USD":"NXS",
-"IOST-USD":"IOST",
-"ZEN-USD":"ZEN",
-"MANA-USD":"MANA",
-"XTZ-USD":"XTZ",
-"RLC-USD":"RLC",
-"HBAR-USD":"HBAR",
-"GAS-USD":"GAS",
-"ONG-USD":"ONG",
-"STX-USD":"STX",
-"LEND-USD":"LEND",
-"ALGO-USD":"ALGO",
-"ENG-USD":"ENG",
-"AGI-USD":"AGI",
-"KNC-USD":"KNC",
-"TNT-USD":"TNT",
-"AION-USD":"AION",
-"REN-USD":"REN",
-"WRX-USD":"WRX",
-"HC-USD":"HC",
-"BUSD-USD":"BUSD",
-"XZC-USD":"XZC",
-"FTT-USD":"FTT",
-"LRC-USD":"LRC",
-"CHZ-USD":"CHZ",
-"WIN-USD":"WIN",
-"BRD-USD":"BRD",
-"FET-USD":"FET",
-"LTO-USD":"LTO",
-"WABI-USD":"WABI",
-"NKN-USD":"NKN",
-"PERL-USD":"PERL",
-"RCN-USD":"RCN",
-"DATA-USD":"DATA",
-"KAVA-USD":"KAVA",
-"GRS-USD":"GRS",
-"OGN-USD":"OGN",
-"COTI-USD":"COTI",
-"ARK-USD":"ARK",
-"SNX-USD":"SNX",
-"ERD-USD":"ERD",
-"COMP-USD":"COMP",
-"BAND-USD":"BAND",
-"DGB-USD":"DGB",
-"BNT-USD":"BNT",
-"DOT-USD":"DOT",
-"FTM-USD":"FTM",
-"IOTX-USD":"IOTX",
-"MATIC-USD":"MATIC",
-"MFT-USD":"MFT",
-"NULS-USD":"NULS",
-"OCEAN-USD":"OCEAN",
-"ONE-USD":"ONE",
-"REQ-USD":"REQ",
-"SOL-USD":"SOL",
-"SRM-USD":"SRM",
-"SXP-USD":"SXP",
-"TFUEL-USD":"TFUEL",
-"EGLD-USD":"EGLD",
-"KSM-USD":"KSM",
-"YFI-USD":"YFI",
-"TRB-USD":"TRB",
-"MKR-USD":"MKR",
-"RSR-USD":"RSR",
-"PAXG-USD":"PAXG",
-"UMA-USD":"UMA",
-"YFII-USD":"YFII",
-"HIVE-USD":"HIVE",
-"STORJ-USD":"STORJ",
-"JST-USD":"JST",
-"IRIS-USD":"IRIS",
-"DIA-USD":"DIA",
-"TOMO-USD":"TOMO",
-"WAN-USD":"WAN",
-"BZRX-USD":"BZRX",
-"ANKR-USD":"ANKR",
-"BLZ-USD":"BLZ",
-"NMR-USD":"NMR",
-"SAND-USD":"SAND",
-"ARPA-USD":"ARPA",
-"CELR-USD":"CELR",
-"VTHO-USD":"VTHO",
-"LOOM-USD":"LOOM",
-"CVC-USD":"CVC",
-"AST-USD":"AST",
-"CHR-USD":"CHR",
-"NAS-USD":"NAS",
-"DUSK-USD":"DUSK",
-"BAL-USD":"BAL",
-"STPT-USD":"STPT",
-"PNT-USD":"PNT",
-"COCOSOLD-USD":"COCOSOLD",
-"FIO-USD":"FIO",
-"KEY-USD":"KEY",
-"DREPOLD-USD":"DREPOLD",
-"CTSI-USD":"CTSI",
-"VITE-USD":"VITE",
-"NAV-USD":"NAV",
-"NEBL-USD":"NEBL",
-"ANT-USD":"ANT",
-"MDT-USD":"MDT",
-"TCT-USD":"TCT",
-"TROY-USD":"TROY",
-"MBL-USD":"MBL",
-"OXT-USD":"OXT",
-"AVAX-USD":"AVAX",
-"SUNOLD-USD":"SUNOLD",
-"SUSHI-USD":"SUSHI",
-"LUNC-USD":"LUNC",
-"WNXM-USD":"WNXM",
-"RUNE-USD":"RUNE",
-"CRV-USD":"CRV",
-"HNT-USD":"HNT",
-"NZD-USD":"NZD",
-"SCRT-USD":"SCRT",
-"ORN-USD":"ORN",
-"UTK-USD":"UTK",
-"XVS-USD":"XVS",
-"AAVE-USD":"AAVE",
-"FIL-USD":"FIL",
-"INJ-USD":"INJ",
-"FLM-USD":"FLM",
-"WING-USD":"WING",
-"ALPHA-USD":"ALPHA",
-"BEL-USD":"BEL",
-"POLY-USD":"POLY",
-"VIDT-USD":"VIDT",
-"BOT-USD":"BOT",
-"NEAR-USD":"NEAR",
-"DNT-USD":"DNT",
-"AKRO-USD":"AKRO",
-"STRAX-USD":"STRAX",
-"GLM-USD":"GLM",
-"AUDIO-USD":"AUDIO",
-"GVT-USD":"GVT",
-"QSP-USD":"QSP",
-"CND-USD":"CND",
-"VIBE-USD":"VIBE",
-"WPR-USD":"WPR",
-"QLC-USD":"QLC",
-"MITH-USD":"MITH",
-"COS-USD":"COS",
-"STMX-USD":"STMX",
-"AVA-USD":"AVA",
-"WBTC-USD":"WBTC",
-"MDA-USD":"MDA",
-"AERGO-USD":"AERGO",
-"HARD-USD":"HARD",
-"FOR-USD":"FOR",
-"SKL-USD":"SKL",
-"DLT-USD":"DLT",
-"OST-USD":"OST",
-"PSG-USD":"PSG",
-"JUV-USD":"JUV",
-"MTH-USD":"MTH",
-"OAX-USD":"OAX",
-"EVX-USD":"EVX",
-"VIB-USD":"VIB",
-"RDN-USD":"RDN",
-"BCPT-USD":"BCPT",
-"CDT-USD":"CDT",
-"AMB-USD":"AMB",
-"CMT-USD":"CMT",
-"GO-USD":"GO",
-"CTXC-USD":"CTXC",
-"POA-USD":"POA",
-"ROSE-USD":"ROSE",
-"VIA-USD":"VIA",
-"SKY-USD":"SKY",
-"QKC-USD":"QKC",
-"CTK-USD":"CTK",
-"YOYO-USD":"YOYO",
-"1INCH-USD":"1INCH",
-"CELO-USD":"CELO",
-"COCOS-USD":"COCOS",
-"FIRO-USD":"FIRO",
-"TWT-USD":"TWT",
-"TRU-USD":"TRU",
-"REEF-USD":"REEF",
-"AXS-USD":"AXS",
-"BTCSTOLD-USD":"BTCSTOLD",
-"SNMOLD-USD":"SNMOLD",
-"APPC-USD":"APPC",
-"IDEX-USD":"IDEX",
-"UNFI-USD":"UNFI",
-"DODO-USD":"DODO",
-"CAKE-USD":"CAKE",
-"RIF-USD":"RIF",
-"NBS-USD":"NBS",
-"FRONT-USD":"FRONT",
-"ACM-USD":"ACM",
-"GXS-USD":"GXS",
-"AUCTION-USD":"AUCTION",
-"BADGER-USD":"BADGER",
-"OM-USD":"OM",
-"LINA-USD":"LINA",
-"BTCST-USD":"BTCST",
-"DEGO-USD":"DEGO",
-"RAMP-USD":"RAMP",
-"PERP-USD":"PERP",
-"LIT-USD":"LIT",
-"TVK-USD":"TVK",
-"FIS-USD":"FIS",
-"PHA-USD":"PHA",
-"ALICE-USD":"ALICE",
-"DREP-USD":"DREP",
-"PUNDIX-USD":"PUNDIX",
-"EPS-USD":"EPS",
-"SUPER-USD":"SUPER",
-"AUTO-USD":"AUTO",
-"ASR-USD":"ASR",
-"GTO-USD":"GTO",
-"CFX-USD":"CFX",
-"SNM-USD":"SNM",
-"SHIB-USD":"SHIB",
-"AGIX-USD":"AGIX",
-"SUN-USD":"SUN",
-"TORN-USD":"TORN",
-"GTC-USD":"GTC",
-"MDX-USD":"MDX",
-"MASK-USD":"MASK",
-"BAR-USD":"BAR",
-"MIR-USD":"MIR",
-"TLM-USD":"TLM",
-"KEEP-USD":"KEEP",
-"ERN-USD":"ERN",
-"LPT-USD":"LPT",
-"QUICK-USD":"QUICK",
-"NU-USD":"NU",
-"POLS-USD":"POLS",
-"FORTH-USD":"FORTH",
-"ICP-USD":"ICP",
-"XYM-USD":"XYM",
-"QNT-USD":"QNT",
-"FLOW-USD":"FLOW",
-"CKB-USD":"CKB",
-"USDP-USD":"USDP",
-"AR-USD":"AR",
-"SSV-USD":"SSV",
-"ILV-USD":"ILV",
-"RAY-USD":"RAY",
-"DYDX-USD":"DYDX",
-"CLV-USD":"CLV",
-"TRIBE-USD":"TRIBE",
-"FARM-USD":"FARM",
-"BOND-USD":"BOND",
-"BURGER-USD":"BURGER",
-"DEXE-USD":"DEXE",
-"MBOX-USD":"MBOX",
-"SFP-USD":"SFP",
-"SLP-USD":"SLP",
-"C98-USD":"C98",
-"YGG-USD":"YGG",
-"MLN-USD":"MLN",
-"GALA-USD":"GALA",
-"GNO-USD":"GNO",
-"BAKE-USD":"BAKE",
-"AGLD-USD":"AGLD",
-"TKO-USD":"TKO",
-"ALPACA-USD":"ALPACA",
-"MINA-USD":"MINA",
-"MOVR-USD":"MOVR",
-"GHST-USD":"GHST",
-"AMP-USD":"AMP",
-"OG-USD":"OG",
-"PLA-USD":"PLA",
-"PROM-USD":"PROM",
-"RAD-USD":"RAD",
-"RARE-USD":"RARE",
-"PYR-USD":"PYR",
-"ATM-USD":"ATM",
-"QI-USD":"QI",
-"FIDA-USD":"FIDA",
-"ENS-USD":"ENS",
-"FXS-USD":"FXS",
-"JASMY-USD":"JASMY",
-"LAZIO-USD":"LAZIO",
-"CITY-USD":"CITY",
-"OOKI-USD":"OOKI",
-"SGB-USD":"SGB",
-"BTTC-USD":"BTTC",
-"XNO-USD":"XNO",
-"T-USD":"T",
-"USTC-USD":"USTC",
-"RNDR-USD":"RNDR",
-"IMX-USD":"IMX",
-"APE-USD":"APE",
-"JOE-USD":"JOE",
-"FLUX-USD":"FLUX",
-"SPELL-USD":"SPELL",
-"ALCX-USD":"ALCX",
-"KDA-USD":"KDA",
-"KLAY-USD":"KLAY",
-"DOCK-USD":"DOCK",
-"XEC-USD":"XEC",
-"GMT-USD":"GMT",
-"PEOPLE-USD":"PEOPLE",
-"TAUD-USD":"TAUD",
-"DFI-USD":"DFI",
-"WAXP-USD":"WAXP",
-"REI-USD":"REI",
-"EPX-USD":"EPX",
-"LUNA-USD":"LUNA",
-"LDO-USD":"LDO",
-"NEXO-USD":"NEXO",
-"USDT-USD":"USDT"
-}
-SWYFTX_SYMBOL_MAP = {y: x for x, y in YF_SYMBOL_MAP.items()}
-
 class OrderResult(IOrderResult):
     def __init__(self, order_object, asset_list_by_id: dict):
         self._raw_response = order_object
@@ -495,7 +114,7 @@ class OrderResult(IOrderResult):
         self.order_id = order_object["orderUuid"]
 
         bought_id = order_object["secondary_asset"]
-        self.symbol = asset_list_by_id[bought_id]["symbol"]
+        self.symbol = asset_list_by_id[bought_id].symbol
 
         if "LIMIT" in ORDER_MAP_INVERTED[order_object["order_type"]]:
             self.ordered_unit_quantity = order_object["quantity"]
@@ -559,16 +178,12 @@ class SwyftxAPI(ITradeAPI):
         else:
             self.api = pyswyft.API(access_token=access_token, environment="live")
 
+        # set up data structures
         self._build_asset_list()
 
-        # set up data structures
         self.default_currency = "USD"
 
         self.rejected_orders = {}
-
-        #while True:
-        #    self.close_position(symbol="ETH-USD")
-        #    self.close_position(symbol="XRP-USD")
 
     def get_precision(self, yf_symbol:str)->int:
         return 5
@@ -577,77 +192,84 @@ class SwyftxAPI(ITradeAPI):
         return "swyftx"
 
     def get_assets(self)->dict:
-        return self._asset_list_by_symbol
+        return self._asset_list_by_yf_symbol
 
     def get_asset(self, symbol:str)->Asset:
-        sw_symbol = YF_SYMBOL_MAP[symbol]
-        return self._asset_list_by_symbol[sw_symbol]
+        return self._asset_list_by_yf_symbol[symbol]
 
     def get_asset_by_id(self, id)->Asset:
         return self._asset_list_by_id[id]
 
     def validate_symbol(self, symbol:str)->bool:
-        sw_symbol = YF_SYMBOL_MAP[symbol]
         # if its valid, just return True
-        if sw_symbol in self._asset_list_by_symbol:
+        if symbol in self._asset_list_by_yf_symbol:
             return True
         
         #  if its also not in dict of invalid assets, so its just totally unknown
-        if sw_symbol not in self._invalid_assets:
+        if symbol not in self._invalid_assets:
             raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
         
         # so its invalid but the broker does know about it - delisted/not tradeable
-        if self._invalid_assets[sw_symbol]["delisting"] == 1:
+        if self._invalid_assets[symbol]["delisting"] == 1:
             raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
         
-        if self._invalid_assets[sw_symbol]["tradable"] == 0:
+        if self._invalid_assets[symbol]["tradable"] == 0:
             raise UntradeableAsset(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
         
         # logically we shouldn't get here
         raise RuntimeError("We shouldn't have gotten here.")
 
+    def _sw_to_yf(self, sw_symbol:str)->str:
+        skip_symbols = ["AUD", "USD"]
+        if sw_symbol in skip_symbols:
+            return sw_symbol
+        return sw_symbol + "-USD"
+    
+    def _yf_to_sw(self, yf_symbol:str)->str:
+        location = yf_symbol.rfind("USD") - 1
+        return yf_symbol[:location]
+
     def _build_asset_list(self)->bool:
         # this is munted. there's no Markets endpoint in demo?!
         temp_api = pyswyft.API(access_token=self.access_token, environment="live")
-        swyftx_assets = temp_api.request(markets.MarketsAssets())
-        
-        self._invalid_assets = self._get_invalid_assets(swyftx_assets)
+        raw_assets = temp_api.request(markets.MarketsAssets())
         valid_assets = []
-        for asset in swyftx_assets:
-            found = False
-            for invalid_asset in self._invalid_assets:
-                if asset["code"] == invalid_asset:
-                    found = True
-            if not found:
-                valid_assets.append(asset)
+        self._invalid_assets = {}
+
+        # convert them to Asset objects
+        for this_asset in raw_assets:
+            yf_symbol = self._sw_to_yf(this_asset["code"])
+            minimum_order = float(this_asset["minimum_order_increment"])
+            asset_obj = Asset(symbol=yf_symbol, min_order_size=1, min_trade_increment=minimum_order, min_price_increment=0.00001)
+            asset_obj.id = this_asset["id"]
+            if self._is_invalid_asset(this_asset):
+                self._invalid_assets[yf_symbol] = asset_obj
+            else:
+                valid_assets.append(asset_obj)
 
         # set up asset lists
-        self._asset_list_by_symbol = self._structure_asset_dict_by_symbol(valid_assets)
+        self._asset_list_by_yf_symbol = self._structure_asset_dict_by_yf_symbol(valid_assets)
         self._asset_list_by_id = self._structure_asset_dict_by_id(valid_assets)
 
         return True
 
-    def _get_invalid_assets(self, asset_dict:dict)->dict:
-        invalid_assets = {}
-        for asset in asset_dict:
-            if asset["tradable"] == 0:
-                invalid_assets[asset["code"]] = asset
-            elif asset["delisting"] == 1:
-                invalid_assets[asset["code"]] = asset
-        return invalid_assets
+    def _is_invalid_asset(self, asset_dict:dict)->dict:
+        if asset_dict["tradable"] == 0 or asset_dict["buyDisabled"] == 1 or asset_dict["delisting"] == 1:
+            return True
+        return False
 
     def _structure_asset_dict_by_id(self, asset_dict:dict)->dict:
         return_dict = {}
         for asset in asset_dict:
-            asset["symbol"] = asset["code"]
-            return_dict[asset["id"]] = asset
+            #asset["symbol"] = asset.symbol
+            return_dict[asset.id] = asset
         return return_dict
 
-    def _structure_asset_dict_by_symbol(self, asset_dict:dict)->dict:
+    def _structure_asset_dict_by_yf_symbol(self, asset_dict:dict)->dict:
         return_dict = {}
         for asset in asset_dict:
-            asset["symbol"] = str(asset["code"])
-            return_dict[asset["code"]] = asset
+            #asset["symbol"] = asset.symbol
+            return_dict[asset.symbol] = asset
         return return_dict
 
     def order_id_to_text(self, id)->str:
@@ -656,14 +278,7 @@ class SwyftxAPI(ITradeAPI):
     def order_text_to_id(self, text)->int:
         return ORDER_MAP_INVERTED[text]
 
-    def symbol_id_to_text(self, id)->str:
-        asset = self.get_asset_by_id(id=id)
-        #return [b for b in assets if assets[b]["id"] == id][0]
-        return asset["code"]
 
-    def symbol_text_to_id(self, symbol)->int:
-        assets = self.get_assets()
-        return assets[symbol]["id"]
 
     def get_account(self) -> Account:
         """Retrieves data about the trading account
@@ -676,7 +291,7 @@ class SwyftxAPI(ITradeAPI):
         request = self.api.request(accounts.AccountBalance())
 
         for asset in request:
-            symbol = self.symbol_id_to_text(asset["assetId"])
+            symbol = self._asset_list_by_id[asset["assetId"]]
 
             ##########
             ## I did this when I thought I could get swyftx to buy stuff in USD, but I can't work out how to do that
@@ -733,14 +348,21 @@ class SwyftxAPI(ITradeAPI):
         for position in raw_positions:
             # dumb api lets you have incredibly small units
             #if float(position["availableBalance"]) > 100:
-            symbol = self.symbol_id_to_text(id=position["assetId"])
+            symbol = self._asset_list_by_id[position["assetId"]].symbol
+            f_balance = float(position["availableBalance"])
 
             # i don't treat usd and aud as positions
-            if symbol not in ["USD", "AUD"]:
-                yf_symbol = SWYFTX_SYMBOL_MAP[symbol]
-                return_positions.append(
-                    Position(symbol=yf_symbol, quantity=position["availableBalance"])
-                )
+            if symbol in ["USD", "AUD"]:
+                continue
+
+            # ignore symbols where I don't actually hold a position    
+            if f_balance == 0:
+                continue
+
+            #yf_symbol = self._sw_to_yf(symbol)
+            return_positions.append(
+                Position(symbol=symbol, quantity=f_balance)
+            )
 
         return return_positions
 
@@ -793,7 +415,7 @@ class SwyftxAPI(ITradeAPI):
         #self, symbol: str, order_value: float = None, units: float = None
         self, symbol:str, units:int, back_testing_date=None
     )->OrderResult:
-        sw_symbol = YF_SYMBOL_MAP[symbol]
+        sw_symbol = self._yf_to_sw(symbol)
         asset_quantity = sw_symbol.upper()
 
         try:
@@ -801,9 +423,9 @@ class SwyftxAPI(ITradeAPI):
                 sw_symbol=sw_symbol, units=units, order_type=MARKET_BUY, asset_quantity=asset_quantity
             )
         except ZeroUnitsOrdered as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_BUY, asset_quantity=asset_quantity)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_BUY, sw_asset_quantity=asset_quantity)
         except ApiRateLimit as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity)
         except:
             raise
 
@@ -825,7 +447,7 @@ class SwyftxAPI(ITradeAPI):
 
     def buy_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None)->OrderResult:
         # buying by total order value
-        sw_symbol = YF_SYMBOL_MAP[symbol]
+        sw_symbol = self._yf_to_sw(symbol)
         asset_quantity = sw_symbol.upper()
 
         try:
@@ -836,9 +458,9 @@ class SwyftxAPI(ITradeAPI):
                 limit_unit_price=unit_price, asset_quantity=asset_quantity
             )
         except ZeroUnitsOrdered as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_BUY, asset_quantity=asset_quantity, unit_price=unit_price)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_BUY, sw_asset_quantity=asset_quantity, unit_price=unit_price)
         except ApiRateLimit as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity, unit_price=unit_price)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=unit_price)
         except:
             raise
 
@@ -846,7 +468,7 @@ class SwyftxAPI(ITradeAPI):
         #self, symbol: str, order_value: float = None, units: float = None
         self, symbol: str, units: float = None, back_testing_date=None
     )->OrderResult:
-        sw_symbol = YF_SYMBOL_MAP[symbol]
+        sw_symbol = self._yf_to_sw(symbol)
         asset_quantity = sw_symbol.upper()
 
         try:
@@ -854,15 +476,15 @@ class SwyftxAPI(ITradeAPI):
                 sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL, asset_quantity=asset_quantity
             )
         except ZeroUnitsOrdered as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=MARKET_SELL, asset_quantity=asset_quantity)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL, sw_asset_quantity=asset_quantity)
         except ApiRateLimit as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity)
         except:
             raise
 
 
     def sell_order_limit(self, symbol: str, units: float, unit_price: float, back_testing_date=None)->OrderResult:
-        sw_symbol = YF_SYMBOL_MAP[symbol]
+        sw_symbol = self._yf_to_sw(symbol)
         precision = self.get_precision(symbol)
         asset_quantity = sw_symbol.upper()
         limit_unit_price = round(1 / unit_price, precision)
@@ -872,9 +494,9 @@ class SwyftxAPI(ITradeAPI):
                 sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, limit_unit_price=limit_unit_price, asset_quantity=asset_quantity
             )
         except ZeroUnitsOrdered as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity, unit_price=limit_unit_price)
+            return self._make_rejected_order_result(sw_symbol=symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
         except ApiRateLimit as e:
-            return self._make_rejected_order_result(symbol=symbol, units=units, order_type=LIMIT_SELL, asset_quantity=asset_quantity, unit_price=limit_unit_price)
+            return self._make_rejected_order_result(sw_symbol=symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
         except:
             raise
 
@@ -899,7 +521,7 @@ class SwyftxAPI(ITradeAPI):
             )
         
         # this is the most frustrating API ever
-        precision = self.get_precision(yf_symbol = SWYFTX_SYMBOL_MAP[sw_symbol])
+        precision = self.get_precision(yf_symbol = self._sw_to_yf(sw_symbol))
         if order_type == LIMIT_SELL:
             limit_unit_price = round(1 / limit_unit_price, precision)
 
@@ -933,9 +555,9 @@ class SwyftxAPI(ITradeAPI):
                 raise ApiRateLimit(this_exception["message"])
                 
             raise
+        except:
+            raise
 
-        except Exception as e:
-            print("banana")
         # this annoys me, but LIMIT orders don't return any detail about the
         # order on lodgement - whereas MARKET does
         return self.get_order(order_id=response["orderUuid"], back_testing_date=None)
@@ -1030,16 +652,21 @@ class SwyftxAPI(ITradeAPI):
 
         try:
             request = self.sell_order_market(symbol=symbol, units=position.quantity)
-        except Exception as e:
+        except pyswyft.exceptions.PySwyftError as e:
             print("banana")
         return request
 
-    def _make_rejected_order_result(self, symbol:str, units:float, order_type:int, asset_quantity:str, unit_price:float=None):
+    def _make_rejected_order_result(self, sw_symbol:str, units:float, order_type:int, sw_asset_quantity:str, unit_price:float=None):
         order_id = "REJECTED-" + utils.generate_id()
-        sw_symbol = YF_SYMBOL_MAP[symbol]
-        primary_asset = self._asset_list_by_symbol[self.default_currency]["id"]
-        secondary_asset = self._asset_list_by_symbol[sw_symbol]["id"]
-        asset_quantity = self._asset_list_by_symbol[asset_quantity]["id"]
+        primary_asset_yf = self.default_currency
+        secondary_asset_yf = self._sw_to_yf(sw_symbol)
+        asset_quantity_yf = self._sw_to_yf(sw_asset_quantity)
+
+        primary_asset = self._asset_list_by_yf_symbol[primary_asset_yf].id
+        secondary_asset = self._asset_list_by_yf_symbol[secondary_asset_yf].id
+        #self._asset_list_by_symbol[sw_symbol]["id"]
+        #asset_quantity = self._asset_list_by_symbol[asset_quantity]["id"]
+        asset_quantity = self._asset_list_by_yf_symbol[asset_quantity_yf].id
         epoch = datetime.utcfromtimestamp(0)
         now = int((datetime.now() - epoch).total_seconds() * 1000.0)
 

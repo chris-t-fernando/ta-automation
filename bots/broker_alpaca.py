@@ -569,6 +569,16 @@ class AlpacaAPI(ITradeAPI):
             min_price_increment=min_price_increment,
         )
 
+    def get_symbol_minimums(self, symbol):
+        asset = self.get_asset(symbol=symbol)
+        if hasattr(asset, "min_order_size"):
+            self.min_order_size = float(asset.min_order_size)
+            self.min_trade_increment = float(asset.min_trade_increment)
+            self.min_price_increment = float(asset.min_price_increment)
+        else:
+            self.min_order_size = 1
+            self.min_trade_increment = 1
+            self.min_price_increment = 0.001
 
 if __name__ == "__main__":
     import boto3
