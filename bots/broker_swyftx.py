@@ -9,7 +9,6 @@ import time
 import yfinance as yf
 
 
-
 from itradeapi import (
     ITradeAPI,
     Asset,
@@ -292,7 +291,7 @@ class SwyftxAPI(ITradeAPI):
         request = self.api.request(accounts.AccountBalance())
 
         for asset in request:
-            symbol = self._asset_list_by_id[asset["assetId"]]
+            symbol = self._asset_list_by_id[asset["assetId"]].symbol
 
             ##########
             ## I did this when I thought I could get swyftx to buy stuff in USD, but I can't work out how to do that
@@ -495,9 +494,9 @@ class SwyftxAPI(ITradeAPI):
                 sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, limit_unit_price=limit_unit_price, asset_quantity=asset_quantity
             )
         except ZeroUnitsOrdered as e:
-            return self._make_rejected_order_result(sw_symbol=symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
         except ApiRateLimit as e:
-            return self._make_rejected_order_result(sw_symbol=symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
+            return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
         except:
             raise
 
@@ -696,6 +695,11 @@ class SwyftxAPI(ITradeAPI):
         self.rejected_orders[order_id] = order
         return order
 
+def reset(api):
+    orders = api.get_orders(still_open=True)
+    for o in orders:
+        api.cancel_order(o.order_id)
+
 if __name__ == "__main__":
     import boto3
 
@@ -710,6 +714,7 @@ if __name__ == "__main__":
     #api.get_bars("SOL-USD", start="2022-04-01T00:00:00+10:00")
 
     api.get_account()
+    aa = api.get_account()
     a = api.close_position("XRP-USD")
     b = api.buy_order_limit(symbol="XRP-USD", units=52, unit_price=0.1)
     c = api.buy_order_market(symbol="XRP-USD", units=75)
@@ -727,3 +732,5 @@ if __name__ == "__main__":
 
 
     print("a")
+
+    reset(api)

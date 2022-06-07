@@ -72,11 +72,11 @@ class MacdBot:
                 rules=self.rules,
                 config=config
             )
-
+            key = s["api"] + s["symbol"]
             if new_symbol._init_complete:
-                self.symbols[s["symbol"]] = new_symbol
+                self.symbols[key] = new_symbol
                 log_wp.info(
-                    f'{s["symbol"]}: Set up complete in {round(time.time() - start_time,1)}s'
+                    f'{s["symbol"]} ({s["api"]}): Set up complete in {round(time.time() - start_time,1)}s'
                 )
             else:
                 log_wp.error(

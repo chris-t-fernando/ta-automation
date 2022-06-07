@@ -45,7 +45,7 @@ class BuyPlan:
         min_trade_increment: float = 1,
         min_order_size: float = 1,
         min_price_increment: float = 0.001, # TODO: something clever with this
-        max_play_value: float = 2000,
+        max_play_value: float = 500,
     ):
         self.success = False
         self.min_trade_increment = min_trade_increment
@@ -92,7 +92,9 @@ class BuyPlan:
         self.intervals_since_stop = count_intervals(df=df, start_date=stop_unit_date)
 
         # calculate other order variables
-        self.entry_unit = round(df.Close.iloc[-1], precision)
+        entry_unit = round(df.Close.iloc[-1], precision)
+        entry_unit_trim = entry_unit % min_price_increment
+        self.entry_unit-=entry_unit_trim
         self.stop_unit = round(stop_unit, precision)
         self.last_low = df.Low.iloc[-1]
         self.last_high = df.High.iloc[-1]

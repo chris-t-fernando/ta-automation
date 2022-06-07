@@ -1,13 +1,17 @@
 # external packages
 from datetime import datetime
+from dateutil.relativedelta import relativedelta 
 import logging
 from math import floor
 import pandas as pd
 import pytz
+from typing import Callable
 
 # my modules
+from bot_telemetry import BotTelemetry
 from buyplan import BuyPlan, OrderQuantitySmallerThanMinimum, OrderValueSmallerThanMinimum,ZeroUnitsOrdered,InsufficientBalance, StopPriceAlreadyMet,TakeProfitAlreadyMet
-from macd_config import MacdConfig
+from inotification_service import INotificationService
+from iparameter_store import IParameterStore
 from itradeapi import (
     ITradeAPI,
     MARKET_BUY,
@@ -23,14 +27,15 @@ UnknownSymbol,
  ZeroUnitsOrdered,
  ApiRateLimit,
 )
+from macd_config import MacdConfig
 from tabot_rules import TABotRules
 import utils
 
 log_wp = logging.getLogger(
-    "stock_symbol"
+    "macd_worker"
 )  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
-fhdlr = logging.FileHandler("stock_symbol.log")
+fhdlr = logging.FileHandler("macd_worker.log")
 log_wp.setLevel(logging.DEBUG)
 formatter = logging.Formatter(
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
@@ -64,6 +69,39 @@ class SymbolForbidden(Exception):
 
 # symbol can be backtest naive
 class MacdWorker:
+    symbol:str
+    api:ITradeAPI
+    broker_name:str
+    rules:TABotRules
+    config:MacdConfig
+    store:IParameterStore
+    buy_market:bool
+    notification_service:INotificationService
+    bot_telemetry:BotTelemetry
+    interval:str
+    # market_data_source is any type
+    run_type:str
+    back_testing:bool
+    paper_testing:bool
+    production_run:bool
+    _init_complete:bool
+    interval_delta:relativedelta 
+    max_range:relativedelta
+    precision:int
+    market:str
+    state_const:int
+    current_check:Callable
+    active_order_id:str
+    buy_plan:BuyPlan
+    active_rule:dict
+    enter_position_timeout:relativedelta
+    _analyse_date:pd.Timestamp
+    _back_testing_date:pd.Timestamp
+    bars:pd.DataFrame
+    min_trade_increment:float
+    min_order_size:float
+    min_price_increment:float
+
     def __init__(
         self,
         symbol: str,
@@ -77,6 +115,7 @@ class MacdWorker:
         self.rules = rules
         self.config = config
         self.store = config.store
+        self.buy_market = config.buy_market
         self.notification_service = config.notification_service
         self.bot_telemetry = config.bot_telemetry
         self.interval = config.interval
@@ -228,6 +267,7 @@ class MacdWorker:
         return self.rules.replace_rule(symbol=self.symbol, new_rule=new_rule)
     
     def remove_from_rules(self):
+        log_wp.debug(f"{self.symbol}: Removing from {self.broker_name} rules")
         return self.rules.remove_from_rules(symbol=self.symbol)
 
     def get_state(self):
@@ -264,6 +304,7 @@ class MacdWorker:
         self.rules.write_to_state(symbol=self.symbol, broker=self.broker_name, new_state=new_state)
 
     def remove_from_state(self):
+        log_wp.debug(f"{self.symbol}: Removing from {self.broker_name}")
         return self.rules.remove_from_state(symbol=self.symbol, broker=self.broker_name)
 
 
@@ -540,7 +581,7 @@ class MacdWorker:
         if order.status_summary == "filled":
             _value = order.filled_unit_quantity * order.filled_unit_price
             self.notification_service.send(
-                message=f"MACD algo took profit on {self.symbol} | {order.filled_unit_price:,} "
+                message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | {order.filled_unit_price:,} "
                 f"sold price | {order.filled_unit_quantity:,} units sold | "
                 f"{_value:,} total sale value",
             )
@@ -549,7 +590,7 @@ class MacdWorker:
             if self.position.quantity == 0:
                 # nothing left to sell
                 self.notification_service.send(
-                    message=f"I don't hold any more units of {self.symbol}. Play complete",
+                    message=f"I don't hold any more units of {self.symbol} ({self.api.get_broker_name()}). Play complete",
                 )
                 log_wp.warning(
                     f"{self.symbol}: No units still held. Play complete, next action is trans_close_position"
@@ -566,7 +607,7 @@ class MacdWorker:
         # position liquidated but not using our fill order
         if self.position.quantity == 0:
             self.notification_service.send(
-                message=f"MACD algo terminated for {self.symbol}. Hold no units but I didn't "
+                message=f"MACD algo terminated for {self.symbol} ({self.api.get_broker_name()}). Hold no units but I didn't "
                 "liquidate them. Did these units get liquidated outside of my workflow?",
             )
             log_wp.critical(
@@ -578,7 +619,7 @@ class MacdWorker:
         # for some reason there is no rule for this - we're lost, so stop loss and punch out - should never happen
         if not self.active_rule:
             self.notification_service.send(
-                message=f"MACD algo terminated for {self.symbol}. The rules for this play "
+                message=f"MACD algo terminated for {self.symbol} ({self.api.get_broker_name()}). The rules for this play "
                 "(stop loss etc) can't found in state storage. You need to liquidate this holding manually.",
             )
             log_wp.critical(
@@ -632,25 +673,25 @@ class MacdWorker:
         if order.status_summary == "cancelled":
             # the order got cancelled for some reason. we still have a position, so try to re-raise it
             log_wp.critical(
-                f"{self.symbol} {self._analyse_date}: Sell order was cancelled for some "
+                f"{self.symbol} {self._analyse_date} {self.api.get_broker_name()}: Sell order was cancelled for some "
                 "reason (maybe be broker?), so trying to re-raise it. Next action is trans_take_profit_retry"
             )
             self.notification_service.send(
-                message=f"Stop loss triggered for {self.symbol} but sell order got cancelled. Trying again.",
+                message=f"Stop loss triggered for {self.symbol} ({self.api.get_broker_name()}) but sell order got cancelled. Trying again.",
             )
             return self.trans_stop_loss_retry
 
         elif order.status_summary == "filled":
             # stop loss got filled, now need to fully close position
             log_wp.info(
-                f"{self.symbol} {self._analyse_date}: No units still held, next action "
+                f"{self.symbol} {self._analyse_date} {self.api.get_broker_name()}: No units still held, next action "
                 "is trans_close_position"
             )
             _total_value = order.filled_unit_quantity * order.filled_unit_price
             self.notification_service.send(
-                message=f"Stop loss filled for {self.symbol} | {order.filled_unit_price:,} "
-                f"sold price | {order.filled_unit_quantity:,} units sold | "
-                f"{_total_value:,} total sale value",
+                message=f"Stop loss filled for {self.symbol} ({self.api.get_broker_name()}) | {_total_value:,} total sale value"
+                f"{order.filled_unit_price:,} sold unit price |"
+                f"{order.filled_unit_quantity:,} units sold"
             )
             return self.trans_close_position
 
@@ -658,11 +699,11 @@ class MacdWorker:
             # is the order still open but we don't own any? if so, it got liquidated outside of this process
             if position.quantity == 0:
                 log_wp.critical(
-                    f"{self.symbol} {self._analyse_date}: No units held but liquidated "
+                    f"{self.symbol} {self._analyse_date} {self.api.get_broker_name()}: No units held but liquidated "
                     "outside of this sell order, next action is trans_externally_liquidated"
                 )
                 self.notification_service.send(
-                    message=f"Stop loss triggered for {self.symbol} and I successfully "
+                    message=f"Stop loss triggered for {self.symbol} ({self.api.get_broker_name()}) and I successfully "
                     "raised a stop order, but the position got liquidated some other way. "
                     "Did you do it manually?",
                 )
@@ -682,27 +723,30 @@ class MacdWorker:
         log_wp.log(9, f"{self.symbol}: Started trans_entering_position")
         self.play_id = self.buy_plan.play_id
 
-        # TODO you commented this out just for testing - turn this in to a flag
-        #order_result = self.api.buy_order_limit(
-        #    symbol=self.symbol,
-        #    units=self.buy_plan.units,
-        #    unit_price=self.buy_plan.entry_unit,
-        #    back_testing_date=self._back_testing_date,
-        #)
-        order_result = self.api.buy_order_market(
-            symbol=self.symbol,
-            units=self.buy_plan.units,
-            back_testing_date=self._back_testing_date,
-        )
+        # there is a toggle to do market buy or limit buy
+        if self.buy_market:
+            order_result = self.api.buy_order_market(
+                symbol=self.symbol,
+                units=self.buy_plan.units,
+                back_testing_date=self._back_testing_date,
+            )
+        else:
+            order_result = self.api.buy_order_limit(
+                symbol=self.symbol,
+                units=self.buy_plan.units,
+                unit_price=self.buy_plan.entry_unit,
+                back_testing_date=self._back_testing_date,
+            )
+        
 
         accepted_statuses = ["open", "filled", "pending"]
         if order_result.status_summary not in accepted_statuses:
             log_wp.error(
-                f"{self.symbol} {self._analyse_date}: Failed to submit buy order "
+                f"{self.symbol} {self._analyse_date} {self.api.get_broker_name()}: Failed to submit buy order "
                 f"{order_result.order_id}: {order_result.status_text}"
             )
             self.notification_service.send(
-                message=f"Buy conditions met for {self.symbol} but when I tried to "
+                message=f"Buy conditions met for {self.symbol} ({self.api.get_broker_name()}) but when I tried to "
                 f"raise a buy order it failed with error message '{order_result.status_text}'",
             )
 
@@ -814,11 +858,12 @@ class MacdWorker:
 
         # set current check
         self.current_check = self.check_state_position_taken
-
+        _position_value = self.buy_plan.entry_unit * self.buy_plan.units
         self.notification_service.send(
-            message=f"MACD algo took position in {self.symbol} | {self.buy_plan.entry_unit:,} "
-            f"entry price | {self.buy_plan.stop_unit:,} stop loss price | {self.buy_plan.units:,} "
-            "units bought",
+            message=f"MACD algo took position in {self.symbol} ({self.api.get_broker_name()}) | {_position_value:,} total value | "
+            f"{self.buy_plan.entry_unit:,} entry price | "
+            f"{self.buy_plan.stop_unit:,} stop loss price | "
+            f"{self.buy_plan.units:,} units bought",
         )
 
         self.state_const = POSITION_TAKEN
@@ -1078,9 +1123,9 @@ class MacdWorker:
             )
         _total_value = filled_order.filled_unit_quantity * filled_order.filled_unit_price
         self.notification_service.send(
-            message=f"MACD algo took profit on {self.symbol} | {filled_order.filled_unit_price:,} "
-            f"sold price | {filled_order.filled_unit_quantity:,} units sold | "
-            f"{_total_value:,} total sale value",
+            message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | {_total_value:,} total sale value"
+            f"{filled_order.filled_unit_price:,} sold price | "
+            f"{filled_order.filled_unit_quantity:,} units sold"
         )
         self.notification_service.send(
             message=f"I still hold {new_units_held:,} units of {self.symbol} | "

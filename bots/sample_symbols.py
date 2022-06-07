@@ -110,31 +110,31 @@ input_symbols = {
     "crypto_symbol": [
         {"symbol": "SHIB-USD", "api": "swyftx"},
     ],
-    "crypto_symbols_all": [
-        {"symbol": "ADA-USD", "api": "swyftx"},
-        {"symbol": "SHIB-USD", "api": "swyftx"},
-        {"symbol": "ETH-USD", "api": "swyftx"},
-        {"symbol": "SOL-USD", "api": "swyftx"},
-        {"symbol": "XRP-USD", "api": "swyftx"},
-        {"symbol": "DOGE-USD", "api": "swyftx"},
-        {"symbol": "MATIC-USD", "api": "swyftx"},
-        # {"symbol": "ATOM-USD", "api": "swyftx"},
-        # {"symbol": "FTT-USD", "api": "swyftx"},   
-        # {"symbol": "BNB-USD", "api": "swyftx"},
-        {"symbol": "WBTC-USD", "api": "swyftx"},
-        {"symbol": "TRX-USD", "api": "swyftx"},
-        {"symbol": "BAT-USD", "api": "swyftx"},
-        {"symbol": "PAXG-USD", "api": "swyftx"},
-        {"symbol": "AAVE-USD", "api": "swyftx"},
-        {"symbol": "AVAX-USD", "api": "swyftx"},
-        {"symbol": "BCH-USD", "api": "swyftx"},
-        {"symbol": "LINK-USD", "api": "swyftx"},
-        #{"symbol": "DAI-USD", "api": "swyftx"},    # pegged to USD
-        #{"symbol": "GRT-USD", "api": "swyftx"},    # some weird Nigerian index
-        {"symbol": "LTC-USD", "api": "swyftx"},
-        {"symbol": "MKR-USD", "api": "swyftx"},
-        {"symbol": "SUSHI-USD", "api": "swyftx"},
-        {"symbol": "YFI-USD", "api": "swyftx"},
+    "crypto_symbols_alpaca_all": [
+        {"symbol": "ADA-USD", "api": "alpaca"},
+        {"symbol": "SHIB-USD", "api": "alpaca"},
+        {"symbol": "ETH-USD", "api": "alpaca"},
+        {"symbol": "SOL-USD", "api": "alpaca"},
+        {"symbol": "XRP-USD", "api": "alpaca"},
+        {"symbol": "DOGE-USD", "api": "alpaca"},
+        {"symbol": "MATIC-USD", "api": "alpaca"},
+        # {"symbol": "ATOM-USD", "api": "alpaca"},
+        # {"symbol": "FTT-USD", "api": "alpaca"},   
+        # {"symbol": "BNB-USD", "api": "alpaca"},
+        {"symbol": "WBTC-USD", "api": "alpaca"},
+        {"symbol": "TRX-USD", "api": "alpaca"},
+        {"symbol": "BAT-USD", "api": "alpaca"},
+        {"symbol": "PAXG-USD", "api": "alpaca"},
+        {"symbol": "AAVE-USD", "api": "alpaca"},
+        {"symbol": "AVAX-USD", "api": "alpaca"},
+        {"symbol": "BCH-USD", "api": "alpaca"},
+        {"symbol": "LINK-USD", "api": "alpaca"},
+        #{"symbol": "DAI-USD", "api": "alpaca"},    # pegged to USD
+        #{"symbol": "GRT-USD", "api": "alpaca"},    # some weird Nigerian index
+        {"symbol": "LTC-USD", "api": "alpaca"},
+        {"symbol": "MKR-USD", "api": "alpaca"},
+        {"symbol": "SUSHI-USD", "api": "alpaca"},
+        {"symbol": "YFI-USD", "api": "alpaca"},
     ],
     "crypto_symbols_cheap": [
         # {"symbol": "ADA-USD", "api": "swyftx"},
@@ -204,9 +204,7 @@ input_symbols = {
         {"symbol": "ONT-USD", "api": "swyftx"},
         {"symbol": "XEM-USD", "api": "swyftx"},
         {"symbol": "BTG-USD", "api": "swyftx"},
-        {"symbol": "USDC-USD", "api": "swyftx"},
         {"symbol": "DCR-USD", "api": "swyftx"},
-        {"symbol": "TUSD-USD", "api": "swyftx"},
         {"symbol": "REP-USD", "api": "swyftx"},
         {"symbol": "BCD-USD", "api": "swyftx"},
         {"symbol": "RVN-USD", "api": "swyftx"},
@@ -277,9 +275,7 @@ input_symbols = {
         {"symbol": "ONT-USD", "api": "swyftx"},
         {"symbol": "XEM-USD", "api": "swyftx"},
         {"symbol": "BTG-USD", "api": "swyftx"},
-        {"symbol": "USDC-USD", "api": "swyftx"},
         {"symbol": "DCR-USD", "api": "swyftx"},
-        {"symbol": "TUSD-USD", "api": "swyftx"},
         {"symbol": "REP-USD", "api": "swyftx"},
         {"symbol": "BCD-USD", "api": "swyftx"},
         {"symbol": "RVN-USD", "api": "swyftx"},
@@ -314,7 +310,6 @@ input_symbols = {
         {"symbol": "REN-USD", "api": "swyftx"},
         {"symbol": "WRX-USD", "api": "swyftx"},
         {"symbol": "HC-USD", "api": "swyftx"},
-        {"symbol": "BUSD-USD", "api": "swyftx"},
         {"symbol": "XZC-USD", "api": "swyftx"},
         {"symbol": "FTT-USD", "api": "swyftx"},
         {"symbol": "LRC-USD", "api": "swyftx"},
@@ -529,7 +524,6 @@ input_symbols = {
         {"symbol": "QNT-USD", "api": "swyftx"},
         {"symbol": "FLOW-USD", "api": "swyftx"},
         {"symbol": "CKB-USD", "api": "swyftx"},
-        {"symbol": "USDP-USD", "api": "swyftx"},
         {"symbol": "AR-USD", "api": "swyftx"},
         {"symbol": "SSV-USD", "api": "swyftx"},
         {"symbol": "ILV-USD", "api": "swyftx"},
@@ -601,8 +595,8 @@ input_symbols = {
     ]
 }
 
+input_symbols["combined_test"] = (input_symbols["swyftx_medium"] + input_symbols["crypto_symbols_alpaca_all"])
 
-
-input_symbols["everything"] = (
-    input_symbols["crypto_symbols_all"] + input_symbols["nyse_symbols_big"]
-)
+#input_symbols["everything"] = (
+#    input_symbols["crypto_symbols_all"] + input_symbols["nyse_symbols_big"]
+#)

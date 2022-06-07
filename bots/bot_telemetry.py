@@ -121,17 +121,17 @@ class BotTelemetry:
         for play in plays:
             # check if the buy got filled - if not, the play never really started and we can ignore it
             buy_order_status = unique_orders.loc[
-                (unique_orders.order_type == 3) & (unique_orders.play_id == play)
+                ((unique_orders.order_type == 3) | (unique_orders.order_type == 1)) & (unique_orders.play_id == play)
             ].status_summary.item()
             if buy_order_status != "filled":
                 # hacky way to skip without indents
                 continue
 
             buy_value = unique_orders.loc[
-                (unique_orders.order_type == 3) & (unique_orders.play_id == play)
+                ((unique_orders.order_type == 3) | (unique_orders.order_type == 1)) & (unique_orders.play_id == play)
             ].filled_total_value.item()
             sell_value = unique_orders.loc[
-                (unique_orders.order_type != 3) & (unique_orders.play_id == play)
+                (unique_orders.order_type != 3) & (unique_orders.order_type != 1) & (unique_orders.play_id == play)
             ].filled_total_value.sum()
 
             profit = sell_value - buy_value
@@ -144,10 +144,10 @@ class BotTelemetry:
             symbol = unique_orders.loc[unique_orders.play_id == play].symbol.iloc[0]
 
             start = unique_orders.loc[
-                (unique_orders.order_type == 3) & (unique_orders.play_id == play)
+                ((unique_orders.order_type == 3) | ((unique_orders.order_type == 1))) & (unique_orders.play_id == play)
             ].create_time.min()
             end = unique_orders.loc[
-                (unique_orders.order_type != 3) & (unique_orders.play_id == play)
+                (unique_orders.order_type != 3) & (unique_orders.order_type != 1) & (unique_orders.play_id == play)
             ].update_time.max()
 
             take_profit_count = len(

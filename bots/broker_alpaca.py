@@ -255,7 +255,7 @@ class AlpacaAPI(ITradeAPI):
             raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
         
         return False
-        
+
         # so its invalid but the broker does know about it - delisted/not tradeable
         if self._invalid_assets[al_symbol].status == "inactive":
             raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
@@ -306,7 +306,6 @@ class AlpacaAPI(ITradeAPI):
     def get_account(self) -> Account:
         request = self.api.get_account()
         currency = request.currency
-        currency = currency
         account = Account({currency: float(request.cash)})
         return account
 

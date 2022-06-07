@@ -127,9 +127,9 @@ class TABotRules():
 
         for this_state in stored_rules:
             s_symbol = this_state["symbol"]
-            if s_symbol == self.symbol:
+            if s_symbol == order_result.symbol:
                 raise ValueError(
-                    f"Tried to add {self.symbol} rules, but it already existed"
+                    f"Tried to add {order_result.symbol} rules, but it already existed"
                 )
             else:
                 # it's not the state we're looking for so keep it
@@ -205,7 +205,7 @@ class TABotRules():
             )
             return False
 
-    def validate_rule(rule):
+    def validate_rule(rule:dict):
         required_keys = [
             "symbol",
             "original_stop_loss",

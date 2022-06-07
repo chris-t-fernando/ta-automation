@@ -90,12 +90,14 @@ class MacdConfig:
     path_notification_service: str = "slack"
     store = IParameterStore = None
     run_type: str
+    
 
     def __init__(self, args):
         self.interval = args.interval
         self.run_type = args.run_type
         self.market_data_source = yf
         self.symbol_group = args.symbols
+        self.buy_market = args.buy_market
         self.production_run = False
         self.paper_testing = False
         self.back_testing = False
@@ -223,5 +225,5 @@ class MacdConfig:
 
         elif args.notification_service == "slack":
             self.notification_service = notification_services.Slack(
-                bot_key=self.slack_bot_key, channel=self.slack_heartbeat_channel
+                bot_key=self.slack_bot_key, channel=self.slack_announcements_channel
             )

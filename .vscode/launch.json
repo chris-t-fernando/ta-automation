@@ -64,6 +64,34 @@
             ]
         },
         {
+            "name": "tabot paper combined",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--run_type",
+                "paper",
+                "--symbols",
+                "combined_test"
+            ]
+        },
+        {
+            "name": "tabot paper alp all cryp",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--run_type",
+                "paper",
+                "--symbols",
+                "crypto_symbols_alpaca_all"
+            ]
+        },
+        {
             "name": "tabot paper crypto all",
             "type": "python",
             "request": "launch",
@@ -88,11 +116,12 @@
                 "--run_type",
                 "paper",
                 "--symbols",
-                "swyftx_medium"
+                "swyftx_medium",
+                "--buy_market"
             ]
         },
         {
-            "name": "tabot paper crypto all",
+            "name": "tabot paper crypto swyftx_all",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -102,7 +131,7 @@
                 "--run_type",
                 "paper",
                 "--symbols",
-                "crypto_symbols_all"
+                "swyftx_all"
             ]
         },
         {

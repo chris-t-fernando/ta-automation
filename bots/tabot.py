@@ -192,6 +192,11 @@ parser.add_argument(
     default="paper",
     choices=list(["prod", "paper", "back_test"]),
 )
+parser.add_argument(
+    "--buy_market",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+)
 
 args = parser.parse_args()
 
