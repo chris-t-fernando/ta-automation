@@ -135,6 +135,8 @@ dmypy.json
 prof/*
 
 __pycache__
+__pycache__/*
 # **/__pycache__
 
 coinbase_python3/
+coinbase_python3/*
