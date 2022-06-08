@@ -463,7 +463,7 @@ def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_bas
 
         # pickled_bars = utils.pickle(bars)
         pickled_bars = bars_with_signals.to_csv()
-        if save_to_s3(
+        if upload_to_s3(
             pickle=pickled_bars, bucket=bucket, key_base=key_base,  key=f"{symbol}.csv", 
         ):
             log_wp.info(f"{symbol}: Saved bars to S3 ({len(bars):,d} records retrieved, {existing_rows:,d} "
@@ -474,7 +474,7 @@ def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_bas
     return True
 
 
-def save_to_s3(pickle:str, bucket:str, key_base:str, key):
+def upload_to_s3(pickle:str, bucket:str, key_base:str, key):
     s3 = boto3.resource("s3")
     try:
         s3object = s3.Object(bucket, key_base + key)
@@ -513,3 +513,5 @@ def load_bars(symbols: list, bucket:str, key_base:str) -> dict:
         return loaded_csv
     else:
         return returned_bars
+
+

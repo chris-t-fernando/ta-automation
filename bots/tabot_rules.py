@@ -48,7 +48,9 @@ class TABotRules():
             return []
 
     # writes the symbol to state
-    def write_to_state(self, symbol:str, broker:str, new_state:dict):
+    def write_to_state(self, new_state:dict):
+        symbol = new_state["symbol"]
+        broker = new_state["broker"]
         stored_state = self.get_state_all()
         state_to_write = []
 
@@ -58,7 +60,10 @@ class TABotRules():
             s_broker = this_state["broker"]
 
             # no need for validation - its done in stock_symbol since rules has no access to API to query
-            if s_symbol != symbol and s_broker != broker:
+            if s_symbol == symbol and s_broker == broker:
+                log_wp.error(f"{symbol} ({broker}): Found this symbol in state already!")
+                
+            else:
                 # it's not the state we're looking for so keep it
                 state_to_write.append(this_state)
 
@@ -347,3 +352,9 @@ class TABotRules():
             path=self.state_path,
             value=pickled_state
         )
+
+#from parameter_stores import Ssm
+#rules = TABotRules(store=Ssm(), rules_path="/tabot/paper/rules/5m", state_path="/tabot/paper/state")
+#rules.write_to_state( new_state={"symbol":"def", "broker":"banana"})
+#rules.write_to_state( new_state={"symbol":"hij", "broker":"banana"})
+#rules.write_to_state( new_state={"symbol":"def", "broker":"apples"})

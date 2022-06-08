@@ -21,7 +21,8 @@ from itradeapi import (
     DelistedAsset,
     UntradeableAsset,
     ZeroUnitsOrdered,
-    ApiRateLimit
+    ApiRateLimit,
+    MinimumOrderError
 )
 
 import utils
@@ -549,12 +550,18 @@ class SwyftxAPI(ITradeAPI):
                     log_wp.error(f"Can't buy/sell zero units: {str(orders_create_object)}")
                     raise ZeroUnitsOrdered(f"Failed to sell/buy 0 units")
             
-            if this_exception["error"] == "RateLimit":
+            elif this_exception["error"] == "RateLimit":
                 # try again
                 log_wp.error(f"API rate limit triggered: {str(orders_create_object)}")
                 raise ApiRateLimit(this_exception["message"])
+
+            elif this_exception["error"] == "MinimumOrderError":
+                # try again
+                log_wp.error(f"Order for {secondary} did not meet minimum order requirements. {str(orders_create_object)}")
+                raise MinimumOrderError(f'{this_exception["message"]} for {secondary}. Order amount was {quantity}')
                 
             raise
+
         except:
             raise
 
@@ -696,7 +703,7 @@ class SwyftxAPI(ITradeAPI):
         return order
 
 def reset(api):
-    orders = api.get_orders(still_open=True)
+    orders = api.list_orders(still_open=True)
     for o in orders:
         api.cancel_order(o.order_id)
 

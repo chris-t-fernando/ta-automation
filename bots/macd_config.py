@@ -103,7 +103,7 @@ class MacdConfig:
         self.back_testing = False
         self.back_testing_balance = None
         self.saved_symbol_data_bucket = self.SAVED_SYMBOL_DATA_BUCKET
-        self.saved_symbol_key_base = self.SAVED_SYMBOL_KEY_BASE
+        self.saved_symbol_key_base = f"{self.SAVED_SYMBOL_KEY_BASE}{self.interval}/"
 
         if args.run_type == "prod":
             self.order_size = self.ORDER_SIZE

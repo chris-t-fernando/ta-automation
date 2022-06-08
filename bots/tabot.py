@@ -88,19 +88,19 @@ def main(args):
         bot_handler.process_bars()
 
         bot_handler.bot_telemetry.generate_df()
-        utils.save_to_s3(
+        utils.upload_to_s3(
             bucket=config.telemetry_s3_bucket,
             key_base=f"{config.telemetry_s3_prefix}/",
             key=f"{run_id}_plays.csv",
             pickle=bot_handler.bot_telemetry.plays_df.to_csv(),
         )
-        utils.save_to_s3(
+        utils.upload_to_s3(
             bucket=config.telemetry_s3_bucket,
             key_base=f"{config.telemetry_s3_prefix}/",
             key=f"{run_id}_orders.csv",
             pickle=bot_handler.bot_telemetry.orders_df.to_csv(),
         )
-        utils.save_to_s3(
+        utils.upload_to_s3(
             bucket=config.telemetry_s3_bucket,
             key_base=f"{config.telemetry_s3_prefix}/",
             key=f"{run_id}_symbols.csv",
@@ -121,19 +121,19 @@ def main(args):
             bot_handler.bot_telemetry.generate_df()
             new_orders_df = bot_handler.bot_telemetry.orders_df
             if len(new_orders_df) != len(last_orders_df):
-                utils.save_to_s3(
+                utils.upload_to_s3(
                     bucket=config.telemetry_s3_bucket,
                     key_base=f"{config.telemetry_s3_prefix}/",
                     key=f"{run_id}_plays.csv",
                     pickle=bot_handler.bot_telemetry.plays_df.to_json(),
                 )
-                utils.save_to_s3(
+                utils.upload_to_s3(
                     bucket=config.telemetry_s3_bucket,
                     key_base=f"{config.telemetry_s3_prefix}/",
                     key=f"{run_id}_orders.csv",
                     pickle=bot_handler.bot_telemetry.orders_df.to_json(),
                 )
-                utils.save_to_s3(
+                utils.upload_to_s3(
                     bucket=config.telemetry_s3_bucket,
                     key_base=f"{config.telemetry_s3_prefix}/",
                     key=f"{run_id}_symbols.csv",

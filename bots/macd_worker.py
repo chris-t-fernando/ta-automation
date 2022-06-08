@@ -301,10 +301,10 @@ class MacdWorker:
             "play_id": self.play_id,
         }
         
-        self.rules.write_to_state(symbol=self.symbol, broker=self.broker_name, new_state=new_state)
+        self.rules.write_to_state(new_state=new_state)
 
     def remove_from_state(self):
-        log_wp.debug(f"{self.symbol}: Removing from {self.broker_name}")
+        log_wp.debug(f"{self.symbol}: Removing from {self.broker_name} state")
         return self.rules.remove_from_state(symbol=self.symbol, broker=self.broker_name)
 
 
@@ -581,9 +581,10 @@ class MacdWorker:
         if order.status_summary == "filled":
             _value = order.filled_unit_quantity * order.filled_unit_price
             self.notification_service.send(
-                message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | {order.filled_unit_price:,} "
-                f"sold price | {order.filled_unit_quantity:,} units sold | "
-                f"{_value:,} total sale value",
+                message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | "
+                f"${_value:,.2f} total sale value | "
+                f"${order.filled_unit_price:,.2f} sold price | "
+                f"{order.filled_unit_quantity:,} units sold"
             )
 
             # do we have any units left?
@@ -689,8 +690,9 @@ class MacdWorker:
             )
             _total_value = order.filled_unit_quantity * order.filled_unit_price
             self.notification_service.send(
-                message=f"Stop loss filled for {self.symbol} ({self.api.get_broker_name()}) | {_total_value:,} total sale value"
-                f"{order.filled_unit_price:,} sold unit price |"
+                message=f"Stop loss filled for {self.symbol} ({self.api.get_broker_name()}) | "
+                f"${_total_value:,.2f} total sale value | "
+                f"${order.filled_unit_price:,} sold unit price | "
                 f"{order.filled_unit_quantity:,} units sold"
             )
             return self.trans_close_position
@@ -860,9 +862,10 @@ class MacdWorker:
         self.current_check = self.check_state_position_taken
         _position_value = self.buy_plan.entry_unit * self.buy_plan.units
         self.notification_service.send(
-            message=f"MACD algo took position in {self.symbol} ({self.api.get_broker_name()}) | {_position_value:,} total value | "
-            f"{self.buy_plan.entry_unit:,} entry price | "
-            f"{self.buy_plan.stop_unit:,} stop loss price | "
+            message=f"MACD algo took position in {self.symbol} ({self.api.get_broker_name()}) | "
+            f"${_position_value:,.2f} total value | "
+            f"${self.buy_plan.entry_unit:,} entry price | "
+            f"${self.buy_plan.stop_unit:,} stop loss price | "
             f"{self.buy_plan.units:,} units bought",
         )
 
@@ -1123,13 +1126,14 @@ class MacdWorker:
             )
         _total_value = filled_order.filled_unit_quantity * filled_order.filled_unit_price
         self.notification_service.send(
-            message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | {_total_value:,} total sale value"
-            f"{filled_order.filled_unit_price:,} sold price | "
+            message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | "
+            f"${_total_value:,.2f} total sale value | "
+            f"${filled_order.filled_unit_price:,} sold price | "
             f"{filled_order.filled_unit_quantity:,} units sold"
         )
         self.notification_service.send(
             message=f"I still hold {new_units_held:,} units of {self.symbol} | "
-            f"{new_target_unit_price:,} is new target price | {new_stop_loss:,} is new stop loss",
+            f"${new_target_unit_price:,} is new target price | ${new_stop_loss:,} is new stop loss",
         )
 
         self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)

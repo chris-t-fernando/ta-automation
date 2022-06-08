@@ -44,9 +44,11 @@ class BuyPlan:
         precision: int = 3,
         min_trade_increment: float = 1,
         min_order_size: float = 1,
-        min_price_increment: float = 0.001, # TODO: something clever with this
+        min_price_increment: float = 0.001, 
         max_play_value: float = 500,
     ):
+        if min_price_increment == 0.0025:
+            print("banana")
         self.success = False
         self.min_trade_increment = min_trade_increment
         self.min_order_size = min_order_size
@@ -94,7 +96,7 @@ class BuyPlan:
         # calculate other order variables
         entry_unit = round(df.Close.iloc[-1], precision)
         entry_unit_trim = entry_unit % min_price_increment
-        self.entry_unit-=entry_unit_trim
+        self.entry_unit=entry_unit-entry_unit_trim
         self.stop_unit = round(stop_unit, precision)
         self.last_low = df.Low.iloc[-1]
         self.last_high = df.High.iloc[-1]
@@ -194,7 +196,11 @@ class BuyPlan:
 
         new_steps = active_rule["steps"] + 1
         new_target_profit = active_rule["original_risk"] * new_steps
+
         new_target_unit_price = active_rule["current_target_price"] + new_target_profit
+        new_target_unit_price = round(new_target_unit_price)
+        new_target_unit_price_trim = new_target_unit_price % self.min_price_increment
+        new_target_unit_price_trim=new_target_unit_price-new_target_unit_price_trim        
 
         # update rules
         new_sales_obj = {
@@ -215,6 +221,7 @@ class BuyPlan:
 
         # new_stop_loss = active_rule["current_target_price"] + ()
 
+        # TODO what in tarnation was i doing here
         new_rule["current_stop_loss"] = new_stop_loss
         new_rule["current_risk"] = new_target_profit
         new_rule["sales"].append(new_sales_obj)
