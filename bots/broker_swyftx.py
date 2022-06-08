@@ -547,17 +547,17 @@ class SwyftxAPI(ITradeAPI):
             if this_exception["error"] == "ArgsError":
                 # usually happens when you request a non-sensical order like 0 quantity of units
                 if quantity == 0:
-                    log_wp.error(f"Can't buy/sell zero units: {str(orders_create_object)}")
+                    log_wp.error(f"Can't buy/sell zero units")
                     raise ZeroUnitsOrdered(f"Failed to sell/buy 0 units")
             
             elif this_exception["error"] == "RateLimit":
                 # try again
-                log_wp.error(f"API rate limit triggered: {str(orders_create_object)}")
+                log_wp.error(f"API rate limit triggered")
                 raise ApiRateLimit(this_exception["message"])
 
             elif this_exception["error"] == "MinimumOrderError":
                 # try again
-                log_wp.error(f"Order for {secondary} did not meet minimum order requirements. {str(orders_create_object)}")
+                log_wp.error(f"Order for {secondary} did not meet minimum order requirements")
                 raise MinimumOrderError(f'{this_exception["message"]} for {secondary}. Order amount was {quantity}')
                 
             raise

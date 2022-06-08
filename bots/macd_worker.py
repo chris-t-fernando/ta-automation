@@ -177,7 +177,7 @@ class MacdWorker:
         # can't easily map alpaca and YFinance
         # UNI-USD in unicorn token, in alpaca UNIUSD is Uniswap token - different tokens
         # TODO: pull this from store
-        forbidden_symbols = ["UNI-USD", "GRT-USD"]
+        forbidden_symbols = ["UNI-USD", "GRT-USD", "ONG-USD"]
         if self.symbol in forbidden_symbols:
             raise SymbolForbidden(
                 f"Cannot map token {self.symbol} between broker API and Yahoo "
