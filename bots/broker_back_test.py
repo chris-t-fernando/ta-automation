@@ -900,8 +900,8 @@ class BackTestAPI(ITradeAPI):
 
         return Asset(
             symbol=symbol,
-            min_order_size=min_order_size,
-            min_trade_increment=min_trade_increment,
+            min_quantity=min_order_size,
+            min_quantity_increment=min_trade_increment,
             min_price_increment=min_price_increment,
         )
 

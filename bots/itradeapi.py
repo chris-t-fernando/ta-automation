@@ -8,13 +8,12 @@ LIMIT_BUY = 3
 LIMIT_SELL = 4
 STOP_LIMIT_BUY = 5
 STOP_LIMIT_SELL = 6
-
+DUST_SELL = 8
 
 class NotImplementedException(Exception):
     ...
 
 class BrokerAPIError(Exception):...
-
 class UnknownSymbol(Exception):...
 class DelistedAsset(Exception):...
 class UntradeableAsset(Exception):...  
@@ -41,11 +40,11 @@ class Position:
 
 class Asset:
     def __init__(
-        self, symbol, min_order_size, min_trade_increment, min_price_increment
+        self, symbol, min_quantity, min_quantity_increment, min_price_increment
     ):
         self.symbol = symbol
-        self.min_order_size = min_order_size
-        self.min_trade_increment = min_trade_increment
+        self.min_quantity = min_quantity
+        self.min_quantity_increment = min_quantity_increment
         self.min_price_increment = min_price_increment
 
 

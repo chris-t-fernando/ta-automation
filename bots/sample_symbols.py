@@ -108,7 +108,7 @@ input_symbols = {
         {"symbol": "SOL-USD", "api": "swyftx"},
     ],
     "crypto_symbol": [
-        {"symbol": "SHIB-USD", "api": "swyftx"},
+        {"symbol": "AAVE-USD", "api": "swyftx"},
     ],
     "crypto_symbols_alpaca_all": [
         {"symbol": "ADA-USD", "api": "alpaca"},
@@ -229,7 +229,6 @@ input_symbols = {
         {"symbol": "RLC-USD", "api": "swyftx"},
         {"symbol": "HBAR-USD", "api": "swyftx"},
         {"symbol": "GAS-USD", "api": "swyftx"},
-        {"symbol": "ONG-USD", "api": "swyftx"},
         {"symbol": "STX-USD", "api": "swyftx"},
     ],
     "swyftx_all":[
@@ -299,7 +298,6 @@ input_symbols = {
         {"symbol": "RLC-USD", "api": "swyftx"},
         {"symbol": "HBAR-USD", "api": "swyftx"},
         {"symbol": "GAS-USD", "api": "swyftx"},
-        {"symbol": "ONG-USD", "api": "swyftx"},
         {"symbol": "STX-USD", "api": "swyftx"},
         {"symbol": "ALGO-USD", "api": "swyftx"},
         {"symbol": "ENG-USD", "api": "swyftx"},

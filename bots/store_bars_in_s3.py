@@ -14,4 +14,4 @@ for s in the_symbols:
 interval = "5m"
 interval_delta, max_range = utils.get_interval_settings(interval)
 
-utils.save_bars(symbols=symbols, interval=interval, max_range=max_range, bucket="mfers-tabot", key_base=f"symbol_data/{interval}")
+utils.save_bars(symbols=symbols, interval=interval, max_range=max_range, bucket="mfers-tabot", key_base=f"symbol_data/{interval}/")

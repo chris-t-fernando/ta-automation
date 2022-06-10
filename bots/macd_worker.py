@@ -98,8 +98,8 @@ class MacdWorker:
     _analyse_date:pd.Timestamp
     _back_testing_date:pd.Timestamp
     bars:pd.DataFrame
-    min_trade_increment:float
-    min_order_size:float
+    min_quantity_increment:float
+    min_quantity:float
     min_price_increment:float
 
     def __init__(
@@ -204,8 +204,8 @@ class MacdWorker:
 
     def _set_order_size_and_increment(self):
         asset = self.api.get_asset(self.symbol)
-        self.min_trade_increment = asset.min_trade_increment
-        self.min_order_size=asset.min_order_size
+        self.min_quantity_increment = asset.min_quantity_increment
+        self.min_quantity=asset.min_quantity
         self.min_price_increment=asset.min_price_increment
 
     def process(self, datestamp):
@@ -320,6 +320,7 @@ class MacdWorker:
                 yf_start = saved_bars.index[-1]
                 saved_data = True
                 bars = saved_bars
+                log_wp.debug(f"{self.symbol}: Found valid S3 data")
             else:
                 raise RuntimeError(
                     f"back_testing is True and back_testing_skip_bar_updates is True, "
@@ -337,9 +338,11 @@ class MacdWorker:
                 if type(saved_bars) == pd.core.frame.DataFrame:
                     yf_start = saved_bars.index[-1]
                     saved_data = True
+                    log_wp.debug(f"{self.symbol}: Found valid S3 data")
                 else:
                     # this means we didn't get data from s3
                     yf_start = datetime.now() - self.max_range
+                    log_wp.debug(f"{self.symbol}: No data found in S3")
 
             else:
                 # if we've specified a date, we're probably refreshing our dataset over time
@@ -368,8 +371,8 @@ class MacdWorker:
 
             bars = bars.tz_convert(pytz.utc)
 
-        if saved_data:
-            bars = utils.merge_bars(saved_bars, bars)
+            if saved_data:
+                bars = utils.merge_bars(saved_bars, bars)
 
         if len(bars) == 0:
             # something went wrong - usually bad symbol and search parameters
@@ -449,18 +452,48 @@ class MacdWorker:
             balance = account.assets["USD"]
             play_id = "play-" + self.symbol + utils.generate_id()
 
-            # TODO you need to add a toggle to buy at market or limit - you keep missing swyftx opps
+            # MACD stuff
+            blue_cycle_start = self.get_blue_cycle_start(df=bars_slice)
+            red_cycle_start = self.get_red_cycle_start(
+                df=bars_slice, before_date=blue_cycle_start
+            )
+
+            stop_loss_unit = self.calculate_stop_loss_unit_price(
+                df=bars_slice,
+                start_date=red_cycle_start,
+                end_date=blue_cycle_start,
+            )
+
+            stop_unit_date = self.calculate_stop_loss_date(
+                df=bars_slice,
+                start_date=red_cycle_start,
+                end_date=blue_cycle_start,
+            )
+
+            intervals_since_stop = self.count_intervals(df=bars_slice, start_date=stop_unit_date)
+
+            entry_unit = bars_slice.Close.iloc[-1]
+            last_low = bars_slice.Low.iloc[-1]
+            last_high = bars_slice.High.iloc[-1]
+
+            log_wp.debug(f"{self.symbol}: Last cycle started on {red_cycle_start}, "
+            f"{intervals_since_stop} intervals ago")
+            log_wp.debug(f"{self.symbol}: The lowest price during that cycle was {stop_loss_unit} "
+            f"on {stop_unit_date}. This will be used as the stop loss for the play")
+
+            # TODO you need to add a toggle to buy at market or limit - you keep missing potential swyftx opps because of their shitty pricing
             try:
                 buy_plan = BuyPlan(
                     symbol=self.symbol,
-                    df=bars_slice,
                     balance=balance,
                     play_id=play_id,
+                    df=bars_slice,
                     precision=self.precision,
-                    min_trade_increment=self.min_trade_increment,
-                    min_order_size=self.min_order_size,
+                    min_quantity_increment=self.min_quantity_increment,
+                    min_quantity=self.min_quantity,
                     min_price_increment=self.min_price_increment,
                 )
+
             except (OrderQuantitySmallerThanMinimum ,OrderValueSmallerThanMinimum ,ZeroUnitsOrdered,InsufficientBalance ,StopPriceAlreadyMet, TakeProfitAlreadyMet) as e:
                 log_wp.info(f"{self.symbol}: Found buy signal but failed to generate BuyPlan: balance is {balance}, error is '{str(e)}'")
                 return False
@@ -1172,3 +1205,32 @@ class MacdWorker:
         return False
 
     # END SUPPORTING FUNCTIONS
+
+    # START PRICING FUNCTIONS
+    def get_red_cycle_start(self, df: pd.DataFrame, before_date):
+        return df.loc[
+            (df["macd_cycle"] == "blue")
+            & (df.index < before_date)
+            & (df.macd_crossover == True)
+        ].index[-1]
+
+
+    def get_blue_cycle_start(self, df: pd.DataFrame):
+        return df.loc[(df.macd_crossover == True) & (df.macd_macd < 0)].index[-1]
+
+
+    def calculate_stop_loss_unit_price(self,df: pd.DataFrame, start_date, end_date):
+        return df.loc[start_date:end_date].Close.min()
+
+
+    # TODO there is 100% a better way of doing this by sorting Timestamp indexes instead of iloc
+    def calculate_stop_loss_date(self,df: pd.DataFrame, start_date, end_date):
+        return df.loc[start_date:end_date].Close.idxmin()
+
+    def count_intervals(self, df: pd.DataFrame, start_date, end_date=None):
+        if end_date == None:
+            return len(df.loc[start_date:])
+        else:
+            return len(df.loc[start_date:end_date])
+
+    # END PRICING FUNCTIONS

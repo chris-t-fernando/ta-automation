@@ -4,7 +4,7 @@
 # print numbers as decimals instead of exponentials
 # print numbers rounded to whatever position makes sense
 # better reporting/telemetry
-# orderresult needs an open/close status
+# orderresult needs an open/close status - done but now stuff needs to use it
 # recover active plays from state
 # better reporting
 #  - crypto vs nyse

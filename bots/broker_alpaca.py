@@ -37,6 +37,7 @@ LIMIT_BUY = 3
 LIMIT_SELL = 4
 STOP_LIMIT_BUY = 5
 STOP_LIMIT_SELL = 6
+DUST_SELL = 8
 
 ORDER_STATUS_SUMMARY_TO_ID = {
     "cancelled": {6, 11, 8, 12, 13, 18, 19},
@@ -91,6 +92,7 @@ ORDER_MAP = {
     "LIMIT_SELL": LIMIT_SELL,
     "STOP_LIMIT_BUY": STOP_LIMIT_BUY,
     "STOP_LIMIT_SELL": STOP_LIMIT_SELL,
+    "DUST_SELL": DUST_SELL
 }
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
 
@@ -378,10 +380,10 @@ class AlpacaAPI(ITradeAPI):
             precision = self.get_precision(yf_symbol=symbol)
             limit_price = round(limit_unit_price, precision)
             sell_stop_price_rounded = round(sell_stop_price, precision)
-            sell_stop_dict = {
-                "stop_price": sell_stop_price_rounded,
-                "limit_price": 0.000005,
-            }
+            #sell_stop_dict = {
+            #    "stop_price": sell_stop_price_rounded,
+            #    "limit_price": 0.000005,
+            #}
             # sell_stop_dict = {"stop_price": "%.10f" % sell_stop_price_rounded}
             # sell_stop_dict = {
             #    "stop_price": "{:f}".format(float(sell_stop_price_rounded))
@@ -394,12 +396,17 @@ class AlpacaAPI(ITradeAPI):
             # but if its a normal symbol, it needs to be clipped at a precision of thousandth's (0.000)
             precision = self.get_precision(yf_symbol=symbol)
             limit_price = round(limit_unit_price, precision)
-            sell_stop_dict = None
+            #sell_stop_dict = None
             # sell_stop_price_rounded = round(sell_stop_price, precision)
             # sell_stop_dict = {
             #    "stop_price": sell_stop_price_rounded,
             #    "limit_price": 0.000005,
             # }
+        # hack hack hackity hack
+        limit_price_string = str(limit_price)
+        dot_at = limit_price_string.find(".")
+        truncate_at = dot_at + 6
+        limit_price_truncated = limit_price_string[:truncate_at]
 
         # do the order
         try:
@@ -408,9 +415,9 @@ class AlpacaAPI(ITradeAPI):
                 qty=math.floor(units),
                 side=side,
                 type=alpaca_type,
-                limit_price=limit_price,
+                limit_price=limit_price_truncated,
                 time_in_force="gtc",
-                stop_loss=sell_stop_dict,
+                #stop_loss=sell_stop_dict,
             )
         except APIError as e:
             if e == "qty must be >= 10 with trade increment 10":
@@ -565,16 +572,16 @@ class AlpacaAPI(ITradeAPI):
 
         return Asset(
             symbol=symbol,
-            min_order_size=min_order_size,
-            min_trade_increment=min_trade_increment,
+            min_quantity=min_order_size,
+            min_quantity_increment=min_trade_increment,
             min_price_increment=min_price_increment,
         )
 
     def get_symbol_minimums(self, symbol):
         asset = self.get_asset(symbol=symbol)
         if hasattr(asset, "min_order_size"):
-            self.min_order_size = float(asset.min_order_size)
-            self.min_trade_increment = float(asset.min_trade_increment)
+            self.min_order_size = float(asset.min_quantity)
+            self.min_trade_increment = float(asset.min_quantity_increment)
             self.min_price_increment = float(asset.min_price_increment)
         else:
             self.min_order_size = 1

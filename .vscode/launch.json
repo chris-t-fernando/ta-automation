@@ -2,6 +2,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "s3 load",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/store_bars_in_s3.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+        },
+        {
             "name": "tabot back one",
             "type": "python",
             "request": "launch",
@@ -31,22 +39,6 @@
                 "--back_testing_override_broker",
                 "--symbols",
                 "everything"
-            ]
-        },
-        {
-            "name": "tabot back crypto",
-            "type": "python",
-            "request": "launch",
-            "program": "bots/tabot.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "args": [
-                "--run_type",
-                "back_test",
-                "--back_testing_skip_bar_update",
-                "--back_testing_override_broker",
-                "--symbols",
-                "crypto_symbols_all"
             ]
         },
         {

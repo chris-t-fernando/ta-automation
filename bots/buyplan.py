@@ -1,6 +1,7 @@
 # external packages
+from decimal import Decimal
 import logging
-from math import floor
+from math import floor, log10
 
 # my modules
 from itradeapi import IOrderResult, Position
@@ -42,16 +43,16 @@ class BuyPlan:
         profit_target: float = 1.5,
         notional_units: bool = False,
         precision: int = 3,
-        min_trade_increment: float = 1,
-        min_order_size: float = 1,
-        min_price_increment: float = 0.001, 
+        min_quantity_increment: float = 1,
+        min_quantity: float = 1,
+        min_price_increment: float = 0.001,
         max_play_value: float = 500,
     ):
         if min_price_increment == 0.0025:
             print("banana")
         self.success = False
-        self.min_trade_increment = min_trade_increment
-        self.min_order_size = min_order_size
+        self.min_quantity_increment = min_quantity_increment
+        self.min_quantity = min_quantity
         self.min_price_increment = min_price_increment
         self.precision = precision
         self.max_play_value = max_play_value
@@ -94,81 +95,66 @@ class BuyPlan:
         self.intervals_since_stop = count_intervals(df=df, start_date=stop_unit_date)
 
         # calculate other order variables
-        entry_unit = round(df.Close.iloc[-1], precision)
-        entry_unit_trim = entry_unit % min_price_increment
+        entry_unit = Decimal(df.Close.iloc[-1])
+        entry_unit_trim = entry_unit % Decimal(min_price_increment)
+        #self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
         self.entry_unit=entry_unit-entry_unit_trim
-        self.stop_unit = round(stop_unit, precision)
+
+        self.stop_unit = stop_unit
+
         self.last_low = df.Low.iloc[-1]
         self.last_high = df.High.iloc[-1]
 
         if self.stop_unit > self.last_low:
             raise StopPriceAlreadyMet(f"Stop unit price of {self.stop_unit} would already trigger since last low was {self.last_low}")
-            self.error_message = "stop_unit_too_high"
-            return
 
-        if self.entry_unit * 1.25 < self.last_high:
+        if self.entry_unit * Decimal(1.25) < self.last_high:
             raise TakeProfitAlreadyMet(f"Take profit price of {self.entry_unit * 1.25} would already trigger since last high was {self.last_high}")
-            self.error_message = "last_high_too_low"
-            return
-
-        # if notional_units:
-        #    self.units = self.capital / self.entry_unit
-        # else:
-        #    self.units = floor(self.capital / self.entry_unit)
 
         if max_play_value < self.entry_unit:
-            # we're not buying any units
+            # we can't afford to buy any units
             raise OrderValueSmallerThanMinimum(f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit}")
 
-            self.error_message = "entry_larger_than_order_size"
-            return
+        units = Decimal(self.capital / self.entry_unit)
+        units_trim = Decimal(units) % Decimal(min_price_increment)
+        self.units = int(units - units_trim)
 
-        units = self.capital / self.entry_unit
-        if units < min_order_size:
+        if self.units < min_quantity:
             # too few - failed order
-            raise OrderQuantitySmallerThanMinimum(f"Play quantity of {units} is lower than minimum quantity of {min_order_size}")
-
-            self.error_message = "min_order_size"
-            return
-
-        self.units = floor(units - (units % min_trade_increment))
-
-        if self.units == 0:
-            # we're not buying any units
-            raise ZeroUnitsOrdered(f"Units to purchase is 0. Maybe due to floor? Calculated units was {units}, minimum trade increment is {min_trade_increment}")
-            self.error_message = "zero_units"
-            return
+            raise OrderQuantitySmallerThanMinimum(f"Play quantity of {self.units} is lower than minimum quantity of {min_quantity}")
 
         # if we don't have enough money, bail out
-        if self.entry_unit * self.units > balance:
-            raise InsufficientBalance(f"Balance of {balance} is insufficient to purchase {self.units} units at {self.entry_unit}")
-            self.error_message = "insufficient_balance"
-            return
+        if self.entry_unit * Decimal(self.units) > self.capital:
+            raise InsufficientBalance(f"Balance of {self.capital} is insufficient to purchase {self.units} units at {self.entry_unit}")
 
+        #if self.units == 0:
+        #    # we're not buying any units
+        #    raise ZeroUnitsOrdered(f"Units to purchase is 0. Maybe due to floor? Calculated units was {units}, minimum trade increment is {min_quantity_increment}")
+
+        self.entry_unit = self.hacky_float(self.entry_unit)
         self.steps = 0
-        self.risk_unit = round(self.entry_unit - self.stop_unit, precision)
-        self.risk_value = round(self.units * self.risk_unit, precision)
-        self.target_profit = round(profit_target * self.risk_unit, precision)
-        self.original_risk_unit = round(self.risk_unit, precision)
+        self.risk_unit = self.entry_unit - self.stop_unit
+        self.risk_value = self.units * self.risk_unit
+        self.target_profit = profit_target * self.risk_unit
+        self.original_risk_unit = self.risk_unit
         self.original_stop = stop_unit
 
-        self.entry_unit = round(self.entry_unit, precision)
-        self.target_price = round(self.entry_unit + self.target_profit, precision)
+        #self.entry_unit = round(self.entry_unit, precision)
+        self.target_price = self.entry_unit + self.target_profit
 
         # fmt: off
-        log_wp.info(f"{self.symbol} - BUY PLAN REPORT")
-        log_wp.info(f"{self.symbol} - Strength:\t\tNot sure how I want to do this yet")
-        log_wp.info(f"{self.symbol} - MACD:\t\t\t{self.blue_cycle_macd}")
-        log_wp.info(f"{self.symbol} - Signal:\t\t{self.blue_cycle_signal}")
-        log_wp.info(f"{self.symbol} - Histogram:\t\t{self.blue_cycle_histogram}")
-        log_wp.info(f"{self.symbol} - Capital:\t\t${clean(self.capital)}")
-        log_wp.info(f"{self.symbol} - Units to buy:\t\t{clean(self.units)} units")
-        log_wp.info(f"{self.symbol} - Entry point:\t\t${clean(self.entry_unit)}")
-        log_wp.info(f"{self.symbol} - Stop loss:\t\t${clean(stop_unit)}")
-        log_wp.info(f"{self.symbol} - Cycle began:\t\t{self.intervals_since_stop} intervals ago on {stop_unit_date}")
-        log_wp.info(f"{self.symbol} - Unit risk:\t\t${clean(self.risk_unit)} ({round(self.risk_unit/self.entry_unit*100,1)}% of unit cost)")
-        log_wp.info(f"{self.symbol} - Unit profit:\t\t${clean(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)")
-        log_wp.info(f"{self.symbol} - Target price:\t\t${clean(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)")
+        log_wp.info(f"{self.symbol}\t- BUY PLAN REPORT")
+        log_wp.info(f"{self.symbol}\t- Strength:\t\tNot sure how I want to do this yet")
+        log_wp.info(f"{self.symbol}\t- MACD:\t\t\t{self.blue_cycle_macd}")
+        log_wp.info(f"{self.symbol}\t- Signal:\t\t{self.blue_cycle_signal}")
+        log_wp.info(f"{self.symbol}\t- Histogram:\t\t{self.blue_cycle_histogram}")
+        log_wp.info(f"{self.symbol}\t- Capital:\t\t${self.capital:,.2f}")
+        log_wp.info(f"{self.symbol}\t- Units to buy:\t\t{self.units:,} units")
+        log_wp.info(f"{self.symbol}\t- Entry point:\t\t${self.f_float(self.entry_unit)}")
+        log_wp.info(f"{self.symbol}\t- Stop loss:\t\t${self.f_float(stop_unit)}")
+        log_wp.info(f"{self.symbol}\t- Cycle began:\t\t{self.intervals_since_stop} intervals ago on {stop_unit_date}")
+        log_wp.info(f"{self.symbol}\t- Unit profit:\t\t${self.f_float(self.target_profit)} ({round(self.target_profit/self.entry_unit*100,1)}% of unit cost)")
+        log_wp.info(f"{self.symbol}\t- Target price:\t\t${self.f_float(self.target_price)} ({round(self.target_price/self.capital*100,1)}% of capital)")
         # fmt: on
 
         self.success = True
@@ -189,14 +175,13 @@ class BuyPlan:
 
         units_to_sell = pct_sell_down * units
 
-        units_to_sell -= units_to_sell % self.min_trade_increment
+        units_to_sell -= units_to_sell % self.min_quantity_increment
 
-        if units_to_sell < self.min_order_size or units_to_sell == 0:
-            units_to_sell = self.min_order_size
+        if units_to_sell < self.min_quantity or units_to_sell == 0:
+            units_to_sell = new_position_quantity
 
         new_steps = active_rule["steps"] + 1
         new_target_profit = active_rule["original_risk"] * new_steps
-
         new_target_unit_price = active_rule["current_target_price"] + new_target_profit
         new_target_unit_price = round(new_target_unit_price)
         new_target_unit_price_trim = new_target_unit_price % self.min_price_increment
@@ -239,3 +224,27 @@ class BuyPlan:
             "new_units_held": new_units_held,
             "new_units_sold": new_units_sold,
         }
+
+    def hacky_float(self, dec:Decimal)->float:
+        string_dec = str(dec)
+        dot_at = string_dec.find(".") + 1
+        if dot_at == 0:
+            # there isn't a . in the decimal
+            return float(dec)
+
+        zeroes_to_keep = abs(int(log10(abs(self.min_price_increment))))
+        truncate_at = dot_at + zeroes_to_keep
+        truncated_string = string_dec[:truncate_at]
+        back_to_float = float(truncated_string)
+        return back_to_float
+
+    def f_float(self, the_float):
+        zeroes_to_keep = abs(int(log10(abs(self.min_price_increment))))
+        return "%0.*f" % (zeroes_to_keep, the_float)
+
+        a=hacky_float(Decimal(124.123123177456745623), min_price_increment=0.00000001)
+        b=hacky_float(Decimal(124.123123177456745623), min_price_increment=0.00001)
+        c=hacky_float(Decimal(124.123123177456745623), min_price_increment=0.001)
+        d=hacky_float(Decimal(124.123123177456745623), min_price_increment=1)
+        e=hacky_float(Decimal(124), min_price_increment=1)
+        print("banana")

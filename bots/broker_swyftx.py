@@ -52,6 +52,7 @@ LIMIT_BUY = 3
 LIMIT_SELL = 4
 STOP_LIMIT_BUY = 5
 STOP_LIMIT_SELL = 6
+DUST_SELL = 8
 
 
 ORDER_STATUS_SUMMARY_TO_ID = {
@@ -92,6 +93,7 @@ ORDER_MAP = {
     "LIMIT_SELL": LIMIT_SELL,
     "STOP_LIMIT_BUY": STOP_LIMIT_BUY,
     "STOP_LIMIT_SELL": STOP_LIMIT_SELL,
+    "DUST_SELL": DUST_SELL
 }
 
 ORDER_MAP_INVERTED = {y: x for x, y in ORDER_MAP.items()}
@@ -240,8 +242,9 @@ class SwyftxAPI(ITradeAPI):
         # convert them to Asset objects
         for this_asset in raw_assets:
             yf_symbol = self._sw_to_yf(this_asset["code"])
-            minimum_order = float(this_asset["minimum_order_increment"])
-            asset_obj = Asset(symbol=yf_symbol, min_order_size=1, min_trade_increment=minimum_order, min_price_increment=0.00001)
+            minimum_order = float(this_asset["minimum_order"])
+            minimum_order_increment = float(this_asset["minimum_order_increment"])
+            asset_obj = Asset(symbol=yf_symbol, min_quantity=minimum_order, min_quantity_increment=minimum_order_increment, min_price_increment=0.00001)
             asset_obj.id = this_asset["id"]
             if self._is_invalid_asset(this_asset):
                 self._invalid_assets[yf_symbol] = asset_obj
@@ -409,9 +412,6 @@ class SwyftxAPI(ITradeAPI):
             start=start, end=end, interval=interval, actions=False
         )
 
-        # the owner of the pyswyftx library has not implemented Charts????? or swyftx don't offer it??
-        # raw_bars = self.api.request(charts.)
-
     def buy_order_market(
         #self, symbol: str, order_value: float = None, units: float = None
         self, symbol:str, units:int, back_testing_date=None
@@ -488,7 +488,8 @@ class SwyftxAPI(ITradeAPI):
         sw_symbol = self._yf_to_sw(symbol)
         precision = self.get_precision(symbol)
         asset_quantity = sw_symbol.upper()
-        limit_unit_price = round(1 / unit_price, precision)
+        #limit_unit_price = round(1 / unit_price, precision)
+        limit_unit_price = round(unit_price, precision)
 
         try:
             return self._submit_order(
@@ -505,17 +506,6 @@ class SwyftxAPI(ITradeAPI):
     def _submit_order(
         self, sw_symbol: str, units: int, order_type: int, asset_quantity:str, limit_unit_price: float = None
     ) -> OrderResult:
-        """Submits an order (either buy or sell) based on value.  Note that this should not be called from outside of this class
-
-        Args:
-            symbol (str): the symbol to be bought/sold
-            units (int): the total number of units to be bought/sold
-            type (int): see the ORDER_MAP constant for mapping of ints to strings
-            trigger (bool, optional): Trigger amount for the order. Defaults to None.  Trigger is the price per one
-
-        Returns:
-            OrderResult: output from the API endpoint
-        """
         if order_type > 4:
             raise NotImplementedException(
                 f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
@@ -542,6 +532,7 @@ class SwyftxAPI(ITradeAPI):
 
         try:
             response = self.api.request(orders_create_object)
+
         except pyswyft.exceptions.PySwyftError as e:
             this_exception = self.get_exception(exception=e)
             if this_exception["error"] == "ArgsError":
@@ -557,8 +548,15 @@ class SwyftxAPI(ITradeAPI):
 
             elif this_exception["error"] == "MinimumOrderError":
                 # try again
-                log_wp.error(f"Order for {secondary} did not meet minimum order requirements")
-                raise MinimumOrderError(f'{this_exception["message"]} for {secondary}. Order amount was {quantity}')
+                yf_symbol=self._sw_to_yf(sw_symbol=sw_symbol)
+                this_asset = self.get_asset(symbol=yf_symbol)
+                this_minimum_order_size = this_asset.min_quantity
+
+                log_wp.error(f"Order for {secondary} did not meet minimum order "
+                f"requirements. Ordered {quantity}, minimum is {this_minimum_order_size}")
+
+                raise MinimumOrderError(f"{this_exception['message']} for {secondary}. "
+                f"Order amount was {quantity}, minimum is {this_minimum_order_size}")
                 
             raise
 

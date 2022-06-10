@@ -386,39 +386,6 @@ def check_sma(last_sma: float, recent_average_sma: float, ignore_sma: bool = Fal
         return False
 
 
-
-
-
-# def trigger_sell_point(rule, last_price, period):
-#    if rule["current_target_price"] < last_price:
-#        log_wp.warning(
-#            f'{rule["symbol"]}: Target price met at {period} (market {last_price} vs rule {rule["current_target_price"]})'
-#        )
-#        return True
-#    else:
-#        return False
-
-
-# def trigger_risk_point(rule, last_price, period):
-#    if (last_price + rule["current_risk"]) < last_price:
-#        log_wp.warning(
-#            f'{rule["symbol"]}: Risk price met at {period} (market {last_price} vs rule {(last_price + rule["current_risk"])}'
-#        )
-#        return True
-#    else:
-#        return False
-
-
-# def trigger_stop_loss(rule, last_price, period):
-#    if rule["current_stop_loss"] >= last_price:
-#        log_wp.warning(
-#            f'{rule["symbol"]}: Stop loss triggered at {period} (market {last_price} vs rule {rule["current_stop_loss"]})'
-#        )
-#        return True
-#    else:
-#        return False
-
-
 def pickle(object):
     pickled_object = json.dumps(object)
     return pickled_object
@@ -512,6 +479,4 @@ def load_bars(symbols: list, bucket:str, key_base:str) -> dict:
     if single_return:
         return loaded_csv
     else:
-        return returned_bars
-
-
+        return 
