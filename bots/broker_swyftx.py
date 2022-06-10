@@ -22,7 +22,8 @@ from itradeapi import (
     UntradeableAsset,
     ZeroUnitsOrdered,
     ApiRateLimit,
-    MinimumOrderError
+    MinimumOrderError,
+    BuyImmediatelyTriggered
 )
 
 import utils
@@ -458,6 +459,7 @@ class SwyftxAPI(ITradeAPI):
                 order_type=LIMIT_BUY,
                 limit_unit_price=unit_price, asset_quantity=asset_quantity
             )
+
         except ZeroUnitsOrdered as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_BUY, sw_asset_quantity=asset_quantity, unit_price=unit_price)
         except ApiRateLimit as e:
@@ -540,6 +542,10 @@ class SwyftxAPI(ITradeAPI):
                 if quantity == 0:
                     log_wp.error(f"Can't buy/sell zero units")
                     raise ZeroUnitsOrdered(f"Failed to sell/buy 0 units")
+                
+                if this_exception["message"] == "Limit buy trigger cannot exceed the current market rate.":
+                    log_wp.error(f"Limit order would be met by market immediately. Swyftx is dumb and complains about that for some reason")
+                    raise BuyImmediatelyTriggered("Limit order would be met by market immediately. Swyftx is dumb and complains about that for some reason")
             
             elif this_exception["error"] == "RateLimit":
                 # try again

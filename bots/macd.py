@@ -33,8 +33,6 @@ log_wp.setLevel(logging.DEBUG)
 
 
 class MacdBot:
-    jobs = None
-
     def __init__(self, symbols: list, config: MacdConfig):
         self.config = config
         self.store = config.store

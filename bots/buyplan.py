@@ -99,6 +99,7 @@ class BuyPlan:
         entry_unit_trim = entry_unit % Decimal(min_price_increment)
         #self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
         self.entry_unit=entry_unit-entry_unit_trim
+        self.entry_unit = self.hacky_float(self.entry_unit)
 
         self.stop_unit = stop_unit
 
@@ -108,30 +109,30 @@ class BuyPlan:
         if self.stop_unit > self.last_low:
             raise StopPriceAlreadyMet(f"Stop unit price of {self.stop_unit} would already trigger since last low was {self.last_low}")
 
-        if self.entry_unit * Decimal(1.25) < self.last_high:
+        if self.entry_unit * 1.25 < self.last_high:
             raise TakeProfitAlreadyMet(f"Take profit price of {self.entry_unit * 1.25} would already trigger since last high was {self.last_high}")
 
-        if max_play_value < self.entry_unit:
-            # we can't afford to buy any units
-            raise OrderValueSmallerThanMinimum(f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit}")
-
-        units = Decimal(self.capital / self.entry_unit)
-        units_trim = Decimal(units) % Decimal(min_price_increment)
+        units = self.capital / self.entry_unit
+        units_trim = units % min_quantity_increment
         self.units = int(units - units_trim)
+
+        if max_play_value < self.entry_unit * min_quantity:
+            # we can't afford to buy any units
+            raise OrderValueSmallerThanMinimum(f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit} * minimum units {min_quantity}")
 
         if self.units < min_quantity:
             # too few - failed order
             raise OrderQuantitySmallerThanMinimum(f"Play quantity of {self.units} is lower than minimum quantity of {min_quantity}")
 
         # if we don't have enough money, bail out
-        if self.entry_unit * Decimal(self.units) > self.capital:
+        if self.entry_unit * self.units > self.capital:
             raise InsufficientBalance(f"Balance of {self.capital} is insufficient to purchase {self.units} units at {self.entry_unit}")
 
         #if self.units == 0:
         #    # we're not buying any units
         #    raise ZeroUnitsOrdered(f"Units to purchase is 0. Maybe due to floor? Calculated units was {units}, minimum trade increment is {min_quantity_increment}")
 
-        self.entry_unit = self.hacky_float(self.entry_unit)
+        
         self.steps = 0
         self.risk_unit = self.entry_unit - self.stop_unit
         self.risk_value = self.units * self.risk_unit
@@ -176,6 +177,7 @@ class BuyPlan:
         units_to_sell = pct_sell_down * units
 
         units_to_sell -= units_to_sell % self.min_quantity_increment
+        units_to_sell = floor(units_to_sell)
 
         if units_to_sell < self.min_quantity or units_to_sell == 0:
             units_to_sell = new_position_quantity

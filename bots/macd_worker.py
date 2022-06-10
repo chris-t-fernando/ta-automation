@@ -26,6 +26,7 @@ UnknownSymbol,
  MalformedOrderResult,
  ZeroUnitsOrdered,
  ApiRateLimit,
+ BuyImmediatelyTriggered
 )
 from macd_config import MacdConfig
 from tabot_rules import TABotRules
@@ -766,12 +767,20 @@ class MacdWorker:
                 back_testing_date=self._back_testing_date,
             )
         else:
-            order_result = self.api.buy_order_limit(
-                symbol=self.symbol,
-                units=self.buy_plan.units,
-                unit_price=self.buy_plan.entry_unit,
-                back_testing_date=self._back_testing_date,
-            )
+            try:
+                order_result = self.api.buy_order_limit(
+                    symbol=self.symbol,
+                    units=self.buy_plan.units,
+                    unit_price=self.buy_plan.entry_unit,
+                    back_testing_date=self._back_testing_date,
+                )
+            except BuyImmediatelyTriggered as e:
+                # fall back to a market order, since our limit order was immediately met
+                order_result = self.api.buy_order_market(
+                    symbol=self.symbol,
+                    units=self.buy_plan.units,
+                    back_testing_date=self._back_testing_date,
+                )
         
 
         accepted_statuses = ["open", "filled", "pending"]
