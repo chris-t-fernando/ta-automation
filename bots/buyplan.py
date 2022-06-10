@@ -182,12 +182,20 @@ class BuyPlan:
         if units_to_sell < self.min_quantity or units_to_sell == 0:
             units_to_sell = new_position_quantity
 
+
         new_steps = active_rule["steps"] + 1
         new_target_profit = active_rule["original_risk"] * new_steps
         new_target_unit_price = active_rule["current_target_price"] + new_target_profit
-        new_target_unit_price = round(new_target_unit_price)
-        new_target_unit_price_trim = new_target_unit_price % self.min_price_increment
-        new_target_unit_price_trim=new_target_unit_price-new_target_unit_price_trim        
+
+        new_target_unit_price = Decimal(new_target_unit_price)
+        new_target_unit_price_trim = new_target_unit_price % Decimal(self.min_price_increment)
+        new_target_unit_price=new_target_unit_price-new_target_unit_price_trim
+        new_target_unit_price=self.hacky_float(new_target_unit_price)
+
+        log_wp.info(f"{self.symbol}\t- TAKE PROFIT")
+        log_wp.info(f"{self.symbol}\t- Units to sell:\t{units_to_sell}")
+        log_wp.info(f"{self.symbol}\t- Unit price:\t{new_target_unit_price}")
+
 
         # update rules
         new_sales_obj = {
