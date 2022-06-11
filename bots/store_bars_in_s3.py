@@ -5,6 +5,7 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 the_symbols = sample_symbols.input_symbols["swyftx_all"]
+the_symbols=[{"symbol": "BTC-USD", "api": "swyftx"}]
 
 symbols = []
 

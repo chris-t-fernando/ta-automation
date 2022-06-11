@@ -1,6 +1,7 @@
 import logging
 import boto3
 import pandas as pd
+from itradeapi import IOrderResult
 
 from itradeapi import (
     MARKET_BUY,
@@ -78,7 +79,7 @@ class BotTelemetry:
         self.peak_capital_balance = 0
         self.concurrent_orders = 0
 
-    def add_order(self, order_result, play_id):
+    def add_order(self, order_result:IOrderResult, play_id:str):
         # TODO - this is a dumb error specific to back testing that I don't care enough about to fix
         # sometimes orders fail and return a bool. not interested in these guys
         if type(order_result) == bool:

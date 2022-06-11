@@ -377,9 +377,10 @@ class AlpacaAPI(ITradeAPI):
         elif "STOP_LIMIT_SELL" == order_type_text:
             # if its a sell limit order
             alpaca_type = "stop_limit"
-            precision = self.get_precision(yf_symbol=symbol)
-            limit_price = round(limit_unit_price, precision)
-            sell_stop_price_rounded = round(sell_stop_price, precision)
+            limit_price = limit_unit_price
+            #precision = self.get_precision(yf_symbol=symbol)
+            #limit_price = round(limit_unit_price, precision)
+            #sell_stop_price_rounded = round(sell_stop_price, precision)
             #sell_stop_dict = {
             #    "stop_price": sell_stop_price_rounded,
             #    "limit_price": 0.000005,
@@ -392,10 +393,11 @@ class AlpacaAPI(ITradeAPI):
         else:
             # just a plain old sell limit order
             alpaca_type = "limit"
+            limit_price = limit_unit_price
             # if its a crypto symbol, we can go to ridiculous degrees of precision
             # but if its a normal symbol, it needs to be clipped at a precision of thousandth's (0.000)
-            precision = self.get_precision(yf_symbol=symbol)
-            limit_price = round(limit_unit_price, precision)
+            #precision = self.get_precision(yf_symbol=symbol)
+            #limit_price = round(limit_unit_price, precision)
             #sell_stop_dict = None
             # sell_stop_price_rounded = round(sell_stop_price, precision)
             # sell_stop_dict = {
@@ -403,10 +405,13 @@ class AlpacaAPI(ITradeAPI):
             #    "limit_price": 0.000005,
             # }
         # hack hack hackity hack
-        limit_price_string = str(limit_price)
-        dot_at = limit_price_string.find(".")
-        truncate_at = dot_at + 6
-        limit_price_truncated = limit_price_string[:truncate_at]
+        #if limit_price:
+        #    limit_price_string = str(limit_price)
+        #    dot_at = limit_price_string.find(".")
+        #    truncate_at = dot_at + 6
+        #    limit_price_truncated = limit_price_string[:truncate_at]
+        #else:
+        #    limit_price_truncated = limit_price
 
         # do the order
         try:
@@ -415,7 +420,7 @@ class AlpacaAPI(ITradeAPI):
                 qty=math.floor(units),
                 side=side,
                 type=alpaca_type,
-                limit_price=limit_price_truncated,
+                limit_price=limit_price,
                 time_in_force="gtc",
                 #stop_loss=sell_stop_dict,
             )

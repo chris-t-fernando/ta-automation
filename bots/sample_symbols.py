@@ -126,6 +126,8 @@ input_symbols = {
         {"symbol": "BAT-USD", "api": "alpaca"},
         {"symbol": "PAXG-USD", "api": "alpaca"},
         {"symbol": "AAVE-USD", "api": "alpaca"},
+        {"symbol": "NEAR-USD", "api": "alpaca"},
+        {"symbol": "ALGO-USD", "api": "alpaca"},
         {"symbol": "AVAX-USD", "api": "alpaca"},
         {"symbol": "BCH-USD", "api": "alpaca"},
         {"symbol": "LINK-USD", "api": "alpaca"},

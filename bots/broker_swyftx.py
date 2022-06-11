@@ -1,7 +1,8 @@
 from datetime import datetime
-#from math import floor
+from decimal import Decimal
 import json
 import logging
+from math import log10
 import pyswyft
 from pyswyft.endpoints import accounts, history, markets, orders
 import pytz
@@ -516,12 +517,16 @@ class SwyftxAPI(ITradeAPI):
         # this is the most frustrating API ever
         precision = self.get_precision(yf_symbol = self._sw_to_yf(sw_symbol))
         if order_type == LIMIT_SELL:
-            limit_unit_price = round(1 / limit_unit_price, precision)
+            #limit_unit_price = round(1 / limit_unit_price, precision)
+            yf_symbol = self._sw_to_yf(sw_symbol)
+            this_asset = self._asset_list_by_yf_symbol[yf_symbol]
+            limit_unit_price = self.hacky_float(1 / limit_unit_price, this_asset.min_price_increment)
 
         # swyftx api expects symbols in upper case....
         primary = self.default_currency.upper()
         secondary = sw_symbol.upper()
-        quantity = round(units, precision)
+        #quantity = round(units, precision)
+        quantity = units
 
         orders_create_object = orders.OrdersCreate(
             primary=primary,
@@ -705,6 +710,19 @@ class SwyftxAPI(ITradeAPI):
 
         self.rejected_orders[order_id] = order
         return order
+
+    def hacky_float(self, dec:Decimal, min_price_increment)->float:
+        string_dec = str(dec)
+        dot_at = string_dec.find(".") + 1
+        if dot_at == 0:
+            # there isn't a . in the decimal
+            return float(dec)
+
+        zeroes_to_keep = abs(int(log10(abs(min_price_increment))))
+        truncate_at = dot_at + zeroes_to_keep
+        truncated_string = string_dec[:truncate_at]
+        back_to_float = float(truncated_string)
+        return back_to_float
 
 def reset(api):
     orders = api.list_orders(still_open=True)

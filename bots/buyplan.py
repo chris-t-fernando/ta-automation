@@ -59,7 +59,10 @@ class BuyPlan:
         self.play_id = play_id
 
         self.symbol = symbol
-        if balance < max_play_value:
+        if balance < 1:
+            # too low to buy anything
+            raise InsufficientBalance(f"Balance of {balance} is insufficient to purchase anything")
+        elif balance < max_play_value:
             self.capital = balance
         else:
             self.capital = max_play_value
@@ -116,17 +119,21 @@ class BuyPlan:
         units_trim = units % min_quantity_increment
         self.units = int(units - units_trim)
 
+        if self.units == 0:
+            # we can't afford to buy any units
+            raise InsufficientBalance(f"Balance of {self.capital} is insufficient to purchase any units at {self.entry_unit}")
+
         if max_play_value < self.entry_unit * min_quantity:
             # we can't afford to buy any units
             raise OrderValueSmallerThanMinimum(f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit} * minimum units {min_quantity}")
 
-        if self.units < min_quantity:
-            # too few - failed order
-            raise OrderQuantitySmallerThanMinimum(f"Play quantity of {self.units} is lower than minimum quantity of {min_quantity}")
-
         # if we don't have enough money, bail out
         if self.entry_unit * self.units > self.capital:
             raise InsufficientBalance(f"Balance of {self.capital} is insufficient to purchase {self.units} units at {self.entry_unit}")
+
+        if self.units < min_quantity:
+            # too few - failed order
+            raise OrderQuantitySmallerThanMinimum(f"Play quantity of {self.units} is lower than minimum quantity of {min_quantity}")
 
         #if self.units == 0:
         #    # we're not buying any units
@@ -142,6 +149,12 @@ class BuyPlan:
 
         #self.entry_unit = round(self.entry_unit, precision)
         self.target_price = self.entry_unit + self.target_profit
+
+        target_price = Decimal(self.entry_unit + self.target_profit)
+        target_price_trim = target_price % Decimal(min_price_increment)
+        #self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
+        self.target_price=target_price-target_price_trim
+        self.target_price = self.hacky_float(self.target_price)
 
         # fmt: off
         log_wp.info(f"{self.symbol}\t- BUY PLAN REPORT")

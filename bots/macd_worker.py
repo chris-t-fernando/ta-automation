@@ -321,7 +321,7 @@ class MacdWorker:
                 yf_start = saved_bars.index[-1]
                 saved_data = True
                 bars = saved_bars
-                log_wp.debug(f"{self.symbol}: Found valid S3 data")
+                log_wp.log(9, f"{self.symbol}: Found valid S3 data")
             else:
                 raise RuntimeError(
                     f"back_testing is True and back_testing_skip_bar_updates is True, "
