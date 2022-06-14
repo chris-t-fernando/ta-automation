@@ -239,6 +239,7 @@ class BuyPlan:
         new_rule["current_target_price"] = new_target_unit_price
         new_rule["play_id"] = active_rule["play_id"]
 
+
         return {
             "new_rule": new_rule,
             "new_stop_loss": new_stop_loss,
