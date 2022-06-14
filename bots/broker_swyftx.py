@@ -16,15 +16,15 @@ from itradeapi import (
     IOrderResult,
     Account,
     Position,
-    NotImplementedException,
+    NotImplementedError,
     BrokerAPIError,
-    UnknownSymbol,
-    DelistedAsset,
-    UntradeableAsset,
-    ZeroUnitsOrdered,
-    ApiRateLimit,
+    UnknownSymbolError,
+    DelistedAssetError,
+    UntradeableAssetError,
+    ZeroUnitsOrderedError,
+    ApiRateLimitError,
     MinimumOrderError,
-    BuyImmediatelyTriggered
+    BuyImmediatelyTriggeredError
 )
 
 import utils
@@ -211,15 +211,15 @@ class SwyftxAPI(ITradeAPI):
         
         #  if its also not in dict of invalid assets, so its just totally unknown
         if symbol not in self._invalid_assets:
-            raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
+            raise UnknownSymbolError(f"{symbol} is not known to {self.get_broker_name()}")
         
         return False
         # so its invalid but the broker does know about it - delisted/not tradeable
         if self._invalid_assets[symbol]["delisting"] == 1:
-            raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
+            raise DelistedAssetError(f"{symbol} has been delisted on {self.get_broker_name()}")
         
         if self._invalid_assets[symbol]["tradable"] == 0:
-            raise UntradeableAsset(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
+            raise UntradeableAssetError(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
         
         # logically we shouldn't get here
         raise RuntimeError("We shouldn't have gotten here.")
@@ -425,9 +425,9 @@ class SwyftxAPI(ITradeAPI):
             return self._submit_order(
                 sw_symbol=sw_symbol, units=units, order_type=MARKET_BUY, asset_quantity=asset_quantity
             )
-        except ZeroUnitsOrdered as e:
+        except ZeroUnitsOrderedError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_BUY, sw_asset_quantity=asset_quantity)
-        except ApiRateLimit as e:
+        except ApiRateLimitError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity)
         except:
             raise
@@ -461,9 +461,9 @@ class SwyftxAPI(ITradeAPI):
                 limit_unit_price=unit_price, asset_quantity=asset_quantity
             )
 
-        except ZeroUnitsOrdered as e:
+        except ZeroUnitsOrderedError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_BUY, sw_asset_quantity=asset_quantity, unit_price=unit_price)
-        except ApiRateLimit as e:
+        except ApiRateLimitError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=unit_price)
         except:
             raise
@@ -479,9 +479,9 @@ class SwyftxAPI(ITradeAPI):
             return self._submit_order(
                 sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL, asset_quantity=asset_quantity
             )
-        except ZeroUnitsOrdered as e:
+        except ZeroUnitsOrderedError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=MARKET_SELL, sw_asset_quantity=asset_quantity)
-        except ApiRateLimit as e:
+        except ApiRateLimitError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity)
         except:
             raise
@@ -498,9 +498,9 @@ class SwyftxAPI(ITradeAPI):
             return self._submit_order(
                 sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, limit_unit_price=limit_unit_price, asset_quantity=asset_quantity
             )
-        except ZeroUnitsOrdered as e:
+        except ZeroUnitsOrderedError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
-        except ApiRateLimit as e:
+        except ApiRateLimitError as e:
             return self._make_rejected_order_result(sw_symbol=sw_symbol, units=units, order_type=LIMIT_SELL, sw_asset_quantity=asset_quantity, unit_price=limit_unit_price)
         except:
             raise
@@ -510,7 +510,7 @@ class SwyftxAPI(ITradeAPI):
         self, sw_symbol: str, units: int, order_type: int, asset_quantity:str, limit_unit_price: float = None
     ) -> OrderResult:
         if order_type > 4:
-            raise NotImplementedException(
+            raise NotImplementedError(
                 f"STOPLIMITBUY and STOPLIMITSELL is not implemented yet"
             )
         
@@ -546,16 +546,16 @@ class SwyftxAPI(ITradeAPI):
                 # usually happens when you request a non-sensical order like 0 quantity of units
                 if quantity == 0:
                     log_wp.error(f"Can't buy/sell zero units")
-                    raise ZeroUnitsOrdered(f"Failed to sell/buy 0 units")
+                    raise ZeroUnitsOrderedError(f"Failed to sell/buy 0 units")
                 
                 if this_exception["message"] == "Limit buy trigger cannot exceed the current market rate.":
                     log_wp.error(f"Limit order would be met by market immediately. Swyftx is dumb and complains about that for some reason")
-                    raise BuyImmediatelyTriggered("Limit order would be met by market immediately. Swyftx is dumb and complains about that for some reason")
+                    raise BuyImmediatelyTriggeredError("Limit order would be met by market immediately. Swyftx is dumb and complains about that for some reason")
             
             elif this_exception["error"] == "RateLimit":
                 # try again
                 log_wp.error(f"API rate limit triggered")
-                raise ApiRateLimit(this_exception["message"])
+                raise ApiRateLimitError(this_exception["message"])
 
             elif this_exception["error"] == "MinimumOrderError":
                 # try again

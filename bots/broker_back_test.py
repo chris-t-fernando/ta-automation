@@ -4,7 +4,7 @@ from itradeapi import (
     Account,
     Position,
     Asset,
-    NotImplementedException,
+    NotImplementedError,
 )
 from pandas import Timestamp
 import logging
@@ -201,7 +201,7 @@ class BackTestAPI(ITradeAPI):
 
     # not implemented
     def _structure_asset_dict_by_id(self, asset_dict):
-        raise NotImplementedException(
+        raise NotImplementedError(
             "Back Trade API does not order assets with a int key"
         )
 
@@ -229,10 +229,10 @@ class BackTestAPI(ITradeAPI):
         return positions
 
     def get_last_close(self, symbol: str):
-        raise NotImplementedException
+        raise NotImplementedError
 
     def get_bars(self, symbol: str, start: str, end: str, interval: str):
-        raise NotImplementedException("Back Trade API does not query for bars")
+        raise NotImplementedError("Back Trade API does not query for bars")
 
     def buy_order_limit(
         self,
@@ -366,7 +366,7 @@ class BackTestAPI(ITradeAPI):
             raise ValueError("Can't specify both 'symbol' and 'symbols' - choose one")
 
         if after:
-            raise NotImplementedException(
+            raise NotImplementedError(
                 f"Parameter 'after' is not implemented in back_test_wrapper"
             )
 

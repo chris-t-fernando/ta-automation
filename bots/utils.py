@@ -324,11 +324,11 @@ def check_buy_signal(df, symbol, bot_telemetry):
     #    f"SMA trending up: last {last_sma}, recent average {recent_average_sma}"
     # )
 
-    # if crossover and macd_negative and sma_trending_up:
-    if crossover and macd_negative:
+    if crossover and macd_negative and sma_trending_up:
+    #if crossover and macd_negative:
         # all conditions met for a buy
         log_wp.debug(
-            f"{symbol}: FOUND NO SMA BUY SIGNAL AT {df.index[-1]} (MACD {round(row.macd_macd,4)} vs "
+            f"{symbol}: FOUND BUY SIGNAL AT {df.index[-1]} (MACD {round(row.macd_macd,4)} vs "
             f"signal {round(row.macd_signal,4)}, SMA {round(last_sma,4)} vs {round(recent_average_sma,4)})"
         )
         return True
@@ -370,7 +370,8 @@ def get_last_sma(df):
 
 
 def get_recent_average_sma(df):
-    return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
+    #return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
+    return df.sma_200.iloc[-20]
 
 
 def check_sma(last_sma: float, recent_average_sma: float, ignore_sma: bool = False):

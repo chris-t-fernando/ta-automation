@@ -597,6 +597,6 @@ input_symbols = {
 
 input_symbols["combined_test"] = (input_symbols["swyftx_medium"] + input_symbols["crypto_symbols_alpaca_all"])
 
-#input_symbols["everything"] = (
-#    input_symbols["crypto_symbols_all"] + input_symbols["nyse_symbols_big"]
-#)
+input_symbols["everything"] = (
+    input_symbols["crypto_symbols_alpaca_all"] + input_symbols["nyse_symbols_big"]
+)

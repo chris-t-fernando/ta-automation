@@ -4,10 +4,11 @@ from itradeapi import (
     Account,
     Position,
     Asset,
-    NotImplementedException,
-    UnknownSymbol,
-    DelistedAsset,
-    UntradeableAsset
+    NotImplementedError,
+    UnknownSymbolError,
+    DelistedAssetError,
+    UntradeableAssetError,
+    BrokerAPIError
 )
 import yfinance as yf
 from datetime import datetime
@@ -254,16 +255,16 @@ class AlpacaAPI(ITradeAPI):
         
         #  if its also not in dict of invalid assets, so its just totally unknown
         if al_symbol not in self._invalid_assets:
-            raise UnknownSymbol(f"{symbol} is not known to {self.get_broker_name()}")
+            raise UnknownSymbolError(f"{symbol} is not known to {self.get_broker_name()}")
         
         return False
 
         # so its invalid but the broker does know about it - delisted/not tradeable
         if self._invalid_assets[al_symbol].status == "inactive":
-            raise DelistedAsset(f"{symbol} has been delisted on {self.get_broker_name()}")
+            raise DelistedAssetError(f"{symbol} has been delisted on {self.get_broker_name()}")
         
         if self._invalid_assets[al_symbol].tradable == False:
-            raise UntradeableAsset(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
+            raise UntradeableAssetError(f"{symbol} is not currently tradeable on {self.get_broker_name()}")
 
     def _get_crypto_symbols_yf(self)->list:
         yf_symbols = []
@@ -295,7 +296,7 @@ class AlpacaAPI(ITradeAPI):
 
     # not implemented
     def _structure_asset_dict_by_id(self, asset_dict):
-        raise NotImplementedException("Alpaca does not order assets with a int key")
+        raise NotImplementedError("Alpaca does not order assets with a int key")
 
     def _structure_asset_dict_by_symbol(self, asset_dict)->dict:
         return_dict = {}
@@ -320,18 +321,21 @@ class AlpacaAPI(ITradeAPI):
     def list_positions(self)->list:
         # symbol, quantity
         positions = []
-        for position in self.api.list_positions():
-            yf_symbol = self._to_yf(position.symbol)
-            positions.append(Position(symbol=yf_symbol, quantity=position.qty))
+        try:
+            for position in self.api.list_positions():
+                yf_symbol = self._to_yf(position.symbol)
+                positions.append(Position(symbol=yf_symbol, quantity=position.qty))
+        except APIError as e:
+                raise BrokerAPIError(e)
         return positions
 
     def get_last_close(self, symbol: str):
-        raise NotImplementedException
+        raise NotImplementedError
         history = yf.Ticker(symbol).history(interval="1m", actions=False)
         return history["Close"].iloc[-1]
 
     def get_bars(self, symbol: str, start: str, end: str, interval: str):
-        raise NotImplementedException
+        raise NotImplementedError
         return yf.Ticker(symbol).history(
             start=start, end=end, interval=interval, actions=False
         )
@@ -359,7 +363,7 @@ class AlpacaAPI(ITradeAPI):
         sell_stop_price: float = None,
     ) -> OrderResult:
         if order_type == 5:
-            raise NotImplementedException(f"STOPLIMITBUY is not implemented yet")
+            raise NotImplementedError(f"STOPLIMITBUY is not implemented yet")
 
         alpaca_symbol = self._to_alpaca(symbol)
 
@@ -454,7 +458,7 @@ class AlpacaAPI(ITradeAPI):
         elif order_type == "MARKET_SELL":
             return "sell"
         else:
-            raise NotImplementedException
+            raise NotImplementedError
 
     def sell_order_limit(
         self, symbol: str, units: float, unit_price: float, back_testing_date=None

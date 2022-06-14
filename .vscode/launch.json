@@ -26,6 +26,22 @@
             ]
         },
         {
+            "name": "tabot back alp crypto",
+            "type": "python",
+            "request": "launch",
+            "program": "bots/tabot.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--run_type",
+                "back_test",
+                "--back_testing_skip_bar_update",
+                "--back_testing_override_broker",
+                "--symbols",
+                "crypto_symbols_alpaca_all"
+            ]
+        },
+        {
             "name": "tabot back all",
             "type": "python",
             "request": "launch",

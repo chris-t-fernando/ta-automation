@@ -33,7 +33,8 @@ for i in portfolio_df.index[100:]:
             play_starting_value = this_value
             position_taken_at = i
             plays+=1
-            #print(f"{this_timestamp}\tplay #{plays} position taken at {this_value:,.4f} waiting stop loss")
+            stop_loss_updates = 0
+            print(f"{this_timestamp}\tplay #{plays} position taken at {this_value:,.4f} waiting stop loss")
     
     elif state == "waiting stop loss":
         position_taken_ignore_stop_loss -= 1
@@ -42,16 +43,16 @@ for i in portfolio_df.index[100:]:
                 # already hit stop loss
                 
                 skipped += 1
-                #print(f"{this_timestamp}\timmediately hit stop loss since last value {this_value:,.4f} is lower than starting value {play_starting_value:,.4f}")
+                print(f"{this_timestamp}\timmediately hit stop loss since last value {this_value:,.4f} is lower than starting value {play_starting_value:,.4f}")
                 state = "no position"
                 del play_starting_value
             else:
                 # set stop loss
                 
                 play_stop_loss = play_starting_value
-                play_starting_value = this_value
+                #play_starting_value = this_value
                 state = "position taken"
-                #print(f"{this_timestamp}\tstop loss set to {play_starting_value:,.4f}, waiting stop loss")
+                print(f"{this_timestamp}\tstop loss set to {play_starting_value:,.4f}, waiting stop loss")
     
     elif state == "position taken":
         pos_duration = i - position_taken_at
@@ -59,7 +60,7 @@ for i in portfolio_df.index[100:]:
         if play_stop_loss > this_value:
             # triggered stop loss
                 state = "no position"
-
+                
                 profit = this_value - play_starting_value
                 if profit > 0:
                     wins += 1
@@ -68,18 +69,22 @@ for i in portfolio_df.index[100:]:
                 
                 total_profit += profit
 
-                print(f"{this_timestamp}\tPlay {plays} profit {profit}. After {pos_duration} hit stop loss {this_value:,.4f} vs {play_stop_loss:,.4f}")
+                print(f"{this_timestamp}\tPlay {plays} profit {profit}. After {pos_duration} periods and {stop_loss_updates} stop loss updates, hit stop loss {this_value:,.4f} vs {play_stop_loss:,.4f}")
 
+                del stop_loss_updates
                 del play_starting_value
                 del play_stop_loss
 
         # next generate new stop loss
         else:
             profit = this_value - play_starting_value
-            profit_95 = profit*.9
+            if profit < 0:
+                print("banana")
+            profit_95 = profit*.5
             new_stop_loss = play_starting_value + profit_95
             if new_stop_loss > play_stop_loss:
                 #print(f"{this_timestamp}\tafter {pos_duration} changing stop loss from {play_stop_loss:,.4f} to {new_stop_loss:,.4f}")
+                stop_loss_updates += 1
                 play_stop_loss = new_stop_loss
                 
 print("**********")

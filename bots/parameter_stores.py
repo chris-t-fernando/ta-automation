@@ -43,8 +43,8 @@ class BackTestStore(IParameterStore):
         overwrite_path = path in self.store and overwrite == True
         if new_path or overwrite_path:
             self.store[path] = value
-            if len(json.dumps(self.store[path])) > 4096:
-                raise Exception("Length of dict exceeds 4096 characters")
+            #if len(json.dumps(self.store[path])) > 4096:
+            #    raise Exception("Length of dict exceeds 4096 characters")
             return
         if path in self.store and overwrite == False:
             raise ValueError

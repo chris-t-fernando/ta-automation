@@ -20,13 +20,13 @@ from itradeapi import (
     LIMIT_SELL,
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
-UnknownSymbol,
- DelistedAsset,
- UntradeableAsset,
+UnknownSymbolError,
+ DelistedAssetError,
+ UntradeableAssetError,
  MalformedOrderResult,
- ZeroUnitsOrdered,
- ApiRateLimit,
- BuyImmediatelyTriggered
+ ZeroUnitsOrderedError,
+ ApiRateLimitError,
+ BuyImmediatelyTriggeredError
 )
 from macd_config import MacdConfig
 from tabot_rules import TABotRules
@@ -131,7 +131,7 @@ class MacdWorker:
             if not self.is_valid_symbol():
                 log_wp.error(f"{symbol}: Invalid symbol (delisted or untradeable)")
                 return
-        except UnknownSymbol as e:
+        except UnknownSymbolError as e:
             # bad symbol, bail out
             log_wp.error(f"{symbol}: Invalid symbol ({str(e)})")
             return
@@ -189,7 +189,7 @@ class MacdWorker:
         try:
             return self.api.validate_symbol(symbol=self.symbol)
 
-        except (UnknownSymbol, DelistedAsset, UntradeableAsset) as e:
+        except (UnknownSymbolError, DelistedAssetError, UntradeableAssetError) as e:
             raise
 
     def get_market(self):
@@ -339,7 +339,7 @@ class MacdWorker:
                 if type(saved_bars) == pd.core.frame.DataFrame:
                     yf_start = saved_bars.index[-1]
                     saved_data = True
-                    log_wp.debug(f"{self.symbol}: Found valid S3 data")
+                    log_wp.log(9, f"{self.symbol}: Found valid S3 data")
                 else:
                     # this means we didn't get data from s3
                     yf_start = datetime.now() - self.max_range
@@ -495,7 +495,7 @@ class MacdWorker:
                     min_price_increment=self.min_price_increment,
                 )
 
-            except (OrderQuantitySmallerThanMinimum ,OrderValueSmallerThanMinimum ,ZeroUnitsOrdered,InsufficientBalance ,StopPriceAlreadyMet, TakeProfitAlreadyMet) as e:
+            except (OrderQuantitySmallerThanMinimum ,OrderValueSmallerThanMinimum ,ZeroUnitsOrderedError,InsufficientBalance ,StopPriceAlreadyMet, TakeProfitAlreadyMet) as e:
                 log_wp.info(f"{self.symbol}: Found buy signal but failed to generate BuyPlan: balance is {balance}, error is '{str(e)}'")
                 return False
             except Exception as e:
@@ -613,13 +613,14 @@ class MacdWorker:
 
         # first check to see if the take profit order has been filled
         if order.status_summary == "filled":
-            _value = order.filled_unit_quantity * order.filled_unit_price
-            self.notification_service.send(
-                message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | "
-                f"${_value:,.2f} total sale value | "
-                f"${order.filled_unit_price:,.2f} sold price | "
-                f"{order.filled_unit_quantity:,} units sold"
-            )
+            # no comms needed - i already do it in the trans_take_profit (and again) methods
+            #_value = order.filled_unit_quantity * order.filled_unit_price
+            #self.notification_service.send(
+            #    message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | "
+            #    f"${_value:,.2f} total sale value | "
+            #    f"${order.filled_unit_price:,.2f} sold price | "
+            #    f"{order.filled_unit_quantity:,} units sold"
+            #)
 
             # do we have any units left?
             if self.position.quantity == 0:
@@ -774,7 +775,7 @@ class MacdWorker:
                     unit_price=self.buy_plan.entry_unit,
                     back_testing_date=self._back_testing_date,
                 )
-            except BuyImmediatelyTriggered as e:
+            except BuyImmediatelyTriggeredError as e:
                 # fall back to a market order, since our limit order was immediately met
                 order_result = self.api.buy_order_market(
                     symbol=self.symbol,
@@ -924,7 +925,11 @@ class MacdWorker:
         units = self.position.quantity
 
         # TODO: i don't love this code. it needs full test coverage
-        units_to_sell = floor(pct * units)
+        #units_to_sell = floor(pct * units)
+        units_to_sell = pct * units
+        units_to_sell_mod = units_to_sell % self.min_quantity_increment
+        units_to_sell = floor(units_to_sell - units_to_sell_mod)
+
         if units_to_sell == 0:
             units_to_sell = 1
 
