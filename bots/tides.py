@@ -109,10 +109,13 @@ class MarketData():
             rounded_start = self.round_time(start_date)
             rounded_end = rounded_start + relativedelta(days=59)
 
+            query_start = rounded_start
+
             self.bars = pd.DataFrame()
 
         # has a bars attribute so its safe to inspect it
         else:
+            query_start = self.bars.index[-1]
             if start == None:
                 rounded_start = self.bars.index[0]
             else:
@@ -120,7 +123,10 @@ class MarketData():
                 if rounded_start < self.bars.index[0]:
                     cache_miss = True
                     log_wp.debug(f"Cache miss - start earlier than bars")
-            
+                elif rounded_start > self.bars.index[-1]:
+                    cache_miss = True
+                    log_wp.debug(f"Cache miss - start later than bars")
+
             if end == None:
                 rounded_end = self.bars.index[-1]
             else:
@@ -132,13 +138,18 @@ class MarketData():
         if cache_miss:
             log_wp.debug(f"Querying to update cache")
             new_bars = yf.Ticker(self.yf_symbol).history(
-                start=rounded_start,
+                start=query_start,
                 interval=self.interval,
                 actions=False,
                 debug=False,
             )
 
+
             self.bars = pd.concat([self.bars, new_bars[~new_bars.index.isin(self.bars.index)]]).sort_index()
+
+        # hackity hack - we just changed the length/last record in the dataframe
+        if end == None:
+            rounded_end = self.bars.index[-1]
 
         return_records = self.bars.loc[(self.bars.index >= rounded_start) & (self.bars.index <= rounded_end)]
         return return_records
@@ -275,8 +286,8 @@ def main(args):
 
 if __name__ == "__main__":
     #a= MarketData("SOL-USD")
-    #a.bars = a.bars.loc[(a.bars.index > pd.Timestamp("2022-06-10 23:00:00-04:00"))]
-    #a.get(start=pd.Timestamp("2022-06-11 12:32:39-04:00"))
+    #a.bars = a.bars.loc[(a.bars.index < pd.Timestamp("2022-06-10 23:00:00-04:00"))]
+    #a.get(start=pd.Timestamp("2022-06-14 12:32:39-04:00"))
     args = None
     
     main(args)
