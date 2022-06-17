@@ -25,6 +25,7 @@ from dateutil.relativedelta import relativedelta
 import time
 import utils
 import sample_symbols
+import notification_services
 from parameter_stores import Ssm
 from broker_alpaca import AlpacaAPI
 import yfinance as yf
@@ -44,6 +45,9 @@ log_wp.setLevel(logging.DEBUG)
 _PREFIX = "tabot"
 PATH_PAPER_ALPACA_API_KEY = f"/{_PREFIX}/paper/alpaca/api_key"
 PATH_PAPER_ALPACA_SECURITY_KEY = f"/{_PREFIX}/paper/alpaca/security_key"
+slack_bot_key_path = f"/{_PREFIX}/slack/bot_key"
+slack_channel_path=f"/{_PREFIX}/paper/slack/announcements_channel"
+
 record_interval = relativedelta(minutes=5)
 
 benchmark = [
@@ -183,19 +187,33 @@ def analyse_interval(starting_value):
 
     #while current_record <= holding["bars"].index[-1]:
     #for this_index in holding["bars"].index:
-    bar_length = len(holding["bars"].index)
-    for i in range(0, bar_length):
+    #bar_length = len(holding["bars"].index)
+    #for i in range(0, bar_length):
+    analyse_date = holding["bars"].index[-110]
+    analyse_end = holding["bars"].index[-1]
+    for holding in benchmark:
+        this_end = holding["bars"].index[-1]
+        if this_end > analyse_end:
+            analyse_end = this_end
+    
+    #now analyse_end is the latest record to finish
+    while analyse_date <= analyse_end:
         portfolio_value = 0
         for holding in benchmark:
-            this_index = holding["bars"].index[i]
-            portfolio_value += holding["bars"]["portfolio_value"].loc[this_index]
+            try:
+                portfolio_value += holding["bars"]["portfolio_value"].loc[analyse_date]
+            except KeyError as e:
+                fallback_date = analyse_date - record_interval
+                log_wp.log(9, f"{holding['symbol']} does not have a record for {analyse_date}, falling back on {fallback_date}")
+                portfolio_value += holding["bars"]["portfolio_value"].loc[fallback_date]
+                # if we're missing more than one cycle of data, then I give up TODO this means no mixing crypto with normies
 
         diff = portfolio_value - starting_value
         diff_pct = portfolio_value / starting_value
         
         new_row = pd.DataFrame(
             {
-                "timestamp":this_index,
+                "timestamp":analyse_date,
                 "portfolio_value":portfolio_value,
                 "portfolio_diff":diff,
                 "portfolio_diff_pct":diff_pct,
@@ -204,7 +222,7 @@ def analyse_interval(starting_value):
             columns=columns,
         )
         portfolio_df = pd.concat([portfolio_df, new_row], ignore_index=True)
-        this_index += record_interval
+        analyse_date += record_interval
 
     sma = []
     for index in portfolio_df.index:
@@ -227,6 +245,12 @@ def main(args):
         alpaca_secret_key=alpaca_security_key
     )
 
+    slack_bot_key = store.get(path=slack_bot_key_path)
+    slack_announcements_channel = store.get(path=slack_channel_path)
+    notification_service = notification_services.Slack(
+        bot_key=slack_bot_key, channel=slack_announcements_channel
+    )
+
     starting_value = 4086
 
     # okay so we've set our starting point, now keep grabbing data and checking if we should buy in
@@ -247,7 +271,9 @@ def main(args):
                     buy_value += buy.filled_total_value
                     stop_loss = porfolio_analysis.portfolio_value.iloc[-1]
                     position_taken = True
-                print(f"Took position valued at {buy_value}. Last close {this_diff_pct} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}")
+                message = f"Took position valued at {buy_value}. Last close {this_diff_pct} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}"
+                print(message)
+                notification_service.send(message)
             else:
                 log_wp.debug(f"No crossover found (last close {this_diff_pct}, SMA {this_sma})")
 
@@ -264,7 +290,9 @@ def main(args):
                     sell_value += sell.filled_total_value
 
                 profit = sell_value - buy_value
-                print(f"Hit stop loss of {stop_loss:,.4f} vs stop loss of {stop_loss:,.4f}. Buy value was {buy_value}, sell value was {sell_value}, profit was {profit}")
+                message = f"Hit stop loss of {stop_loss:,.4f} vs stop loss of {stop_loss:,.4f}. Buy value was {buy_value}, sell value was {sell_value}, profit was {profit}"
+                print(message)
+                notification_service.send(message)
                 del stop_loss
                 position_taken = False
             else:
@@ -274,7 +302,9 @@ def main(args):
                 profit_50 = profit*.5
                 new_stop_loss = stop_loss + profit_50
                 if new_stop_loss > stop_loss:
-                    print(f"Changing stop loss from {stop_loss:,.4f} to {new_stop_loss:,.4f}")
+                    message = f"Changing stop loss from {stop_loss:,.4f} to {new_stop_loss:,.4f}"
+                    print(message)
+                    notification_service.send(message)
                     stop_loss = new_stop_loss
 
         pause = utils.get_pause("5m")
