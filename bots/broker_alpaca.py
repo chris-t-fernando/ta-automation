@@ -247,8 +247,9 @@ class AlpacaAPI(ITradeAPI):
     def validate_symbol(self, symbol:str):
         al_symbol = self._to_alpaca(symbol)
         # if its valid, just return True
-        if al_symbol in self.assets:
+        if al_symbol in self.asset_list_by_symbol.keys():
             return True
+
         # also check crypto symbols TODO: at some point just merge crypto and normal
         if al_symbol in self.supported_crypto_symbols_alp:
             return True
@@ -577,7 +578,7 @@ class AlpacaAPI(ITradeAPI):
         else:
             min_order_size = 1
             min_trade_increment = 1
-            min_price_increment = 0.001
+            min_price_increment = 0.01
 
         return Asset(
             symbol=symbol,

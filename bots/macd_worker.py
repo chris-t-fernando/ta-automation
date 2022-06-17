@@ -933,6 +933,9 @@ class MacdWorker:
         if units_to_sell == 0:
             units_to_sell = 1
 
+        # TODO this is temporary while testing only 
+        units_to_sell = self.position.quantity
+        
         order = self.api.sell_order_limit(
             symbol=self.symbol,
             units=units_to_sell,

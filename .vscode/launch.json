@@ -100,7 +100,7 @@
             ]
         },
         {
-            "name": "tabot paper crypto all",
+            "name": "tabot paper alpaca nyse",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -110,7 +110,7 @@
                 "--run_type",
                 "paper",
                 "--symbols",
-                "crypto_symbols_all"
+                "nyse_symbols_big"
             ]
         },
         {
