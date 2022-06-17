@@ -200,13 +200,21 @@ def analyse_interval(starting_value):
     while analyse_date <= analyse_end:
         portfolio_value = 0
         for holding in benchmark:
-            try:
-                portfolio_value += holding["bars"]["portfolio_value"].loc[analyse_date]
-            except KeyError as e:
-                fallback_date = analyse_date - record_interval
-                log_wp.log(9, f"{holding['symbol']} does not have a record for {analyse_date}, falling back on {fallback_date}")
-                portfolio_value += holding["bars"]["portfolio_value"].loc[fallback_date]
-                # if we're missing more than one cycle of data, then I give up TODO this means no mixing crypto with normies
+            try_date = analyse_date
+            attempts = 0
+            while True:
+                try:
+                    portfolio_value += holding["bars"]["portfolio_value"].loc[try_date]
+                    break
+                except KeyError as e:
+                    attempts +=1
+                    if attempts > 5:
+                        raise
+
+                    try_date = try_date - record_interval
+                    #log_wp.log(9, f"{holding['symbol']} does not have a record for {try_date}, falling back on {fallback_date}")
+                    #portfolio_value += holding["bars"]["portfolio_value"].loc[fallback_date]
+                    # if we're missing more than one cycle of data, then I give up TODO this means no mixing crypto with normies
 
         diff = portfolio_value - starting_value
         diff_pct = portfolio_value / starting_value
@@ -259,8 +267,10 @@ def main(args):
         #print(f"Processing...")
         porfolio_analysis = analyse_interval(starting_value)
         if not position_taken:
-            this_sma = porfolio_analysis.sma.iloc[-1]
-            this_diff_pct = porfolio_analysis.portfolio_diff_pct.iloc[-1]
+            this_sma = round(porfolio_analysis.sma.iloc[-1],3)
+            this_diff_pct = round(porfolio_analysis.portfolio_diff_pct.iloc[-1],3)
+            #this_sma = porfolio_analysis.sma.iloc[-1]
+            #this_diff_pct = porfolio_analysis.portfolio_diff_pct.iloc[-1]
             if this_diff_pct > this_sma:
                 # the latest diff pct is better than the sma100 diff pct - its getting better, and this is our buy signal
                 buy_value = 0
@@ -269,8 +279,8 @@ def main(args):
                     units_to_buy = asset["quantity"]
                     buy = api.buy_order_market(symbol, units_to_buy)
                     buy_value += buy.filled_total_value
-                    stop_loss = porfolio_analysis.portfolio_value.iloc[-1]
-                    position_taken = True
+                stop_loss = porfolio_analysis.portfolio_value.iloc[-1]
+                position_taken = True
                 message = f"Took position valued at {buy_value}. Last close {this_diff_pct} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}"
                 print(message)
                 notification_service.send(message)
