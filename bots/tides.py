@@ -1,5 +1,4 @@
 from numpy import NaN
-from symtable import Symbol
 from itradeapi import (
     ITradeAPI,
     MARKET_BUY,
@@ -21,6 +20,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import btalib
 
 import time
 import utils
@@ -67,7 +67,6 @@ class MarketData():
         self.yf_symbol = yf_symbol
         self.interval = interval
         self.bars = self.get()
-
 
     def merge_bars(bars, new_bars):
         return pd.concat([bars, new_bars[~new_bars.index.isin(bars.index)]])
@@ -148,7 +147,7 @@ class MarketData():
                 debug=False,
             )
 
-
+            
             self.bars = pd.concat([self.bars, new_bars[~new_bars.index.isin(self.bars.index)]]).sort_index()
 
         # hackity hack - we just changed the length/last record in the dataframe
@@ -160,7 +159,8 @@ class MarketData():
 
 
 def analyse_interval(starting_value):
-    start_date = datetime.now() - relativedelta(minutes=(5*120))
+    start_date = datetime.now() - relativedelta(minutes=(5*300))
+    #start_date = datetime.now() - relativedelta(days=50)
 
     portfolio_values = []
 
@@ -189,13 +189,17 @@ def analyse_interval(starting_value):
     #for this_index in holding["bars"].index:
     #bar_length = len(holding["bars"].index)
     #for i in range(0, bar_length):
-    analyse_date = holding["bars"].index[-110]
+    analyse_date = holding["bars"].index[50]
     analyse_end = holding["bars"].index[-1]
     for holding in benchmark:
         this_end = holding["bars"].index[-1]
         if this_end > analyse_end:
             analyse_end = this_end
     
+        #this_start = holding["bars"].index[0]
+        #if this_start < analyse_date:
+        #    analyse_date = this_start
+
     #now analyse_end is the latest record to finish
     while analyse_date <= analyse_end:
         portfolio_value = 0
@@ -204,17 +208,19 @@ def analyse_interval(starting_value):
             attempts = 0
             while True:
                 try:
-                    portfolio_value += holding["bars"]["portfolio_value"].loc[try_date]
+                    portfolio_value += holding["bars"].portfolio_value.loc[try_date]
                     break
                 except KeyError as e:
                     attempts +=1
-                    if attempts > 5:
+                    if attempts > 20:
                         raise
 
                     try_date = try_date - record_interval
                     #log_wp.log(9, f"{holding['symbol']} does not have a record for {try_date}, falling back on {fallback_date}")
                     #portfolio_value += holding["bars"]["portfolio_value"].loc[fallback_date]
                     # if we're missing more than one cycle of data, then I give up TODO this means no mixing crypto with normies
+                except Exception as e:
+                    print("wut")
 
         diff = portfolio_value - starting_value
         diff_pct = portfolio_value / starting_value
@@ -234,11 +240,12 @@ def analyse_interval(starting_value):
 
     sma = []
     for index in portfolio_df.index:
-        if index < 100:
+        if index <= 100:
             sma.append(NaN)
         else:
-            location = portfolio_df.index.get_loc(index)
-            sma.append(portfolio_df.iloc[-location:].portfolio_diff_pct.mean())
+            sma_end = portfolio_df.index.get_loc(index)+1 # want it to be inclusive of current record
+            sma_start = sma_end-100
+            sma.append(portfolio_df.iloc[sma_start:sma_end].portfolio_diff_pct.mean())
 
     portfolio_df["sma"] = pd.Series(sma).values
     return portfolio_df
@@ -265,10 +272,10 @@ def main(args):
     position_taken = False
     while True:
         #print(f"Processing...")
-        porfolio_analysis = analyse_interval(starting_value)
+        portfolio_analysis = analyse_interval(starting_value)
         if not position_taken:
-            this_sma = round(porfolio_analysis.sma.iloc[-1],3)
-            this_diff_pct = round(porfolio_analysis.portfolio_diff_pct.iloc[-1],3)
+            this_sma = round(portfolio_analysis.sma.iloc[-1],3)
+            this_diff_pct = round(portfolio_analysis.portfolio_diff_pct.iloc[-1],3)
             #this_sma = porfolio_analysis.sma.iloc[-1]
             #this_diff_pct = porfolio_analysis.portfolio_diff_pct.iloc[-1]
             if this_diff_pct > this_sma:
@@ -279,7 +286,7 @@ def main(args):
                     units_to_buy = asset["quantity"]
                     buy = api.buy_order_market(symbol, units_to_buy)
                     buy_value += buy.filled_total_value
-                stop_loss = porfolio_analysis.portfolio_value.iloc[-1]
+                stop_loss = portfolio_analysis.portfolio_value.iloc[-1]
                 position_taken = True
                 message = f"Took position valued at {buy_value}. Last close {this_diff_pct} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}"
                 print(message)
@@ -289,7 +296,7 @@ def main(args):
 
         else:
             # first check if stop loss has been hit, and if so then liquidate
-            current_value = porfolio_analysis.portfolio_value.iloc[-1]
+            current_value = portfolio_analysis.portfolio_value.iloc[-1]
             if current_value < stop_loss:
                 # stop loss hit
                 sell_value = 0

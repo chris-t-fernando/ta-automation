@@ -361,7 +361,8 @@ def get_pause(interval):
     # 5 minutes minus that = seconds til next 5 minute mark
     pause = interval_seconds - mod
     # sleep for another 90 seconds - this is the yahoo finance gap
-    pause += 90
+    if interval_seconds >= 300:
+        pause += 90
     return pause
 
 
