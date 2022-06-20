@@ -9,16 +9,17 @@ import pytz
 import time
 import utils
 
-log_wp = logging.getLogger("symbol_objects")  # or pass an explicit name here, e.g. "mylogger"
+logger = logging.getLogger("symbol_objects")  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.LoggerAdapter(logger, {'SYMBOL': 'None'})
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("symbol_objects.log")
 formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)20s - %(message)s"
+    "%(asctime)s - %(name)s - %(levelname)s - %(SYMBOL)7s - %(funcName)20s - %(message)s"
 )
 hdlr.setFormatter(formatter)
-log_wp.addHandler(hdlr)
-log_wp.addHandler(fhdlr)
-log_wp.setLevel(logging.DEBUG)
+logger.addHandler(hdlr)
+logger.addHandler(fhdlr)
+logger.setLevel(logging.DEBUG)
 
 
 class SymbolCollection():
@@ -43,6 +44,8 @@ class SymbolData():
     ta_data:dict
     interval_minutes:int
     max_range:relativedelta
+    interval_delta:relativedelta
+    refresh_timeout:datetime
 
     class Decorators():
         @classmethod
@@ -54,12 +57,18 @@ class SymbolData():
             return inner
 
     def __init__(self, yf_symbol:str, interval:str="5m"):
+        log_symbol = {"SYMBOL" : yf_symbol}
+        global log_wp
+        log_wp = logging.LoggerAdapter(logger, log_symbol)
+        log_wp.debug("banana")
+
         self.yf_symbol = yf_symbol
         self.interval = interval
         self.registered_ta_functions = set()
         self.ta_data = {}
         self.interval_delta, self.max_range = utils.get_interval_settings(self.interval)
         self.interval_minutes = int(interval[:-1])
+        self.refresh_timeout = None
 
         self.refresh_cache()
 
@@ -129,19 +138,19 @@ class SymbolData():
             max_duration = rounded_end - self.max_range
             rounded_start = self.round_time(max_duration) 
             
-            query_start = rounded_start
+            yf_start = rounded_start
 
             self.bars = pd.DataFrame()
 
         # has a bars attribute so its safe to inspect it
         else:
-            query_start = self.bars.index[-1]
+            yf_start = self.bars.index[-1]
             if start == None:
                 rounded_start = self.bars.index[0]
             else:
                 rounded_start = self.round_time(start)
                 if rounded_start < self.bars.index[0]:
-                    query_start = rounded_start
+                    yf_start = rounded_start
                     cache_miss = True
                     log_wp.debug(f"Cache miss - start earlier than bars")
                 elif rounded_start > self.bars.index[-1]:
@@ -155,20 +164,29 @@ class SymbolData():
             if rounded_end > self.bars.index[-1]:
                 cache_miss = True
                 log_wp.debug(f"Cache miss - end later than bars")
-        
+
         if cache_miss:
-            log_wp.debug(f"Querying to update cache")
+            if self.refresh_timeout != None and self.refresh_timeout > datetime.now():
+                log_wp.debug(f"Cache timeout {self.refresh_timeout} is still in effect, cancelling cache refresh")
+                return
+
+            log_wp.debug(f"Cache miss")
+            log_wp.debug(f"  - pulling from yf from {yf_start}")
             new_bars = yf.Ticker(self.yf_symbol).history(
-                start=query_start,
+                start=yf_start,
                 interval=self.interval,
                 actions=False,
                 debug=False,
             )
 
+            if len(new_bars) == 0:
+                log_wp.error(f"Failed to retrieve new bars")
+                return
+
             # yfinance returns results for periods still in progress (eg. includes 9:07:00 after 9:05:00 if you query at 9:08)
             if not self._validate_minute(new_bars.index[-1].minute):
                 # trim it
-                log_wp.debug(f"Dropped half-baked row {new_bars.index[-1]}")
+                log_wp.debug(f"  - dropped half-baked row {new_bars.index[-1]}")
                 new_bars = new_bars.iloc[:-1]
 
             if not initialising:
@@ -179,13 +197,19 @@ class SymbolData():
             self.bars = self.merge_bars(self.bars, new_bars)
 
             if not initialising:
-                log_wp.debug(f"Merged {old_rows} old bars with {len(new_bars)} new bars, new length is {len(self.bars)}")
+                log_wp.debug(f"  - merged {old_rows:,} old bars with {len(new_bars):,} new bars, new length is {len(self.bars):,}")
                 if self.bars.index[0] != old_start:
-                    log_wp.debug(f"New start is {self.bars.index[0]} vs old {old_start}")
+                    log_wp.debug(f"  - new start is {self.bars.index[0]} vs old {old_start}")
                 if self.bars.index[-1] != old_finish:
-                    log_wp.debug(f"New finish is {self.bars.index[-1]} vs old {old_finish}")
+                    log_wp.debug(f"  - new finish is {self.bars.index[-1]} vs old {old_finish}")
 
             self._reapply_btalib(start = new_bars.index[0], end = new_bars.index[-1])
+
+            timeout_seconds = utils.get_pause(self.interval)
+            timeout_window = relativedelta(seconds=timeout_seconds)
+            new_timeout = datetime.now() + timeout_window
+            self.refresh_timeout = new_timeout
+            
 
         # hackity hack - we just changed the length/last record in the dataframe
         #if end == None:
@@ -251,7 +275,7 @@ class SymbolData():
         return timestamp in self.bars
 
 
-interval_string = "1m"
+interval_string = "5m"
 a = SymbolData("SOL-USD", interval_string)
 #a.bars = a.bars.loc[(a.bars.index > pd.Timestamp("2022-06-10 23:00:00-04:00"))]
 #a.get(start=pd.Timestamp("2022-06-04 12:32:39-04:00"))
@@ -265,7 +289,7 @@ while True:
     pause = utils.get_pause(interval_string)
     log_wp.debug(f"Got data, sleeping for {round(pause,0)}s")
     time.sleep(pause)
-    print(a.get_last(refresh=True))
+    print(a.get_last(refresh=True).name)
 
 print("banana")
 #a.apply_btalib(btalib.sma, "2022-06-14 12:05:00-04:00", "2022-06-17 16:00:00-04:00")
