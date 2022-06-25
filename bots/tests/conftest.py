@@ -1,10 +1,9 @@
 import pytest
-from stock_symbol import Symbol
+from macd_worker import MacdWorker
 import pandas as pd
 from datetime import datetime
-from stock_symbol import Symbol
-from alpaca_wrapper import AlpacaAPI
-from back_test_wrapper import BackTestAPI
+from broker_alpaca import AlpacaAPI
+from broker_back_test import BackTestAPI
 import boto3
 import parameter_stores
 import yfinance as yf
@@ -12,6 +11,7 @@ from dateutil.relativedelta import relativedelta
 import pytz
 import utils
 from alpaca_trade_api import REST, entity
+
 
 fixtures_path = "bots/tests/fixtures/"
 

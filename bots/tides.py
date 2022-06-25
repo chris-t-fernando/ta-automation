@@ -7,14 +7,15 @@ from itradeapi import (
     LIMIT_SELL,
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
-UnknownSymbolError,
- DelistedAssetError,
- UntradeableAssetError,
- MalformedOrderResult,
- ZeroUnitsOrderedError,
- ApiRateLimitError,
- BuyImmediatelyTriggeredError
+    UnknownSymbolError,
+    DelistedAssetError,
+    UntradeableAssetError,
+    MalformedOrderResult,
+    ZeroUnitsOrderedError,
+    ApiRateLimitError,
+    BuyImmediatelyTriggeredError,
 )
+from symbol_objects import SymbolCollection, SymbolData
 
 import logging
 import pandas as pd
@@ -46,121 +47,127 @@ _PREFIX = "tabot"
 PATH_PAPER_ALPACA_API_KEY = f"/{_PREFIX}/paper/alpaca/api_key"
 PATH_PAPER_ALPACA_SECURITY_KEY = f"/{_PREFIX}/paper/alpaca/security_key"
 slack_bot_key_path = f"/{_PREFIX}/slack/bot_key"
-slack_channel_path=f"/{_PREFIX}/paper/slack/announcements_channel"
+slack_channel_path = f"/{_PREFIX}/paper/slack/announcements_channel"
 
 record_interval = relativedelta(minutes=5)
 
 benchmark = [
-    {"symbol":"ETH-USD","quantity":1},
-    {"symbol":"ALGO-USD","quantity":1014},
-    {"symbol":"SHIB-USD","quantity":61200000},
-    {"symbol":"DOGE-USD","quantity":8923},
-    {"symbol":"SOL-USD","quantity":16},
-    {"symbol":"MATIC-USD","quantity":1280},
-    {"symbol":"AVAX-USD","quantity":31},
+    {"symbol": "ETH-USD", "quantity": 1},
+    {"symbol": "ALGO-USD", "quantity": 1014},
+    {"symbol": "SHIB-USD", "quantity": 61200000},
+    {"symbol": "DOGE-USD", "quantity": 8923},
+    {"symbol": "SOL-USD", "quantity": 16},
+    {"symbol": "MATIC-USD", "quantity": 1280},
+    {"symbol": "AVAX-USD", "quantity": 31},
 ]
 
-class RecordOutOfBoundsError(Exception):...
-
-class MarketData():
-    def __init__(self, yf_symbol:str, interval:str="5m"):
-        self.yf_symbol = yf_symbol
-        self.interval = interval
-        self.bars = self.get()
-
-    def merge_bars(bars, new_bars):
-        return pd.concat([bars, new_bars[~new_bars.index.isin(bars.index)]])
-
-    def round_time(self, date: pd.Timestamp, interval=5):
-        minutes = (date.minute % interval) * 60
-        seconds = date.second
-        total_seconds = minutes + seconds
-        
-        interval_seconds = interval * 60
-        interval_midpoint = interval_seconds / 2
-        
-        if total_seconds < interval_midpoint:
-            # round down
-            delta = -relativedelta(seconds=total_seconds)
-            
-        else:
-            # round up
-            padding = interval_seconds - total_seconds
-            delta = relativedelta(seconds = padding)
-
-        rounded_timestamp = date + delta
-        return rounded_timestamp
+benchmark = {
+    "ETH-USD": 1,
+    "ALGO-USD": 1014,
+    "SHIB-USD": 61200000,
+    "DOGE-USD": 8923,
+    "SOL-USD": 16,
+    "MATIC-USD": 1280,
+    "AVAX-USD": 31,
+}
 
 
-    def get(self, start: pd.Timestamp=None, end: pd.Timestamp=None):
-        cache_miss = False
+class PortfolioValue(SymbolCollection):
+    class Decorators:
+        @classmethod
+        def add_portfolio_values(cls, decorated):
+            def inner(*args, **kwargs):
+                returned_values = decorated(*args, **kwargs)
+                return args[0]._add_portfolio_values(returned_values)
 
-        if not hasattr(self, "bars") or len(self.bars) == 0:
-            cache_miss = True
-            log_wp.debug(f"Cache miss - bars len 0")
-            
-            start_date_unaware = datetime.now() - relativedelta(days=59)
-            start_date_melbourne = start_date_unaware.replace(tzinfo=pytz.timezone("Australia/Melbourne"))
+            return inner
 
-            # if there's no - then assume its NYSE, else assume its crypto
-            if self.yf_symbol.find("-") == -1:
-                tz = "US/Eastern"
+    def __init__(
+        self, portfolio: dict, symbols: list = None, interval: str = "5m", log_level=logging.DEBUG
+    ):
+        super().__init__(symbols, interval, log_level)
+        self.portfolio = portfolio
+
+    def _add_portfolio_values(self, collection):
+        for k, s in collection.items():
+            s["Units_held"] = self.portfolio[k]
+            s["Close_value"] = s["Close"] * s["Units_held"]
+        return collection
+
+    @Decorators.add_portfolio_values
+    def get_range(self, start: pd.Timestamp = None, end: pd.Timestamp = None):
+        return super().get_range(start, end)
+
+    @Decorators.add_portfolio_values
+    def get_all(self, foward_fill: bool = True):
+        return super().get_all(foward_fill)
+
+    @Decorators.add_portfolio_values
+    def get_one(self, date: pd.Timestamp, approximate: bool = True):
+        return super().get_one(date, approximate)
+
+    @Decorators.add_portfolio_values
+    def get_latest(self):
+        return super().get_latest()
+
+    @Decorators.add_portfolio_values
+    def get_first(self):
+        return super().get_first()
+
+    def sum_first(self) -> float:
+        first_values = self.get_first()
+        sum_total = 0
+        for s in first_values:
+            sum_total += s.Close_value
+        return sum_total
+
+    def sum_latest(self) -> float:
+        first_values = self.get_latest()
+        sum_total = 0
+        for s in first_values:
+            sum_total += s.Close_value
+        return sum_total
+
+    def sum_range(self, start: pd.Timestamp = None, end: pd.Timestamp = None) -> pd.DataFrame:
+        range_values = self.get_range(start, end)
+        return_df = pd.DataFrame
+        for k, s in range_values.items():
+            if return_df.empty:
+                return_df = s["Close_value"].to_frame()
             else:
-                tz = "UTC"
+                return_df = return_df["Close_value"].to_frame() + s["Close_value"].to_frame()
 
-            start_date = start_date_melbourne.astimezone(pytz.timezone(tz))
-            rounded_start = self.round_time(start_date)
-            rounded_end = rounded_start + relativedelta(days=59)
+        return return_df
 
-            query_start = rounded_start
-
-            self.bars = pd.DataFrame()
-
-        # has a bars attribute so its safe to inspect it
-        else:
-            query_start = self.bars.index[-1]
-            if start == None:
-                rounded_start = self.bars.index[0]
+    def sum_all(self) -> pd.DataFrame:
+        all_values = self.get_all()
+        return_df = pd.DataFrame
+        for k, s in all_values.items():
+            if return_df.empty:
+                return_df = s["Close_value"].to_frame()
             else:
-                rounded_start = self.round_time(start)
-                if rounded_start < self.bars.index[0]:
-                    cache_miss = True
-                    log_wp.debug(f"Cache miss - start earlier than bars")
-                elif rounded_start > self.bars.index[-1]:
-                    cache_miss = True
-                    log_wp.debug(f"Cache miss - start later than bars")
+                return_df = return_df["Close_value"].to_frame() + s["Close_value"].to_frame()
 
-            if end == None:
-                rounded_end = self.bars.index[-1]
-            else:
-                rounded_end = self.round_time(end)
-                if rounded_end > self.bars.index[-1]:
-                    cache_miss = True
-                    log_wp.debug(f"Cache miss - end later than bars")
-        
-        if cache_miss:
-            log_wp.debug(f"Querying to update cache")
-            new_bars = yf.Ticker(self.yf_symbol).history(
-                start=query_start,
-                interval=self.interval,
-                actions=False,
-                debug=False,
-            )
+        return return_df
 
-            
-            self.bars = pd.concat([self.bars, new_bars[~new_bars.index.isin(self.bars.index)]]).sort_index()
 
-        # hackity hack - we just changed the length/last record in the dataframe
-        if end == None:
-            rounded_end = self.bars.index[-1]
+def new_analyse_interval(starting_value, symbol_collection: SymbolCollection):
+    idx = symbol_collection.get_latest()
 
-        return_records = self.bars.loc[(self.bars.index >= rounded_start) & (self.bars.index <= rounded_end)]
-        return return_records
+    latest = symbol_collection.get()
+    total_value = 0
+    for holding in benchmark:
+        this_symbol = holding["symbol"]
+        this_quantity = holding["quantity"]
+        this_close = latest[this_symbol].Close
+        this_value = this_quantity * this_close
+        total_value += this_value
+    print(f"Current value: {total_value}")
 
 
 def analyse_interval(starting_value):
-    start_date = datetime.now() - relativedelta(minutes=(5*300))
-    #start_date = datetime.now() - relativedelta(days=50)
+    start_date = datetime.now() - relativedelta(minutes=(5 * 300))
+    # start_date = datetime.now() - relativedelta(days=50)
 
     portfolio_values = []
 
@@ -185,22 +192,22 @@ def analyse_interval(starting_value):
         quote["portfolio_value"] = quote["Close"] * holding["quantity"]
         holding["bars"] = quote
 
-    #while current_record <= holding["bars"].index[-1]:
-    #for this_index in holding["bars"].index:
-    #bar_length = len(holding["bars"].index)
-    #for i in range(0, bar_length):
+    # while current_record <= holding["bars"].index[-1]:
+    # for this_index in holding["bars"].index:
+    # bar_length = len(holding["bars"].index)
+    # for i in range(0, bar_length):
     analyse_date = holding["bars"].index[50]
     analyse_end = holding["bars"].index[-1]
     for holding in benchmark:
         this_end = holding["bars"].index[-1]
         if this_end > analyse_end:
             analyse_end = this_end
-    
-        #this_start = holding["bars"].index[0]
-        #if this_start < analyse_date:
+
+        # this_start = holding["bars"].index[0]
+        # if this_start < analyse_date:
         #    analyse_date = this_start
 
-    #now analyse_end is the latest record to finish
+    # now analyse_end is the latest record to finish
     while analyse_date <= analyse_end:
         portfolio_value = 0
         for holding in benchmark:
@@ -211,26 +218,26 @@ def analyse_interval(starting_value):
                     portfolio_value += holding["bars"].portfolio_value.loc[try_date]
                     break
                 except KeyError as e:
-                    attempts +=1
+                    attempts += 1
                     if attempts > 20:
                         raise
 
                     try_date = try_date - record_interval
-                    #log_wp.log(9, f"{holding['symbol']} does not have a record for {try_date}, falling back on {fallback_date}")
-                    #portfolio_value += holding["bars"]["portfolio_value"].loc[fallback_date]
+                    # log_wp.log(9, f"{holding['symbol']} does not have a record for {try_date}, falling back on {fallback_date}")
+                    # portfolio_value += holding["bars"]["portfolio_value"].loc[fallback_date]
                     # if we're missing more than one cycle of data, then I give up TODO this means no mixing crypto with normies
                 except Exception as e:
                     print("wut")
 
         diff = portfolio_value - starting_value
         diff_pct = portfolio_value / starting_value
-        
+
         new_row = pd.DataFrame(
             {
-                "timestamp":analyse_date,
-                "portfolio_value":portfolio_value,
-                "portfolio_diff":diff,
-                "portfolio_diff_pct":diff_pct,
+                "timestamp": analyse_date,
+                "portfolio_value": portfolio_value,
+                "portfolio_diff": diff,
+                "portfolio_diff_pct": diff_pct,
             },
             index=[1],
             columns=columns,
@@ -243,22 +250,52 @@ def analyse_interval(starting_value):
         if index <= 100:
             sma.append(NaN)
         else:
-            sma_end = portfolio_df.index.get_loc(index)+1 # want it to be inclusive of current record
-            sma_start = sma_end-100
+            sma_end = (
+                portfolio_df.index.get_loc(index) + 1
+            )  # want it to be inclusive of current record
+            sma_start = sma_end - 100
             sma.append(portfolio_df.iloc[sma_start:sma_end].portfolio_diff_pct.mean())
 
     portfolio_df["sma"] = pd.Series(sma).values
     return portfolio_df
+
+
+def add_sma(portfolio_df, sma_intervals: int = 100, sma_period=20):
+    if len(portfolio_df) < sma_intervals:
+        raise KeyError(
+            f"Cannot calculate SMA for {sma_intervals} intervals, since length of dataframe is only {len(portfolio_df)}"
+        )
+
+    slice_length = sma_intervals + sma_period
+    df = portfolio_df.iloc[-slice_length:]
+    sma = []
+
+    for index in df.index:
+        if index <= df.index[sma_period]:
+            sma.append(NaN)
+        else:
+            sma_end = df.index.get_loc(index) + 1  # want it to be inclusive of current record
+            sma_start = sma_end - sma_period
+            sma.append(df.iloc[sma_start:sma_end].mean().Close_value)
+
+    df["sma"] = pd.Series(sma).values
+    # trim the NaNs
+    df = df[-sma_intervals:]
+    if "sma" not in portfolio_df:
+        portfolio_df["sma"] = NaN
+
+    portfolio_df[portfolio_df["sma"].isnull()] = df
+    return portfolio_df
+    # return pd.concat([portfolio_df, df[~df.index.isin(portfolio_df.index)]]).sort_index()
+    pd.concat([bars, new_bars[~new_bars.index.isin(bars.index)]]).sort_index()
+
 
 def main(args):
     store = Ssm()
     alpaca_api_key = store.get(path=PATH_PAPER_ALPACA_API_KEY)
     alpaca_security_key = store.get(path=PATH_PAPER_ALPACA_SECURITY_KEY)
 
-    api = AlpacaAPI(
-        alpaca_key_id=alpaca_api_key,
-        alpaca_secret_key=alpaca_security_key
-    )
+    api = AlpacaAPI(alpaca_key_id=alpaca_api_key, alpaca_secret_key=alpaca_security_key)
 
     slack_bot_key = store.get(path=slack_bot_key_path)
     slack_announcements_channel = store.get(path=slack_channel_path)
@@ -266,18 +303,22 @@ def main(args):
         bot_key=slack_bot_key, channel=slack_announcements_channel
     )
 
-    starting_value = 4086
+    symbol_collection = PortfolioValue(benchmark, [k for k, v in benchmark.items()])
+    portfolio_history = symbol_collection.sum_all()
+    starting_value = portfolio_history.iloc[0]
+    portfolio_history = add_sma(portfolio_history)
 
     # okay so we've set our starting point, now keep grabbing data and checking if we should buy in
     position_taken = False
     while True:
-        #print(f"Processing...")
-        portfolio_analysis = analyse_interval(starting_value)
+        # print(f"Processing...")
+        # portfolio_analysis = analyse_interval(starting_value)
+        portfolio_analysis = new_analyse_interval(starting_value, symbol_collection)
         if not position_taken:
-            this_sma = round(portfolio_analysis.sma.iloc[-1],3)
-            this_diff_pct = round(portfolio_analysis.portfolio_diff_pct.iloc[-1],3)
-            #this_sma = porfolio_analysis.sma.iloc[-1]
-            #this_diff_pct = porfolio_analysis.portfolio_diff_pct.iloc[-1]
+            this_sma = round(portfolio_analysis.sma.iloc[-1], 3)
+            this_diff_pct = round(portfolio_analysis.portfolio_diff_pct.iloc[-1], 3)
+            # this_sma = porfolio_analysis.sma.iloc[-1]
+            # this_diff_pct = porfolio_analysis.portfolio_diff_pct.iloc[-1]
             if this_diff_pct > this_sma:
                 # the latest diff pct is better than the sma100 diff pct - its getting better, and this is our buy signal
                 buy_value = 0
@@ -316,7 +357,7 @@ def main(args):
                 profit = current_value - stop_loss
                 if profit < 0:
                     print("banana")
-                profit_50 = profit*.5
+                profit_50 = profit * 0.5
                 new_stop_loss = stop_loss + profit_50
                 if new_stop_loss > stop_loss:
                     message = f"Changing stop loss from {stop_loss:,.4f} to {new_stop_loss:,.4f}"
@@ -332,9 +373,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-    #a= MarketData("SOL-USD")
-    #a.bars = a.bars.loc[(a.bars.index < pd.Timestamp("2022-06-10 23:00:00-04:00"))]
-    #a.get(start=pd.Timestamp("2022-06-14 12:32:39-04:00"))
+    # a= MarketData("SOL-USD")
+    # a.bars = a.bars.loc[(a.bars.index < pd.Timestamp("2022-06-10 23:00:00-04:00"))]
+    # a.get(start=pd.Timestamp("2022-06-14 12:32:39-04:00"))
     args = None
-    
+
     main(args)

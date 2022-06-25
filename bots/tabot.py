@@ -53,11 +53,11 @@ def main(args):
         print("****************************")
         print("WARNING!!! This bot is about to spend your REAL MONEY.")
         print(
-            "It comes with zero warranty and all transactions are premanent and final."
+            "It comes with zero warranty and all transactions are permanent and final."
         )
         print("Only continue if you can afford to lose it ALL.")
         print("****************************")
-        confirmation = input("To continue, type Yes (including capitals): ")
+        confirmation = input("To continue, type Yes (case sensitive): ")
         if confirmation != "Yes":
             print("Exiting.")
             exit()
