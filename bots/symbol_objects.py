@@ -221,11 +221,11 @@ class SymbolData:
 
     def _configure_logging(self, level):
         logger = logging.getLogger(self.yf_symbol)  # or pass an explicit name here, e.g. "mylogger"
-        log_wp = logging.LoggerAdapter(logger, {"SYMBOL": self.yf_symbol})
+        log_wp = logging.LoggerAdapter(logger)
         hdlr = logging.StreamHandler()
         fhdlr = logging.FileHandler(f"symbol_objects_{self.yf_symbol}.log")
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(SYMBOL)7s - %(funcName)20s - %(message)s"
+            "%(asctime)s - %(name)9s - %(levelname)s - %(funcName)20s - %(message)s"
         )
         hdlr.setFormatter(formatter)
         logger.addHandler(hdlr)
