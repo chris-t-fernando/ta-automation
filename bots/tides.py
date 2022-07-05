@@ -150,6 +150,18 @@ class PortfolioValue(SymbolCollection):
 
         return return_df
 
+    @property
+    def portfolio_df(self):
+        # TODO only recalculate the bits that have changed since last run
+        portfolio_df = self.sum_all()
+        starting_value = portfolio_df.iloc[0].Close_value
+        portfolio_df = add_sma(portfolio_df)
+        add_comparisons(portfolio_df, starting_value)
+        return portfolio_df
+
+        # this_sma = round(portfolio_analysis.sma.iloc[-1], 3)
+        # this_diff_pct = round(portfolio_analysis.portfolio_diff_pct.iloc[-1], 3)
+
 
 def new_analyse_interval(starting_value, symbol_collection: SymbolCollection):
     idx = symbol_collection.get_latest()
@@ -287,6 +299,8 @@ def add_sma(portfolio_df, sma_intervals: int = 100, sma_period=20):
     df = df.loc[df.sma.isna() == False]
     portfolio_df = portfolio_df.assign(sma=df["sma"])
     log_wp.debug(f"Added {len(sma)} SMA values to portfolio_df")
+    return portfolio_df
+
     # if "sma" not in portfolio_df.columns:
     #    portfolio_df["sma"] = NaN
     # portfolio_df[portfolio_df["sma"].isnull()] = df
@@ -324,25 +338,18 @@ def main(args):
     )
 
     symbol_collection = PortfolioValue(benchmark, [k for k, v in benchmark.items()])
-    portfolio_history = symbol_collection.sum_all()
-    starting_value = portfolio_history.iloc[0].Close_value
 
     # okay so we've set our starting point, now keep grabbing data and checking if we should buy in
     position_taken = False
     while True:
-        # print(f"Processing...")
-        # portfolio_analysis = analyse_interval(starting_value)
-        # portfolio_analysis = new_analyse_interval(starting_value, symbol_collection)
-        
-        portfolio_history = add_sma(portfolio_history)
-        add_comparisons(portfolio_history, starting_value)
-
+        current_portfolio = symbol_collection.portfolio_df
         if not position_taken:
-            this_sma = round(portfolio_analysis.sma.iloc[-1], 3)
-            this_diff_pct = round(portfolio_analysis.portfolio_diff_pct.iloc[-1], 3)
+            this_sma = round(current_portfolio.sma.iloc[-1], 3)
+            this_close = round(current_portfolio.Close_value.iloc[-1], 3)
+            # this_diff_pct = round(current_portfolio.portfolio_diff_pct.iloc[-1], 3)
             # this_sma = porfolio_analysis.sma.iloc[-1]
             # this_diff_pct = porfolio_analysis.portfolio_diff_pct.iloc[-1]
-            if this_diff_pct > this_sma:
+            if this_close > this_sma:
                 # the latest diff pct is better than the sma100 diff pct - its getting better, and this is our buy signal
                 buy_value = 0
                 for asset in benchmark:
@@ -350,17 +357,17 @@ def main(args):
                     units_to_buy = asset["quantity"]
                     buy = api.buy_order_market(symbol, units_to_buy)
                     buy_value += buy.filled_total_value
-                stop_loss = portfolio_analysis.portfolio_value.iloc[-1]
+                stop_loss = current_portfolio.portfolio_value.iloc[-1]
                 position_taken = True
-                message = f"Took position valued at {buy_value}. Last close {this_diff_pct} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}"
+                message = f"Took position valued at {buy_value}. Last close {this_close} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}"
                 print(message)
                 notification_service.send(message)
             else:
-                log_wp.debug(f"No crossover found (last close {this_diff_pct}, SMA {this_sma})")
+                log_wp.debug(f"No crossover found (last close {this_close}, SMA {this_sma})")
 
         else:
             # first check if stop loss has been hit, and if so then liquidate
-            current_value = portfolio_analysis.portfolio_value.iloc[-1]
+            current_value = current_portfolio.portfolio_value.iloc[-1]
             if current_value < stop_loss:
                 # stop loss hit
                 sell_value = 0

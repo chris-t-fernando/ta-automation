@@ -124,6 +124,7 @@ class SymbolCollection:
         # first make a superset of the indexes
         indexes = set()
         for k, s in self.symbols.items():
+            s.refresh_cache()
             this_index = set(s.bars.index)
             indexes = indexes.union(this_index)
 
