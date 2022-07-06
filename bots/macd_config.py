@@ -7,9 +7,7 @@ from bot_telemetry import BotTelemetry
 from parameter_stores import Ssm, BackTestStore
 import notification_services
 
-log_wp = logging.getLogger(
-    "macd_config"
-)  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.getLogger("macd_config")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("macd_config.log")
 log_wp.setLevel(logging.DEBUG)
@@ -20,18 +18,17 @@ hdlr.setFormatter(formatter)
 log_wp.addHandler(fhdlr)
 log_wp.addHandler(hdlr)
 
+
 class MacdConfig:
     _PREFIX = "tabot"
-    ORDER_SIZE = f"/{_PREFIX}/order_size"
+    PATH_ORDER_SIZE = f"/{_PREFIX}/order_size"
     SAVED_SYMBOL_DATA_BUCKET = "mfers-tabot"
     SAVED_SYMBOL_KEY_BASE = "symbol_data/"
     PATH_PAPER_ALPACA_API_KEY = f"/{_PREFIX}/paper/alpaca/api_key"
     PATH_PAPER_ALPACA_SECURITY_KEY = f"/{_PREFIX}/paper/alpaca/security_key"
     PAPER_HEARTBEAT = f"/{_PREFIX}/paper/heartbeat"
     PAPER_HEARTBEAT_RESULT = f"/{_PREFIX}/paper/heartbeat_result"
-    PATH_PAPER_SLACK_ANNOUNCEMENTS_CHANNEL = (
-        f"/{_PREFIX}/paper/slack/announcements_channel"
-    )
+    PATH_PAPER_SLACK_ANNOUNCEMENTS_CHANNEL = f"/{_PREFIX}/paper/slack/announcements_channel"
     PATH_PAPER_SLACK_HEARTBEAT_CHANNEL = f"/{_PREFIX}/paper/slack/heartbeat_channel"
     PATH_PAPER_SWYFTX_ACCESS_TOKEN = f"/{_PREFIX}/paper/swyftx/access_token"
     PATH_PAPER_SWYFTX_API_KEY = f"/{_PREFIX}/paper/swyftx/api_key"
@@ -43,9 +40,7 @@ class MacdConfig:
     PATH_PROD_ALPACA_SECURITY_KEY = f"/{_PREFIX}/prod/alpaca/security_key"
     PROD_HEARTBEAT = f"/{_PREFIX}/prod/heartbeat"
     PROD_HEARTBEAT_RESULT = f"/{_PREFIX}/prod/heartbeat_result"
-    PATH_PROD_SLACK_ANNOUNCEMENTS_CHANNEL = (
-        f"/{_PREFIX}/prod/slack/announcements_channel"
-    )
+    PATH_PROD_SLACK_ANNOUNCEMENTS_CHANNEL = f"/{_PREFIX}/prod/slack/announcements_channel"
     PATH_PROD_SLACK_HEARTBEAT_CHANNEL = f"/{_PREFIX}/prod/slack/heartbeat_channel"
     PATH_PROD_SWYFTX_ACCESS_TOKEN = f"/{_PREFIX}/prod/swyftx/access_token"
     PATH_PROD_SWYFTX_API_KEY = f"/{_PREFIX}/prod/swyftx/api_key"
@@ -59,8 +54,8 @@ class MacdConfig:
     PATH_SLACK_SIGNING_TOKEN = f"/{_PREFIX}/slack/signing_token"
 
     order_size: float
-    saved_symbol_data_bucket:str
-    saved_symbol_key_base:str
+    saved_symbol_data_bucket: str
+    saved_symbol_key_base: str
     path_alpaca_api_key: str
     path_alpaca_security_key: str
     path_heartbeat: str
@@ -90,7 +85,6 @@ class MacdConfig:
     path_notification_service: str = "slack"
     store = IParameterStore = None
     run_type: str
-    
 
     def __init__(self, args):
         self.interval = args.interval
@@ -106,14 +100,12 @@ class MacdConfig:
         self.saved_symbol_key_base = f"{self.SAVED_SYMBOL_KEY_BASE}{self.interval}/"
 
         if args.run_type == "prod":
-            self.order_size = self.ORDER_SIZE
+            self.path_order_size = self.PATH_ORDER_SIZE
             self.path_alpaca_api_key = self.PATH_PROD_ALPACA_API_KEY
             self.path_alpaca_security_key = self.PATH_PROD_ALPACA_SECURITY_KEY
             self.heartbeat = self.PROD_HEARTBEAT
             self.heartbeat_result = self.PROD_HEARTBEAT_RESULT
-            self.path_slack_announcements_channel = (
-                self.PATH_PROD_SLACK_ANNOUNCEMENTS_CHANNEL
-            )
+            self.path_slack_announcements_channel = self.PATH_PROD_SLACK_ANNOUNCEMENTS_CHANNEL
             self.path_slack_heartbeat_channel = self.PATH_PROD_SLACK_HEARTBEAT_CHANNEL
             self.path_pushover_api_key = self.PATH_PUSHOVER_API_KEY
             self.path_pushover_user_key = self.PATH_PUSHOVER_USER_KEY
@@ -130,14 +122,12 @@ class MacdConfig:
             self.store = Ssm()
 
         elif args.run_type == "paper":
-            self.order_size = self.ORDER_SIZE
+            self.path_order_size = self.PATH_ORDER_SIZE
             self.path_alpaca_api_key = self.PATH_PAPER_ALPACA_API_KEY
             self.path_alpaca_security_key = self.PATH_PAPER_ALPACA_SECURITY_KEY
             self.heartbeat = self.PAPER_HEARTBEAT
             self.heartbeat_result = self.PAPER_HEARTBEAT_RESULT
-            self.path_slack_announcements_channel = (
-                self.PATH_PAPER_SLACK_ANNOUNCEMENTS_CHANNEL
-            )
+            self.path_slack_announcements_channel = self.PATH_PAPER_SLACK_ANNOUNCEMENTS_CHANNEL
             self.path_slack_heartbeat_channel = self.PATH_PAPER_SLACK_HEARTBEAT_CHANNEL
             self.path_pushover_api_key = self.PATH_PUSHOVER_API_KEY
             self.path_pushover_user_key = self.PATH_PUSHOVER_USER_KEY
@@ -152,18 +142,15 @@ class MacdConfig:
             self.paper_testing = True
 
             self.store = Ssm()
-            
 
         elif args.run_type == "back_test":
             # I'm lazy and haven't made back_test paths yet so just borrow from paper
-            self.order_size = self.ORDER_SIZE
+            self.path_order_size = self.PATH_ORDER_SIZE
             self.path_alpaca_api_key = self.PATH_PAPER_ALPACA_API_KEY
             self.path_alpaca_security_key = self.PATH_PAPER_ALPACA_SECURITY_KEY
             self.heartbeat = self.PAPER_HEARTBEAT
             self.heartbeat_result = self.PAPER_HEARTBEAT_RESULT
-            self.path_slack_announcements_channel = (
-                self.PATH_PAPER_SLACK_ANNOUNCEMENTS_CHANNEL
-            )
+            self.path_slack_announcements_channel = self.PATH_PAPER_SLACK_ANNOUNCEMENTS_CHANNEL
             self.path_slack_heartbeat_channel = self.PATH_PAPER_SLACK_HEARTBEAT_CHANNEL
             self.path_pushover_api_key = self.PATH_PUSHOVER_API_KEY
             self.path_pushover_user_key = self.PATH_PUSHOVER_USER_KEY
@@ -191,8 +178,7 @@ class MacdConfig:
                 self.path_slack_signing_token,
                 self.path_slack_heartbeat_channel,
                 self.path_swyftx_access_token,
-                self.path_swyftx_api_key
-
+                self.path_swyftx_api_key,
             )
 
         else:
@@ -214,6 +200,7 @@ class MacdConfig:
         self.slack_announcements_channel = self.store.get(
             path=self.path_slack_announcements_channel
         )
+        self.order_size = float(self.store.get(path=self.path_order_size))
 
         if self.back_testing:
             self.notification_service = notification_services.LocalEcho()

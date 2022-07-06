@@ -1,36 +1,17 @@
 from numpy import NaN
-from itradeapi import (
-    ITradeAPI,
-    MARKET_BUY,
-    MARKET_SELL,
-    LIMIT_BUY,
-    LIMIT_SELL,
-    STOP_LIMIT_BUY,
-    STOP_LIMIT_SELL,
-    UnknownSymbolError,
-    DelistedAssetError,
-    UntradeableAssetError,
-    MalformedOrderResult,
-    ZeroUnitsOrderedError,
-    ApiRateLimitError,
-    BuyImmediatelyTriggeredError,
-)
-from symbol_objects import SymbolCollection, SymbolData
+from symbol_objects import SymbolCollection
 
 import logging
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-import btalib
 
 import time
 import utils
-import sample_symbols
 import notification_services
 from parameter_stores import Ssm
 from broker_alpaca import AlpacaAPI
 import yfinance as yf
-import pytz
 
 log_wp = logging.getLogger("tides")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -227,7 +208,7 @@ def analyse_interval(starting_value):
             attempts = 0
             while True:
                 try:
-                    portfolio_value += holding["bars"].portfolio_value.loc[try_date]
+                    portfolio_value += holding["bars"].Close_value.loc[try_date]
                     break
                 except KeyError as e:
                     attempts += 1
@@ -352,12 +333,12 @@ def main(args):
             if this_close > this_sma:
                 # the latest diff pct is better than the sma100 diff pct - its getting better, and this is our buy signal
                 buy_value = 0
-                for asset in benchmark:
-                    symbol = asset["symbol"].replace("-", "")
-                    units_to_buy = asset["quantity"]
+                for asset, quantity in benchmark.items():
+                    symbol = asset.replace("-", "")
+                    units_to_buy = quantity
                     buy = api.buy_order_market(symbol, units_to_buy)
                     buy_value += buy.filled_total_value
-                stop_loss = current_portfolio.portfolio_value.iloc[-1]
+                stop_loss = current_portfolio.Close_value.iloc[-1]
                 position_taken = True
                 message = f"Took position valued at {buy_value}. Last close {this_close} > SMA {this_sma} value/stop loss of {stop_loss:,.4f}"
                 print(message)
@@ -367,13 +348,13 @@ def main(args):
 
         else:
             # first check if stop loss has been hit, and if so then liquidate
-            current_value = current_portfolio.portfolio_value.iloc[-1]
+            current_value = current_portfolio.Close_value.iloc[-1]
             if current_value < stop_loss:
                 # stop loss hit
                 sell_value = 0
-                for asset in benchmark:
-                    symbol = asset["symbol"].replace("-", "")
-                    units_to_sell = asset["quantity"]
+                for asset, quantity in benchmark.items():
+                    symbol = asset.replace("-", "")
+                    units_to_sell = quantity
                     sell = api.sell_order_market(symbol, units_to_sell)
                     sell_value += sell.filled_total_value
 

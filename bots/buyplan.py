@@ -26,12 +26,29 @@ log_wp.addHandler(hdlr)
 log_wp.addHandler(fhdlr)
 
 
-class OrderQuantitySmallerThanMinimum(Exception):...
-class OrderValueSmallerThanMinimum(Exception):...
-class ZeroUnitsOrdered(Exception):...
-class InsufficientBalance(Exception):...
-class StopPriceAlreadyMet(Exception):...
-class TakeProfitAlreadyMet(Exception):...
+class OrderQuantitySmallerThanMinimum(Exception):
+    ...
+
+
+class OrderValueSmallerThanMinimum(Exception):
+    ...
+
+
+class ZeroUnitsOrdered(Exception):
+    ...
+
+
+class InsufficientBalance(Exception):
+    ...
+
+
+class StopPriceAlreadyMet(Exception):
+    ...
+
+
+class TakeProfitAlreadyMet(Exception):
+    ...
+
 
 class BuyPlan:
     def __init__(
@@ -39,14 +56,14 @@ class BuyPlan:
         symbol: str,
         df,
         balance: float,
-        play_id:str,
+        play_id: str,
         profit_target: float = 1.5,
         notional_units: bool = False,
         precision: int = 3,
         min_quantity_increment: float = 1,
         min_quantity: float = 1,
         min_price_increment: float = 0.001,
-        max_play_value: float = 500,
+        max_play_value: float = 5000,
     ):
         if min_price_increment == 0.0025:
             print("banana")
@@ -68,9 +85,7 @@ class BuyPlan:
             self.capital = max_play_value
 
         self.blue_cycle_start = get_blue_cycle_start(df=df)
-        self.red_cycle_start = get_red_cycle_start(
-            df=df, before_date=self.blue_cycle_start
-        )
+        self.red_cycle_start = get_red_cycle_start(df=df, before_date=self.blue_cycle_start)
         self.blue_cycle_record = df.loc[self.blue_cycle_start]
 
         self.blue_cycle_macd = self.blue_cycle_record.macd_macd
@@ -100,8 +115,8 @@ class BuyPlan:
         # calculate other order variables
         entry_unit = Decimal(df.Close.iloc[-1])
         entry_unit_trim = entry_unit % Decimal(min_price_increment)
-        #self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
-        self.entry_unit=entry_unit-entry_unit_trim
+        # self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
+        self.entry_unit = entry_unit - entry_unit_trim
         self.entry_unit = self.hacky_float(self.entry_unit)
 
         self.stop_unit = stop_unit
@@ -110,10 +125,14 @@ class BuyPlan:
         self.last_high = df.High.iloc[-1]
 
         if self.stop_unit > self.last_low:
-            raise StopPriceAlreadyMet(f"Stop unit price of {self.stop_unit} would already trigger since last low was {self.last_low}")
+            raise StopPriceAlreadyMet(
+                f"Stop unit price of {self.stop_unit} would already trigger since last low was {self.last_low}"
+            )
 
         if self.entry_unit * 1.25 < self.last_high:
-            raise TakeProfitAlreadyMet(f"Take profit price of {self.entry_unit * 1.25} would already trigger since last high was {self.last_high}")
+            raise TakeProfitAlreadyMet(
+                f"Take profit price of {self.entry_unit * 1.25} would already trigger since last high was {self.last_high}"
+            )
 
         units = self.capital / self.entry_unit
         units_trim = units % min_quantity_increment
@@ -121,25 +140,32 @@ class BuyPlan:
 
         if self.units == 0:
             # we can't afford to buy any units
-            raise InsufficientBalance(f"Balance of {self.capital} is insufficient to purchase any units at {self.entry_unit}")
+            raise InsufficientBalance(
+                f"Balance of {self.capital} is insufficient to purchase any units at {self.entry_unit}"
+            )
 
         if max_play_value < self.entry_unit * min_quantity:
             # we can't afford to buy any units
-            raise OrderValueSmallerThanMinimum(f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit} * minimum units {min_quantity}")
+            raise OrderValueSmallerThanMinimum(
+                f"Play value of {max_play_value} is lower than entry unit price of {self.entry_unit} * minimum units {min_quantity}"
+            )
 
         # if we don't have enough money, bail out
         if self.entry_unit * self.units > self.capital:
-            raise InsufficientBalance(f"Balance of {self.capital} is insufficient to purchase {self.units} units at {self.entry_unit}")
+            raise InsufficientBalance(
+                f"Balance of {self.capital} is insufficient to purchase {self.units} units at {self.entry_unit}"
+            )
 
         if self.units < min_quantity:
             # too few - failed order
-            raise OrderQuantitySmallerThanMinimum(f"Play quantity of {self.units} is lower than minimum quantity of {min_quantity}")
+            raise OrderQuantitySmallerThanMinimum(
+                f"Play quantity of {self.units} is lower than minimum quantity of {min_quantity}"
+            )
 
-        #if self.units == 0:
+        # if self.units == 0:
         #    # we're not buying any units
         #    raise ZeroUnitsOrdered(f"Units to purchase is 0. Maybe due to floor? Calculated units was {units}, minimum trade increment is {min_quantity_increment}")
 
-        
         self.steps = 0
         self.risk_unit = self.entry_unit - self.stop_unit
         self.risk_value = self.units * self.risk_unit
@@ -147,13 +173,13 @@ class BuyPlan:
         self.original_risk_unit = self.risk_unit
         self.original_stop = stop_unit
 
-        #self.entry_unit = round(self.entry_unit, precision)
+        # self.entry_unit = round(self.entry_unit, precision)
         self.target_price = self.entry_unit + self.target_profit
 
         target_price = Decimal(self.entry_unit + self.target_profit)
         target_price_trim = target_price % Decimal(min_price_increment)
-        #self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
-        self.target_price=target_price-target_price_trim
+        # self.entry_unit=round(float(entry_unit-entry_unit_trim),precision)
+        self.target_price = target_price - target_price_trim
         self.target_price = self.hacky_float(self.target_price)
 
         # fmt: off
@@ -195,20 +221,18 @@ class BuyPlan:
         if units_to_sell < self.min_quantity or units_to_sell == 0:
             units_to_sell = new_position_quantity
 
-
         new_steps = active_rule["steps"] + 1
         new_target_profit = active_rule["original_risk"] * new_steps
         new_target_unit_price = active_rule["current_target_price"] + new_target_profit
 
         new_target_unit_price = Decimal(new_target_unit_price)
         new_target_unit_price_trim = new_target_unit_price % Decimal(self.min_price_increment)
-        new_target_unit_price=new_target_unit_price-new_target_unit_price_trim
-        new_target_unit_price=self.hacky_float(new_target_unit_price)
+        new_target_unit_price = new_target_unit_price - new_target_unit_price_trim
+        new_target_unit_price = self.hacky_float(new_target_unit_price)
 
         log_wp.info(f"{self.symbol}\t- TAKE PROFIT")
         log_wp.info(f"{self.symbol}\t- Units to sell:\t{units_to_sell}")
         log_wp.info(f"{self.symbol}\t- Unit price:\t{new_target_unit_price}")
-
 
         # update rules
         new_sales_obj = {
@@ -239,7 +263,6 @@ class BuyPlan:
         new_rule["current_target_price"] = new_target_unit_price
         new_rule["play_id"] = active_rule["play_id"]
 
-
         return {
             "new_rule": new_rule,
             "new_stop_loss": new_stop_loss,
@@ -249,7 +272,7 @@ class BuyPlan:
             "new_units_sold": new_units_sold,
         }
 
-    def hacky_float(self, dec:Decimal)->float:
+    def hacky_float(self, dec: Decimal) -> float:
         string_dec = str(dec)
         dot_at = string_dec.find(".") + 1
         if dot_at == 0:
@@ -266,9 +289,9 @@ class BuyPlan:
         zeroes_to_keep = abs(int(log10(abs(self.min_price_increment))))
         return "%0.*f" % (zeroes_to_keep, the_float)
 
-        a=hacky_float(Decimal(124.123123177456745623), min_price_increment=0.00000001)
-        b=hacky_float(Decimal(124.123123177456745623), min_price_increment=0.00001)
-        c=hacky_float(Decimal(124.123123177456745623), min_price_increment=0.001)
-        d=hacky_float(Decimal(124.123123177456745623), min_price_increment=1)
-        e=hacky_float(Decimal(124), min_price_increment=1)
+        a = hacky_float(Decimal(124.123123177456745623), min_price_increment=0.00000001)
+        b = hacky_float(Decimal(124.123123177456745623), min_price_increment=0.00001)
+        c = hacky_float(Decimal(124.123123177456745623), min_price_increment=0.001)
+        d = hacky_float(Decimal(124.123123177456745623), min_price_increment=1)
+        e = hacky_float(Decimal(124), min_price_increment=1)
         print("banana")

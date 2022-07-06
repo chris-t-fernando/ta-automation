@@ -1,6 +1,6 @@
 # external packages
 from datetime import datetime
-from dateutil.relativedelta import relativedelta 
+from dateutil.relativedelta import relativedelta
 import logging
 from math import floor
 import pandas as pd
@@ -9,7 +9,15 @@ from typing import Callable
 
 # my modules
 from bot_telemetry import BotTelemetry
-from buyplan import BuyPlan, OrderQuantitySmallerThanMinimum, OrderValueSmallerThanMinimum,ZeroUnitsOrdered,InsufficientBalance, StopPriceAlreadyMet,TakeProfitAlreadyMet
+from buyplan import (
+    BuyPlan,
+    OrderQuantitySmallerThanMinimum,
+    OrderValueSmallerThanMinimum,
+    ZeroUnitsOrdered,
+    InsufficientBalance,
+    StopPriceAlreadyMet,
+    TakeProfitAlreadyMet,
+)
 from inotification_service import INotificationService
 from iparameter_store import IParameterStore
 from itradeapi import (
@@ -20,21 +28,19 @@ from itradeapi import (
     LIMIT_SELL,
     STOP_LIMIT_BUY,
     STOP_LIMIT_SELL,
-UnknownSymbolError,
- DelistedAssetError,
- UntradeableAssetError,
- MalformedOrderResult,
- ZeroUnitsOrderedError,
- ApiRateLimitError,
- BuyImmediatelyTriggeredError
+    UnknownSymbolError,
+    DelistedAssetError,
+    UntradeableAssetError,
+    MalformedOrderResult,
+    ZeroUnitsOrderedError,
+    ApiRateLimitError,
+    BuyImmediatelyTriggeredError,
 )
 from macd_config import MacdConfig
 from tabot_rules import TABotRules
 import utils
 
-log_wp = logging.getLogger(
-    "macd_worker"
-)  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.getLogger("macd_worker")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("macd_worker.log")
 log_wp.setLevel(logging.DEBUG)
@@ -70,46 +76,40 @@ class SymbolForbidden(Exception):
 
 # symbol can be backtest naive
 class MacdWorker:
-    symbol:str
-    api:ITradeAPI
-    broker_name:str
-    rules:TABotRules
-    config:MacdConfig
-    store:IParameterStore
-    buy_market:bool
-    notification_service:INotificationService
-    bot_telemetry:BotTelemetry
-    interval:str
+    symbol: str
+    api: ITradeAPI
+    broker_name: str
+    rules: TABotRules
+    config: MacdConfig
+    store: IParameterStore
+    buy_market: bool
+    notification_service: INotificationService
+    bot_telemetry: BotTelemetry
+    interval: str
     # market_data_source is any type
-    run_type:str
-    back_testing:bool
-    paper_testing:bool
-    production_run:bool
-    _init_complete:bool
-    interval_delta:relativedelta 
-    max_range:relativedelta
-    precision:int
-    market:str
-    state_const:int
-    current_check:Callable
-    active_order_id:str
-    buy_plan:BuyPlan
-    active_rule:dict
-    enter_position_timeout:relativedelta
-    _analyse_date:pd.Timestamp
-    _back_testing_date:pd.Timestamp
-    bars:pd.DataFrame
-    min_quantity_increment:float
-    min_quantity:float
-    min_price_increment:float
+    run_type: str
+    back_testing: bool
+    paper_testing: bool
+    production_run: bool
+    _init_complete: bool
+    interval_delta: relativedelta
+    max_range: relativedelta
+    precision: int
+    market: str
+    state_const: int
+    current_check: Callable
+    active_order_id: str
+    buy_plan: BuyPlan
+    active_rule: dict
+    enter_position_timeout: relativedelta
+    _analyse_date: pd.Timestamp
+    _back_testing_date: pd.Timestamp
+    bars: pd.DataFrame
+    min_quantity_increment: float
+    min_quantity: float
+    min_price_increment: float
 
-    def __init__(
-        self,
-        symbol: str,
-        api: ITradeAPI,
-        config:MacdConfig,
-        rules:TABotRules
-    ):
+    def __init__(self, symbol: str, api: ITradeAPI, config: MacdConfig, rules: TABotRules):
         self.symbol = symbol
         self.api = api
         self.broker_name = self.api.get_broker_name()
@@ -184,7 +184,7 @@ class MacdWorker:
                 f"Cannot map token {self.symbol} between broker API and Yahoo "
                 f"Finance. Don't use it."
             )
-        
+
         # next check that the symbol is known to the broker and tradeable
         try:
             return self.api.validate_symbol(symbol=self.symbol)
@@ -206,8 +206,8 @@ class MacdWorker:
     def _set_order_size_and_increment(self):
         asset = self.api.get_asset(self.symbol)
         self.min_quantity_increment = asset.min_quantity_increment
-        self.min_quantity=asset.min_quantity
-        self.min_price_increment=asset.min_price_increment
+        self.min_quantity = asset.min_quantity
+        self.min_price_increment = asset.min_price_increment
 
     def process(self, datestamp):
         # i'm too lazy to pass datestamp around so save it in object
@@ -219,7 +219,7 @@ class MacdWorker:
         # if we have no data for this datestamp, then no action
         if datestamp not in self.bars.index:
             return
-        
+
         self._analyse_index = self.bars.index.get_loc(self._analyse_date)
 
         # keep progressing through the state machine until we hit a stop
@@ -260,24 +260,24 @@ class MacdWorker:
 
     def get_rule(self):
         return self.rules.get_rule(symbol=self.symbol)
-    
+
     def write_to_rules(self, buy_plan, order_result):
         return self.rules.write_to_rules(buy_plan=buy_plan, order_result=order_result)
 
     def replace_rule(self, new_rule):
         return self.rules.replace_rule(symbol=self.symbol, new_rule=new_rule)
-    
+
     def remove_from_rules(self):
         log_wp.debug(f"{self.symbol}: Removing from {self.broker_name} rules")
         return self.rules.remove_from_rules(symbol=self.symbol)
 
     def get_state(self):
         return self.rules.get_state(symbol=self.symbol)
-    
+
     def get_state_all(self):
         return self.rules.get_state_all()
 
-    #TODO move logic into tabot rules
+    # TODO move logic into tabot rules
     def write_to_state(self, order):
         existing_state = self.get_state_all()
 
@@ -292,7 +292,7 @@ class MacdWorker:
                         f"Tried to add {self.symbol} on broker {self.broker_name} to state, "
                         "but it already existed"
                     )
-        
+
         # if we got here then its safe to add this entry to state
         new_state = {
             "symbol": self.symbol,
@@ -301,13 +301,12 @@ class MacdWorker:
             "state": STATE_MAP_INVERTED[self.state_const],
             "play_id": self.play_id,
         }
-        
+
         self.rules.write_to_state(new_state=new_state)
 
     def remove_from_state(self):
         log_wp.debug(f"{self.symbol}: Removing from {self.broker_name} state")
         return self.rules.remove_from_state(symbol=self.symbol, broker=self.broker_name)
-
 
     # START BAR FUNCTIONS
     def _get_bars(self, from_date=None, to_date=None, initialised: bool = True):
@@ -315,7 +314,11 @@ class MacdWorker:
         yf_end = None
 
         if self.back_testing and self.config.back_testing_skip_bar_update:
-            saved_bars = utils.load_bars(self.symbol, bucket=self.config.saved_symbol_data_bucket, key_base=self.config.saved_symbol_key_base)
+            saved_bars = utils.load_bars(
+                self.symbol,
+                bucket=self.config.saved_symbol_data_bucket,
+                key_base=self.config.saved_symbol_key_base,
+            )
             # this means we got data from s3
             if type(saved_bars) == pd.core.frame.DataFrame:
                 yf_start = saved_bars.index[-1]
@@ -332,8 +335,12 @@ class MacdWorker:
             if initialised == False:
                 # we actually need to grab everything
                 # first check to see if we have any data in s3
-                # if i wasn't lazy i'd make a 
-                saved_bars = utils.load_bars(self.symbol, bucket=self.config.saved_symbol_data_bucket, key_base=self.config.saved_symbol_key_base)
+                # if i wasn't lazy i'd make a
+                saved_bars = utils.load_bars(
+                    self.symbol,
+                    bucket=self.config.saved_symbol_data_bucket,
+                    key_base=self.config.saved_symbol_key_base,
+                )
 
                 # this means we got data from s3
                 if type(saved_bars) == pd.core.frame.DataFrame:
@@ -382,16 +389,12 @@ class MacdWorker:
             else:
                 end_string = yf_end
 
-            log_wp.warning(
-                f"{self.symbol}: No data returned between {yf_start} til {end_string}"
-            )
+            log_wp.warning(f"{self.symbol}: No data returned between {yf_start} til {end_string}")
             return bars
 
         interval_mod = utils.get_interval_integer(self.interval)
 
-        bars = bars.loc[
-            (bars.index.minute % interval_mod == 0) & (bars.index.second == 0)
-        ]
+        bars = bars.loc[(bars.index.minute % interval_mod == 0) & (bars.index.second == 0)]
 
         # put bar data into the api so that the back_testing broker API has some data to work with
         if self.back_testing:
@@ -412,9 +415,7 @@ class MacdWorker:
             # pad new bars to 200 rows so that macd and sma200 work
             # TODO merge these bars in before running add_signals - this way we're doing signals for only a couple rows instead of 200
             if len(new_bars) < 300:
-                new_bars = utils.merge_bars(
-                    new_bars=new_bars, bars=self.bars.iloc[-300:]
-                )
+                new_bars = utils.merge_bars(new_bars=new_bars, bars=self.bars.iloc[-300:])
 
             new_bars = utils.add_signals(new_bars, interval=self.interval)
             self.bars = utils.merge_bars(self.bars, new_bars)
@@ -455,9 +456,7 @@ class MacdWorker:
 
             # MACD stuff
             blue_cycle_start = self.get_blue_cycle_start(df=bars_slice)
-            red_cycle_start = self.get_red_cycle_start(
-                df=bars_slice, before_date=blue_cycle_start
-            )
+            red_cycle_start = self.get_red_cycle_start(df=bars_slice, before_date=blue_cycle_start)
 
             stop_loss_unit = self.calculate_stop_loss_unit_price(
                 df=bars_slice,
@@ -477,10 +476,14 @@ class MacdWorker:
             last_low = bars_slice.Low.iloc[-1]
             last_high = bars_slice.High.iloc[-1]
 
-            log_wp.debug(f"{self.symbol}: Last cycle started on {red_cycle_start}, "
-            f"{intervals_since_stop} intervals ago")
-            log_wp.debug(f"{self.symbol}: The lowest price during that cycle was {stop_loss_unit} "
-            f"on {stop_unit_date}. This will be used as the stop loss for the play")
+            log_wp.debug(
+                f"{self.symbol}: Last cycle started on {red_cycle_start}, "
+                f"{intervals_since_stop} intervals ago"
+            )
+            log_wp.debug(
+                f"{self.symbol}: The lowest price during that cycle was {stop_loss_unit} "
+                f"on {stop_unit_date}. This will be used as the stop loss for the play"
+            )
 
             # TODO you need to add a toggle to buy at market or limit - you keep missing potential swyftx opps because of their shitty pricing
             try:
@@ -493,10 +496,20 @@ class MacdWorker:
                     min_quantity_increment=self.min_quantity_increment,
                     min_quantity=self.min_quantity,
                     min_price_increment=self.min_price_increment,
+                    max_play_value=self.config.order_size,
                 )
 
-            except (OrderQuantitySmallerThanMinimum ,OrderValueSmallerThanMinimum ,ZeroUnitsOrderedError,InsufficientBalance ,StopPriceAlreadyMet, TakeProfitAlreadyMet) as e:
-                log_wp.info(f"{self.symbol}: Found buy signal but failed to generate BuyPlan: balance is {balance}, error is '{str(e)}'")
+            except (
+                OrderQuantitySmallerThanMinimum,
+                OrderValueSmallerThanMinimum,
+                ZeroUnitsOrderedError,
+                InsufficientBalance,
+                StopPriceAlreadyMet,
+                TakeProfitAlreadyMet,
+            ) as e:
+                log_wp.info(
+                    f"{self.symbol}: Found buy signal but failed to generate BuyPlan: balance is {balance}, error is '{str(e)}'"
+                )
                 return False
             except Exception as e:
                 log_wp.critical(
@@ -506,9 +519,7 @@ class MacdWorker:
                 return False
 
             self.buy_plan = buy_plan
-            log_wp.info(
-                f"{self.symbol}: Found buy signal, next step is trans_entering_position"
-            )
+            log_wp.info(f"{self.symbol}: Found buy signal, next step is trans_entering_position")
             return self.trans_entering_position
 
         # if we got here, nothing to do
@@ -531,7 +542,7 @@ class MacdWorker:
             # buy got filled so transition to position taken
             self.active_order_result = order
             self.active_order_id = order.order_id
-            
+
             log_wp.debug(
                 f"{self.symbol}: Order {order.order_id}: filled, next action is trans_buy_order_filled"
             )
@@ -545,9 +556,7 @@ class MacdWorker:
                     " action is trans_buy_order_timed_out"
                 )
                 return self.trans_buy_order_timed_out
-            log_wp.log(
-                9, f"{self.symbol}: Order {order.order_id}: is still open or pending"
-            )
+            log_wp.log(9, f"{self.symbol}: Order {order.order_id}: is still open or pending")
 
         # do nothing - still open, not timedout
         log_wp.debug(
@@ -590,9 +599,7 @@ class MacdWorker:
             return self.trans_position_taken_to_stop_loss
 
         # otherwise move straight on to take profit
-        log_wp.debug(
-            f"{self.symbol}: Position established, next action is trans_take_profit"
-        )
+        log_wp.debug(f"{self.symbol}: Position established, next action is trans_take_profit")
         return self.trans_take_profit
 
     def check_state_take_profit(self):
@@ -614,13 +621,13 @@ class MacdWorker:
         # first check to see if the take profit order has been filled
         if order.status_summary == "filled":
             # no comms needed - i already do it in the trans_take_profit (and again) methods
-            #_value = order.filled_unit_quantity * order.filled_unit_price
-            #self.notification_service.send(
+            # _value = order.filled_unit_quantity * order.filled_unit_price
+            # self.notification_service.send(
             #    message=f"MACD algo took profit on {self.symbol} ({self.api.get_broker_name()}) | "
             #    f"${_value:,.2f} total sale value | "
             #    f"${order.filled_unit_price:,.2f} sold price | "
             #    f"{order.filled_unit_quantity:,} units sold"
-            #)
+            # )
 
             # do we have any units left?
             if self.position.quantity == 0:
@@ -782,7 +789,6 @@ class MacdWorker:
                     units=self.buy_plan.units,
                     back_testing_date=self._back_testing_date,
                 )
-        
 
         accepted_statuses = ["open", "filled", "pending"]
         if order_result.status_summary not in accepted_statuses:
@@ -833,9 +839,7 @@ class MacdWorker:
                 order_id=state["order_id"], back_testing_date=self._analyse_date
             )
 
-            self.bot_telemetry.add_order(
-                order_result=order_result, play_id=self.play_id
-            )
+            self.bot_telemetry.add_order(order_result=order_result, play_id=self.play_id)
 
         # clear any variables set at symbol
         self.active_order_id = None
@@ -889,9 +893,7 @@ class MacdWorker:
         self.remove_from_state()
 
         # add rule
-        self.write_to_rules(
-            buy_plan=self.buy_plan, order_result=self.active_order_result
-        )
+        self.write_to_rules(buy_plan=self.buy_plan, order_result=self.active_order_result)
 
         order_result = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._analyse_date
@@ -925,7 +927,7 @@ class MacdWorker:
         units = self.position.quantity
 
         # TODO: i don't love this code. it needs full test coverage
-        #units_to_sell = floor(pct * units)
+        # units_to_sell = floor(pct * units)
         units_to_sell = pct * units
         units_to_sell_mod = units_to_sell % self.min_quantity_increment
         units_to_sell = floor(units_to_sell - units_to_sell_mod)
@@ -933,9 +935,9 @@ class MacdWorker:
         if units_to_sell == 0:
             units_to_sell = 1
 
-        # TODO this is temporary while testing only 
-        units_to_sell = self.position.quantity
-        
+        # TODO this is temporary while testing only
+        # units_to_sell = self.position.quantity
+
         order = self.api.sell_order_limit(
             symbol=self.symbol,
             units=units_to_sell,
@@ -988,9 +990,7 @@ class MacdWorker:
             )
             return False
 
-        log_wp.warning(
-            f"{self.symbol}: Successfully submitted stop_loss order {order.order_id}"
-        )
+        log_wp.warning(f"{self.symbol}: Successfully submitted stop_loss order {order.order_id}")
 
         self.bot_telemetry.add_order(order_result=order, play_id=self.play_id)
 
@@ -1134,9 +1134,7 @@ class MacdWorker:
         filled_order = self.api.get_order(
             order_id=self.active_order_id, back_testing_date=self._back_testing_date
         )
-        filled_value = (
-            filled_order.filled_unit_quantity * filled_order.filled_unit_price
-        )
+        filled_value = filled_order.filled_unit_quantity * filled_order.filled_unit_price
         self.bot_telemetry.add_order(order_result=filled_order, play_id=self.play_id)
         log_wp.warning(
             f"{self.symbol} {self._analyse_date}: Successfully took profit: order ID "
@@ -1226,22 +1224,17 @@ class MacdWorker:
     # START PRICING FUNCTIONS
     def get_red_cycle_start(self, df: pd.DataFrame, before_date):
         return df.loc[
-            (df["macd_cycle"] == "blue")
-            & (df.index < before_date)
-            & (df.macd_crossover == True)
+            (df["macd_cycle"] == "blue") & (df.index < before_date) & (df.macd_crossover == True)
         ].index[-1]
-
 
     def get_blue_cycle_start(self, df: pd.DataFrame):
         return df.loc[(df.macd_crossover == True) & (df.macd_macd < 0)].index[-1]
 
-
-    def calculate_stop_loss_unit_price(self,df: pd.DataFrame, start_date, end_date):
+    def calculate_stop_loss_unit_price(self, df: pd.DataFrame, start_date, end_date):
         return df.loc[start_date:end_date].Close.min()
 
-
     # TODO there is 100% a better way of doing this by sorting Timestamp indexes instead of iloc
-    def calculate_stop_loss_date(self,df: pd.DataFrame, start_date, end_date):
+    def calculate_stop_loss_date(self, df: pd.DataFrame, start_date, end_date):
         return df.loc[start_date:end_date].Close.idxmin()
 
     def count_intervals(self, df: pd.DataFrame, start_date, end_date=None):

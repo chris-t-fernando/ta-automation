@@ -9,9 +9,7 @@ from iparameter_store import IParameterStore
 from itradeapi import IOrderResult
 import logging
 
-log_wp = logging.getLogger(
-    "tabot_rules"
-)  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.getLogger("tabot_rules")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("tabot_rules.log")
 log_wp.setLevel(logging.DEBUG)
@@ -23,14 +21,14 @@ log_wp.addHandler(fhdlr)
 log_wp.addHandler(hdlr)
 
 
-class TABotRules():
-    def __init__(self, store:IParameterStore, rules_path:str, state_path:str):
+class TABotRules:
+    def __init__(self, store: IParameterStore, rules_path: str, state_path: str):
         self.store = store
         self.rules_path = rules_path
         self.state_path = state_path
 
     # STATE AND RULE FUNCTIONS
-    def get_state(self, symbol:str):
+    def get_state(self, symbol: str):
         stored_state = self.get_state_all()
 
         for this_state in stored_state:
@@ -48,7 +46,7 @@ class TABotRules():
             return []
 
     # writes the symbol to state
-    def write_to_state(self, new_state:dict):
+    def write_to_state(self, new_state: dict):
         symbol = new_state["symbol"]
         broker = new_state["broker"]
         stored_state = self.get_state_all()
@@ -62,21 +60,19 @@ class TABotRules():
             # no need for validation - its done in stock_symbol since rules has no access to API to query
             if s_symbol == symbol and s_broker == broker:
                 log_wp.error(f"{symbol} ({broker}): Found this symbol in state already!")
-                
+
             else:
                 # it's not the state we're looking for so keep it
                 state_to_write.append(this_state)
 
         state_to_write.append(new_state)
 
-        self.put_stored_state(
-            new_state=state_to_write
-        )
+        self.put_stored_state(new_state=state_to_write)
 
         log_wp.log(9, f"{symbol}: Successfully wrote order to state")
 
     # removes this symbol from the state
-    def remove_from_state(self, symbol:str, broker:str):
+    def remove_from_state(self, symbol: str, broker: str):
         stored_state = self.get_state_all()
         found_in_state = False
 
@@ -92,21 +88,17 @@ class TABotRules():
                 # it's not the state we're looking for so keep it
                 new_state.append(this_state)
 
-        self.put_stored_state(
-            new_state=new_state
-        )
+        self.put_stored_state(new_state=new_state)
 
         if found_in_state:
             log_wp.log(9, f"{symbol}: Successfully wrote updated state")
             return True
         else:
-            log_wp.warning(
-                f"{symbol}: Tried to remove symbol from state but did not find it"
-            )
+            log_wp.warning(f"{symbol}: Tried to remove symbol from state but did not find it")
             return False
 
     # replaces the rule for this symbol
-    def replace_rule(self, new_rule:dict, symbol:str):
+    def replace_rule(self, new_rule: dict, symbol: str):
         stored_rules = self.get_rules()
 
         new_rules = []
@@ -117,15 +109,12 @@ class TABotRules():
             else:
                 new_rules.append(rule)
 
-        write_result = self.put_rules(
-            symbol=symbol,
-            new_rules=new_rules
-        )
+        write_result = self.put_rules(symbol=symbol, new_rules=new_rules)
 
         return write_result
 
     # adds sybol to rules - will barf if one already exists
-    def write_to_rules(self, buy_plan:BuyPlan, order_result:IOrderResult):
+    def write_to_rules(self, buy_plan: BuyPlan, order_result: IOrderResult):
         stored_rules = self.get_rules()
 
         new_rules = []
@@ -158,9 +147,9 @@ class TABotRules():
             "units_bought": order_result.filled_unit_quantity,
             "order_id": order_result.order_id,
             "sales": [],
-            "win_point_sell_down_pct": 0.5,
+            "win_point_sell_down_pct": 0.75,
             "win_point_new_stop_loss_pct": 0.995,
-            "risk_point_sell_down_pct": 0.25,
+            "risk_point_sell_down_pct": 0.5,
             "risk_point_new_stop_loss_pct": 0.99,
         }
 
@@ -174,7 +163,7 @@ class TABotRules():
         log_wp.log(9, f"{buy_plan.symbol}: Successfully wrote new buy order to rules")
 
     # gets rule for this symbol
-    def get_rule(self, symbol:str):
+    def get_rule(self, symbol: str):
         stored_rules = self.get_rules()
 
         for this_rule in stored_rules:
@@ -184,7 +173,7 @@ class TABotRules():
         return False
 
     # removes the symbol from the buy rules in store
-    def remove_from_rules(self, symbol:str):
+    def remove_from_rules(self, symbol: str):
         stored_state = self.get_rules()
         found_in_rules = False
 
@@ -205,12 +194,10 @@ class TABotRules():
             log_wp.log(9, f"{symbol}: Successfully wrote updated rules")
             return True
         else:
-            log_wp.warning(
-                f"{symbol}: Tried to remove symbol from rules but did not find it"
-            )
+            log_wp.warning(f"{symbol}: Tried to remove symbol from rules but did not find it")
             return False
 
-    def validate_rule(rule:dict):
+    def validate_rule(rule: dict):
         required_keys = [
             "symbol",
             "original_stop_loss",
@@ -240,10 +227,7 @@ class TABotRules():
 
         for req_key in required_keys:
             if req_key not in rule_keys:
-                raise ValueError(
-                    f'Invalid rule found for symbol {rule["symbol"]}: {req_key}'
-                )
-
+                raise ValueError(f'Invalid rule found for symbol {rule["symbol"]}: {req_key}')
 
     def validate_rules(rules):
         if rules == []:
@@ -262,7 +246,6 @@ class TABotRules():
         log_wp.debug(f"Rules are valid")
         return True
 
-
     def get_rules(self):
         try:
             rules = self.store.get(path=self.rules_path)
@@ -274,7 +257,6 @@ class TABotRules():
         for rule in rules:
             rule["purchase_date"] = pd.Timestamp(rule["purchase_date"])
         return rules
-
 
     # merges rules but does not write them - just returns list of rule dicts
     def merge_rules(
@@ -329,32 +311,23 @@ class TABotRules():
             log_wp.log(9, f"{symbol}: No rules changed!")
             return False
 
-
-    def put_rules(
-        self, symbol: str, new_rules: list
-    ):
+    def put_rules(self, symbol: str, new_rules: list):
         # convert Datetime objects to strings
         for rule in new_rules:
             rule["purchase_date"] = str(rule["purchase_date"])
 
-        self.store.put(
-            path=self.rules_path,
-            value=json.dumps(new_rules)
-        )
+        self.store.put(path=self.rules_path, value=json.dumps(new_rules))
         log_wp.log(9, f"{symbol}: Successfully wrote updated rules")
 
         return True
 
-
-    def put_stored_state(self, new_state:list):
+    def put_stored_state(self, new_state: list):
         pickled_state = utils.pickle(new_state)
-        self.store.put(
-            path=self.state_path,
-            value=pickled_state
-        )
+        self.store.put(path=self.state_path, value=pickled_state)
 
-#from parameter_stores import Ssm
-#rules = TABotRules(store=Ssm(), rules_path="/tabot/paper/rules/5m", state_path="/tabot/paper/state")
-#rules.write_to_state( new_state={"symbol":"def", "broker":"banana"})
-#rules.write_to_state( new_state={"symbol":"hij", "broker":"banana"})
-#rules.write_to_state( new_state={"symbol":"def", "broker":"apples"})
+
+# from parameter_stores import Ssm
+# rules = TABotRules(store=Ssm(), rules_path="/tabot/paper/rules/5m", state_path="/tabot/paper/state")
+# rules.write_to_state( new_state={"symbol":"def", "broker":"banana"})
+# rules.write_to_state( new_state={"symbol":"hij", "broker":"banana"})
+# rules.write_to_state( new_state={"symbol":"def", "broker":"apples"})
