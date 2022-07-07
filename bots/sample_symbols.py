@@ -119,7 +119,7 @@ input_symbols = {
         {"symbol": "DOGE-USD", "api": "alpaca"},
         {"symbol": "MATIC-USD", "api": "alpaca"},
         # {"symbol": "ATOM-USD", "api": "alpaca"},
-        # {"symbol": "FTT-USD", "api": "alpaca"},   
+        # {"symbol": "FTT-USD", "api": "alpaca"},
         # {"symbol": "BNB-USD", "api": "alpaca"},
         {"symbol": "WBTC-USD", "api": "alpaca"},
         {"symbol": "TRX-USD", "api": "alpaca"},
@@ -131,8 +131,8 @@ input_symbols = {
         {"symbol": "AVAX-USD", "api": "alpaca"},
         {"symbol": "BCH-USD", "api": "alpaca"},
         {"symbol": "LINK-USD", "api": "alpaca"},
-        #{"symbol": "DAI-USD", "api": "alpaca"},    # pegged to USD
-        #{"symbol": "GRT-USD", "api": "alpaca"},    # some weird Nigerian index
+        # {"symbol": "DAI-USD", "api": "alpaca"},    # pegged to USD
+        # {"symbol": "GRT-USD", "api": "alpaca"},    # some weird Nigerian index
         {"symbol": "LTC-USD", "api": "alpaca"},
         {"symbol": "MKR-USD", "api": "alpaca"},
         {"symbol": "SUSHI-USD", "api": "alpaca"},
@@ -157,7 +157,7 @@ input_symbols = {
         # {"symbol": "BCH-USD", "api": "swyftx"},
         {"symbol": "LINK-USD", "api": "swyftx"},
         {"symbol": "DAI-USD", "api": "swyftx"},
-        #{"symbol": "GRT-USD", "api": "swyftx"},
+        # {"symbol": "GRT-USD", "api": "swyftx"},
         # {"symbol": "LTC-USD", "api": "swyftx"},
         # {"symbol": "MKR-USD", "api": "swyftx"},
         {"symbol": "SUSHI-USD", "api": "swyftx"},
@@ -233,7 +233,7 @@ input_symbols = {
         {"symbol": "GAS-USD", "api": "swyftx"},
         {"symbol": "STX-USD", "api": "swyftx"},
     ],
-    "swyftx_all":[
+    "swyftx_all": [
         {"symbol": "TRX-USD", "api": "swyftx"},
         {"symbol": "ETH-USD", "api": "swyftx"},
         {"symbol": "XRP-USD", "api": "swyftx"},
@@ -592,10 +592,12 @@ input_symbols = {
         {"symbol": "LUNA-USD", "api": "swyftx"},
         {"symbol": "LDO-USD", "api": "swyftx"},
         {"symbol": "NEXO-USD", "api": "swyftx"},
-    ]
+    ],
 }
 
-input_symbols["combined_test"] = (input_symbols["swyftx_medium"] + input_symbols["crypto_symbols_alpaca_all"])
+input_symbols["combined_test"] = (
+    input_symbols["swyftx_medium"] + input_symbols["crypto_symbols_alpaca_all"]
+)
 
 input_symbols["alpaca_everything"] = (
     input_symbols["crypto_symbols_alpaca_all"] + input_symbols["nyse_symbols_big"]

@@ -22,7 +22,7 @@ class SymbolCollection:
     symbols: dict
     interval: str
 
-    def __init__(self, symbols: list = None, interval: str = "5m", log_level=logging.DEBUG):
+    def __init__(self, symbols: list = None, interval: str = "5m", log_level=logging.CRITICAL):
         self._configure_logging(level=log_level)
         self.interval = interval
         self.interval_minutes = int(interval[:-1])
@@ -40,7 +40,7 @@ class SymbolCollection:
         hdlr.setFormatter(formatter)
         log_wp.addHandler(hdlr)
         log_wp.addHandler(fhdlr)
-        log_wp.setLevel(logging.DEBUG)
+        log_wp.setLevel(level)
         self.log_wp = log_wp
 
     def __contains__(self, symbol):
@@ -132,7 +132,7 @@ class SymbolCollection:
         return_dict = {}
         for k, s in self.symbols.items():
             missing_indexes = indexes.symmetric_difference(s.bars.index)
-            self.log_wp.warning(
+            self.log_wp.info(
                 f"Plugging {len(missing_indexes)} missing timestamp indexes for {k} using ffill"
             )
 
@@ -146,37 +146,6 @@ class SymbolCollection:
             return_dict[k] = filled_bars
 
         return return_dict
-
-
-"""
-        return_dict = {}
-        for k, s in self.symbols.items():
-
-            if rounded_date in s.bars.index:
-                idx = rounded_date
-            else:
-                idx = rounded_date
-                attempts = 0
-                if approximate:
-                    interval_range = 2
-                else:
-                    interval_range = 0
-
-                while True:
-                    try:
-                        s.bars.index[idx]
-                        break
-                    except KeyError as e:
-                        attempts += 1
-                        if attempts > interval_range:
-                            raise
-
-                        idx = idx - self.interval_delta
-
-            return_dict[k] = s.bars.loc[idx]
-
-        return return_dict
-"""
 
 
 class SymbolData:
@@ -200,7 +169,7 @@ class SymbolData:
 
             return inner
 
-    def __init__(self, yf_symbol: str, interval: str = "5m", log_level=logging.DEBUG):
+    def __init__(self, yf_symbol: str, interval: str = "5m", log_level=logging.INFO):
         self.yf_symbol = yf_symbol
         self._configure_logging(level=log_level)
 

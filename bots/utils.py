@@ -121,9 +121,7 @@ def add_signals(bars, interval):
             merge_from = 300
         else:
             merge_from = bars.index.get_loc(
-                bars.loc[(bars.macd_macd.isnull()) & (bars.index > ignore_date)].index[
-                    0
-                ]
+                bars.loc[(bars.macd_macd.isnull()) & (bars.index > ignore_date)].index[0]
             )
 
         length_of_new_bars = len(bars) - merge_from
@@ -173,10 +171,7 @@ def add_signals(bars, interval):
             # macd is greater than signal - crossover
             bars.at[d, "macd_above_signal"] = True
             try:
-                if (
-                    bars["macd_macd"].loc[previous_key]
-                    <= bars["macd_signal"].loc[previous_key]
-                ):
+                if bars["macd_macd"].loc[previous_key] <= bars["macd_signal"].loc[previous_key]:
                     cycle = "blue"
                     bars.at[d, "macd_crossover"] = True
 
@@ -187,10 +182,7 @@ def add_signals(bars, interval):
         if bars["macd_macd"].loc[d] < bars["macd_signal"].loc[d]:
             # macd is less than signal
             try:
-                if (
-                    bars["macd_macd"].loc[previous_key]
-                    >= bars["macd_signal"].loc[previous_key]
-                ):
+                if bars["macd_macd"].loc[previous_key] >= bars["macd_signal"].loc[previous_key]:
                     cycle = "red"
                     bars.at[d, "macd_signal_crossover"] = True
 
@@ -216,9 +208,7 @@ def add_signals(bars, interval):
 def get_red_cycle_start(df: pd.DataFrame, before_date):
     try:
         return df.loc[
-            (df["macd_cycle"] == "blue")
-            & (df.index < before_date)
-            & (df.macd_crossover == True)
+            (df["macd_cycle"] == "blue") & (df.index < before_date) & (df.macd_crossover == True)
         ].index[-1]
         return df.loc[(df["macd_cycle"] == "blue") & (df.index < before_date)].index[-1]
     except IndexError as e:
@@ -277,9 +267,7 @@ def check_buy_signal(df, symbol, bot_telemetry):
 
     last_sma = get_last_sma(df=df)
     recent_average_sma = get_recent_average_sma(df=df)
-    sma_trending_up = check_sma(
-        last_sma=last_sma, recent_average_sma=recent_average_sma
-    )
+    sma_trending_up = check_sma(last_sma=last_sma, recent_average_sma=recent_average_sma)
 
     if sma_trending_up:
         telemetry_reasons.append("SMA is upward")
@@ -324,7 +312,7 @@ def check_buy_signal(df, symbol, bot_telemetry):
     #    f"SMA trending up: last {last_sma}, recent average {recent_average_sma}"
     # )
 
-    #if crossover and macd_negative and sma_trending_up:
+    # if crossover and macd_negative and sma_trending_up:
     if crossover and macd_negative:
         # all conditions met for a buy
         log_wp.debug(
@@ -371,7 +359,7 @@ def get_last_sma(df):
 
 
 def get_recent_average_sma(df):
-    #return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
+    # return df.sma_200.rolling(window=20, min_periods=20).mean().iloc[-1]
     return df.sma_200.iloc[-20]
 
 
@@ -397,7 +385,7 @@ def unpickle(object):
     return json.loads(object)
 
 
-def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_base:str) -> bool:
+def save_bars(symbols: list, interval: str, max_range: float, bucket: str, key_base: str) -> bool:
     for symbol in symbols:
         existing_bars = load_bars(symbols=symbol, bucket=bucket, key_base=key_base)
         if type(existing_bars) == pd.core.frame.DataFrame:
@@ -433,17 +421,22 @@ def save_bars(symbols: list, interval: str, max_range:float, bucket:str, key_bas
         # pickled_bars = utils.pickle(bars)
         pickled_bars = bars_with_signals.to_csv()
         if upload_to_s3(
-            pickle=pickled_bars, bucket=bucket, key_base=key_base,  key=f"{symbol}.csv", 
+            pickle=pickled_bars,
+            bucket=bucket,
+            key_base=key_base,
+            key=f"{symbol}.csv",
         ):
-            log_wp.info(f"{symbol}: Saved bars to S3 ({len(bars):,d} records retrieved, {existing_rows:,d} "
-            f"were already in S3, {len(trimmed_bars):,d} records saved)")
+            log_wp.info(
+                f"{symbol}: Saved bars to S3 ({len(bars):,d} records retrieved, {existing_rows:,d} "
+                f"were already in S3, {len(trimmed_bars):,d} records saved)"
+            )
         else:
             log_wp.error(f"{symbol}: Failed to save bars to S3")
 
     return True
 
 
-def upload_to_s3(pickle:str, bucket:str, key_base:str, key):
+def upload_to_s3(pickle: str, bucket: str, key_base: str, key):
     s3 = boto3.resource("s3")
     try:
         s3object = s3.Object(bucket, key_base + key)
@@ -459,10 +452,10 @@ def upload_to_s3(pickle:str, bucket:str, key_base:str, key):
     return True
 
 
-def load_bars(symbols: list, bucket:str, key_base:str) -> dict:
+def load_bars(symbols: list, bucket: str, key_base: str) -> dict:
     single_return = False
     if type(symbols) == str:
-        symbols=[symbols]
+        symbols = [symbols]
         single_return = True
     returned_bars = {}
     for symbol in symbols:
@@ -481,4 +474,4 @@ def load_bars(symbols: list, bucket:str, key_base:str) -> dict:
     if single_return:
         return loaded_csv
     else:
-        return 
+        return

@@ -38,12 +38,12 @@ class TABotRules:
         return False
 
     def get_state_all(self):
-        try:
-            json_stored_state = self.store.get(path=self.state_path)
-            return utils.unpickle(json_stored_state)
+        # try:
+        json_stored_state = self.store.get(path=self.state_path)
+        return utils.unpickle(json_stored_state)
 
-        except self.store.store.exceptions.ParameterNotFound as e:
-            return []
+        # except self.store.store.exceptions.ParameterNotFound as e:
+        #    return []
 
     # writes the symbol to state
     def write_to_state(self, new_state: dict):
@@ -247,11 +247,11 @@ class TABotRules:
         return True
 
     def get_rules(self):
-        try:
-            rules = self.store.get(path=self.rules_path)
+        # try:
+        rules = self.store.get(path=self.rules_path)
 
-        except self.store.exceptions.ParameterNotFound as e:
-            return []
+        # except self.store.exceptions.ParameterNotFound as e:
+        #    return []
 
         rules = json.loads(rules)
         for rule in rules:

@@ -910,6 +910,7 @@ class MacdWorker:
             message=f"MACD algo took position in {self.symbol} ({self.api.get_broker_name()}) | "
             f"${_position_value:,.2f} total value | "
             f"${self.buy_plan.entry_unit:,} entry price | "
+            f"${self.buy_plan.target_price:,} target price | "
             f"${self.buy_plan.stop_unit:,} stop loss price | "
             f"{self.buy_plan.units:,} units bought",
         )

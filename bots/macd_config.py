@@ -5,6 +5,7 @@ import yfinance as yf
 # my modules
 from bot_telemetry import BotTelemetry
 from parameter_stores import Ssm, BackTestStore
+from iparameter_store import IParameterStore
 import notification_services
 
 log_wp = logging.getLogger("macd_config")  # or pass an explicit name here, e.g. "mylogger"
@@ -83,7 +84,7 @@ class MacdConfig:
     market_data_source = None
     symbols: list
     path_notification_service: str = "slack"
-    store = IParameterStore = None
+    store: IParameterStore = None
     run_type: str
 
     def __init__(self, args):

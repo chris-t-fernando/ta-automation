@@ -19,6 +19,7 @@ from macd_worker import (
 )
 from tabot_rules import TABotRules
 import utils
+from parameter_stores import BackTestStore
 
 log_wp = logging.getLogger("macd")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
@@ -42,7 +43,12 @@ class MacdBot:
         self.real_money_trading = config.production_run
         self.bot_telemetry = config.bot_telemetry
         self.notification_service = config.notification_service
-        self.rules = TABotRules(store=self.config.store, rules_path=self.config.path_rules, state_path=self.config.path_state)
+        # self.rules = TABotRules(store=self.config.store, rules_path=self.config.path_rules, state_path=self.config.path_state)
+        self.rules = TABotRules(
+            store=BackTestStore(),
+            rules_path=self.config.path_rules,
+            state_path=self.config.path_state,
+        )
 
         if config.back_testing:
             # override broker to back_test
@@ -65,10 +71,7 @@ class MacdBot:
         for s in symbols:
             start_time = time.time()
             new_symbol = MacdWorker(
-                symbol=s["symbol"],
-                api=self.api_dict[s["api"]],
-                rules=self.rules,
-                config=config
+                symbol=s["symbol"], api=self.api_dict[s["api"]], rules=self.rules, config=config
             )
             key = s["api"] + s["symbol"]
             if new_symbol._init_complete:
@@ -77,9 +80,7 @@ class MacdBot:
                     f'{s["symbol"]} ({s["api"]}): Set up complete in {round(time.time() - start_time,1)}s'
                 )
             else:
-                log_wp.error(
-                    f'{s["symbol"]}: Failed to set up this symbol. Skipping'
-                )
+                log_wp.error(f'{s["symbol"]}: Failed to set up this symbol. Skipping')
 
     def setup_brokers(self):
         # use a set to drop any duplicates
@@ -149,14 +150,10 @@ class MacdBot:
                 latest_symbol = s
 
         if self.config.back_testing:
-            latest_start_position = self.symbols[latest_symbol].bars.index.get_loc(
-                latest_start
-            )
+            latest_start_position = self.symbols[latest_symbol].bars.index.get_loc(latest_start)
             back_test_start_position = latest_start_position + 250
 
-            start_date = self.symbols[latest_symbol].bars.index[
-                back_test_start_position
-            ]
+            start_date = self.symbols[latest_symbol].bars.index[back_test_start_position]
 
         log_wp.log(
             9,
@@ -191,10 +188,7 @@ class MacdBot:
             # log_wp.debug(f"Started processing {current_record}")
             for s in self.symbols:
                 this_symbol = self.symbols[s]
-                if (
-                    this_symbol._analyse_date == None
-                    or this_symbol._analyse_date < data_end_date
-                ):
+                if this_symbol._analyse_date == None or this_symbol._analyse_date < data_end_date:
                     this_symbol.process(current_record)
                 else:
                     log_wp.log(9, f"{s}: No new data")

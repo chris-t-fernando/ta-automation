@@ -65,8 +65,6 @@ class BuyPlan:
         min_price_increment: float = 0.001,
         max_play_value: float = 5000,
     ):
-        if min_price_increment == 0.0025:
-            print("banana")
         self.success = False
         self.min_quantity_increment = min_quantity_increment
         self.min_quantity = min_quantity

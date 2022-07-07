@@ -72,7 +72,7 @@
             ]
         },
         {
-            "name": "tabot paper combined",
+            "name": "tabot paper alpaca_everything",
             "type": "python",
             "request": "launch",
             "program": "bots/tabot.py",
@@ -82,7 +82,7 @@
                 "--run_type",
                 "paper",
                 "--symbols",
-                "combined_test"
+                "alpaca_everything"
             ]
         },
         {

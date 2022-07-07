@@ -2,7 +2,7 @@ from iparameter_store import IParameterStore
 
 import boto3
 from botocore.exceptions import ClientError
-import json
+
 
 class Ssm(IParameterStore):
     def __init__(self):
@@ -20,13 +20,14 @@ class Ssm(IParameterStore):
 
     def get(self, path: str, with_decryption: bool = True) -> dict:
         try:
-            return self.store.get_parameter(Name=path, WithDecryption=with_decryption)[
-                "Parameter"
-            ]["Value"]
+            return self.store.get_parameter(Name=path, WithDecryption=with_decryption)["Parameter"][
+                "Value"
+            ]
         except ClientError as e:
-            if e.response['Error']['Code'] == "ParameterNotFound":
-                return []
+            if e.response["Error"]["Code"] == "ParameterNotFound":
+                return "[]"
             raise
+
 
 class BackTestStore(IParameterStore):
     class exceptions:
@@ -43,7 +44,7 @@ class BackTestStore(IParameterStore):
         overwrite_path = path in self.store and overwrite == True
         if new_path or overwrite_path:
             self.store[path] = value
-            #if len(json.dumps(self.store[path])) > 4096:
+            # if len(json.dumps(self.store[path])) > 4096:
             #    raise Exception("Length of dict exceeds 4096 characters")
             return
         if path in self.store and overwrite == False:
@@ -51,9 +52,8 @@ class BackTestStore(IParameterStore):
 
     def get(self, path: str, with_decryption: bool = True) -> dict:
         if path not in self.store:
-            raise self.exceptions.ParameterNotFound(
-                f"{path} not found in Parameter Store"
-            )
+            return "[]"
+            raise self.exceptions.ParameterNotFound(f"{path} not found in Parameter Store")
 
         return self.store[path]
 

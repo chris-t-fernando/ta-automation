@@ -3,18 +3,7 @@ import boto3
 import pandas as pd
 from itradeapi import IOrderResult
 
-from itradeapi import (
-    MARKET_BUY,
-    MARKET_SELL,
-    LIMIT_BUY,
-    LIMIT_SELL,
-    STOP_LIMIT_BUY,
-    STOP_LIMIT_SELL,
-)
-
-log_wp = logging.getLogger(
-    "bot_telemetry"
-)  # or pass an explicit name here, e.g. "mylogger"
+log_wp = logging.getLogger("bot_telemetry")  # or pass an explicit name here, e.g. "mylogger"
 hdlr = logging.StreamHandler()
 fhdlr = logging.FileHandler("bot_telemetry.log")
 formatter = logging.Formatter(
@@ -79,7 +68,7 @@ class BotTelemetry:
         self.peak_capital_balance = 0
         self.concurrent_orders = 0
 
-    def add_order(self, order_result:IOrderResult, play_id:str):
+    def add_order(self, order_result: IOrderResult, play_id: str):
         # TODO - this is a dumb error specific to back testing that I don't care enough about to fix
         # sometimes orders fail and return a bool. not interested in these guys
         if type(order_result) == bool:
@@ -122,17 +111,21 @@ class BotTelemetry:
         for play in plays:
             # check if the buy got filled - if not, the play never really started and we can ignore it
             buy_order_status = unique_orders.loc[
-                ((unique_orders.order_type == 3) | (unique_orders.order_type == 1)) & (unique_orders.play_id == play)
+                ((unique_orders.order_type == 3) | (unique_orders.order_type == 1))
+                & (unique_orders.play_id == play)
             ].status_summary.item()
             if buy_order_status != "filled":
                 # hacky way to skip without indents
                 continue
 
             buy_value = unique_orders.loc[
-                ((unique_orders.order_type == 3) | (unique_orders.order_type == 1)) & (unique_orders.play_id == play)
+                ((unique_orders.order_type == 3) | (unique_orders.order_type == 1))
+                & (unique_orders.play_id == play)
             ].filled_total_value.item()
             sell_value = unique_orders.loc[
-                (unique_orders.order_type != 3) & (unique_orders.order_type != 1) & (unique_orders.play_id == play)
+                (unique_orders.order_type != 3)
+                & (unique_orders.order_type != 1)
+                & (unique_orders.play_id == play)
             ].filled_total_value.sum()
 
             profit = sell_value - buy_value
@@ -145,10 +138,13 @@ class BotTelemetry:
             symbol = unique_orders.loc[unique_orders.play_id == play].symbol.iloc[0]
 
             start = unique_orders.loc[
-                ((unique_orders.order_type == 3) | ((unique_orders.order_type == 1))) & (unique_orders.play_id == play)
+                ((unique_orders.order_type == 3) | ((unique_orders.order_type == 1)))
+                & (unique_orders.play_id == play)
             ].create_time.min()
             end = unique_orders.loc[
-                (unique_orders.order_type != 3) & (unique_orders.order_type != 1) & (unique_orders.play_id == play)
+                (unique_orders.order_type != 3)
+                & (unique_orders.order_type != 1)
+                & (unique_orders.play_id == play)
             ].update_time.max()
 
             take_profit_count = len(
@@ -252,3 +248,5 @@ class BotTelemetry:
                 }
             )
         return True
+
+    # def log_transaction(self, )
