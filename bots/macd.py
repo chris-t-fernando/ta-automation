@@ -34,7 +34,7 @@ log_wp.setLevel(logging.DEBUG)
 
 
 class MacdBot:
-    def __init__(self, symbols: list, config: MacdConfig):
+    def __init__(self, symbols: list, config: MacdConfig, run_id: str):
         self.config = config
         self.store = config.store
         self.interval = config.interval
@@ -43,6 +43,7 @@ class MacdBot:
         self.real_money_trading = config.production_run
         self.bot_telemetry = config.bot_telemetry
         self.notification_service = config.notification_service
+        self.run_id = run_id
         # self.rules = TABotRules(store=self.config.store, rules_path=self.config.path_rules, state_path=self.config.path_state)
         self.rules = TABotRules(
             store=BackTestStore(),
@@ -71,7 +72,11 @@ class MacdBot:
         for s in symbols:
             start_time = time.time()
             new_symbol = MacdWorker(
-                symbol=s["symbol"], api=self.api_dict[s["api"]], rules=self.rules, config=config
+                symbol=s["symbol"],
+                api=self.api_dict[s["api"]],
+                rules=self.rules,
+                config=config,
+                run_id=self.run_id,
             )
             key = s["api"] + s["symbol"]
             if new_symbol._init_complete:

@@ -52,9 +52,7 @@ def main(args):
     if args.run_type == "prod":
         print("****************************")
         print("WARNING!!! This bot is about to spend your REAL MONEY.")
-        print(
-            "It comes with zero warranty and all transactions are permanent and final."
-        )
+        print("It comes with zero warranty and all transactions are permanent and final.")
         print("Only continue if you can afford to lose it ALL.")
         print("****************************")
         confirmation = input("To continue, type Yes (case sensitive): ")
@@ -73,10 +71,7 @@ def main(args):
     config.store.put(path=config.path_state, value="[]")
     config.store.put(path=config.path_rules, value="[]")
 
-    bot_handler = MacdBot(
-        config=config,
-        symbols=symbols,
-    )
+    bot_handler = MacdBot(config=config, symbols=symbols, run_id=run_id)
 
     if len(symbols) == 0:
         print(f"Nothing to do - no symbols to watch/symbols are invalid/no data")

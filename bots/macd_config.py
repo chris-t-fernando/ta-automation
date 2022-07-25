@@ -142,7 +142,23 @@ class MacdConfig:
             self.telemetry_s3_bucket = self.PROD_TELEMETRY_S3_BUCKET
             self.paper_testing = True
 
-            self.store = Ssm()
+            # TODO uncomment this
+            # self.store = Ssm()
+
+            self.store = BackTestStore()
+            self.store._bootstrap(
+                self.path_alpaca_api_key,
+                self.path_alpaca_security_key,
+                self.path_slack_bot_key,
+                self.path_slack_announcements_channel,
+                self.path_pushover_api_key,
+                self.path_pushover_user_key,
+                self.path_slack_signing_token,
+                self.path_slack_heartbeat_channel,
+                self.path_swyftx_access_token,
+                self.path_swyftx_api_key,
+                self.path_order_size,
+            )
 
         elif args.run_type == "back_test":
             # I'm lazy and haven't made back_test paths yet so just borrow from paper

@@ -131,12 +131,12 @@ class TABotRules:
 
         # if we got here, the symbol does not exist in rules so we are okay to add it
         new_rule = {
-            "symbol": buy_plan.symbol,
-            "play_id": buy_plan.play_id,
-            "original_stop_loss": buy_plan.stop_unit,
-            "current_stop_loss": buy_plan.stop_unit,
-            "original_target_price": buy_plan.target_price,
-            "current_target_price": buy_plan.target_price,
+            "symbol": buy_plan.symbol,  #
+            "play_id": buy_plan.play_id,  #
+            "original_stop_loss": buy_plan.stop_unit,  #
+            "current_stop_loss": buy_plan.stop_unit,  #
+            "original_target_price": buy_plan.target_price,  #
+            "current_target_price": buy_plan.target_price,  #
             "steps": 0,
             "original_risk": buy_plan.risk_unit,
             "current_risk": buy_plan.risk_unit,

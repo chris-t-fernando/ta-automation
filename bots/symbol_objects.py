@@ -1,4 +1,3 @@
-from tracemalloc import start
 from numpy import NaN
 import logging
 import pandas as pd
