@@ -454,7 +454,10 @@ class AlpacaAPI(ITradeAPI):
                 raise
 
         # get the order so we have all the info about it
-        return self.get_order(order_id=response.id)
+        order = self.get_order(order_id=response.id)
+        if order == None:
+            print("wuty")
+        return order
 
     def get_order(self, order_id: str, back_testing_date=None) -> OrderResult:
         all_orders = self.list_orders()

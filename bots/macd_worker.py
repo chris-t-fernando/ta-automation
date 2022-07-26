@@ -835,8 +835,7 @@ class MacdWorker:
                     unit_price=self.buy_plan.entry_unit,
                     back_testing_date=self._back_testing_date,
                 )
-                if order_result == None:
-                    print("wut")
+
             except BuyImmediatelyTriggeredError as e:
                 # fall back to a market order, since our limit order was immediately met
                 order_result = self.api.buy_order_market(
